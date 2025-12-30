@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>Проверка приказов в актах</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="#">Home</a></li>
+        <li class="breadcrumb-item">Checker</li>
+        <li class="breadcrumb-item active">Приказы</li>
+      </ol>
+    </nav>
+  </div>
+
+  {% if not user.is_superuser and not perms.checker_app.check_directive_checker_page %}
+    <div class="alert alert-danger">
+      У вас нет прав на открытие этой страницы.
+    </div>
+  {% else %}
+
+  <section class="section">
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card mb-4">
+          <div class="card-body">
+            <h5 class="card-title">Параметры проверки</h5>
+
+            <form method="get" class="row g-3">
+              <div class="col-md-3">
+                <label for="month" class="form-label">Месяц</label>
+                <select class="form-select" id="month" name="month">
+                  {% for num, name in months.items %}
+                    <option value="{{ num }}" {% if num == month %}selected{% endif %}>{{ name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="col-md-2">
+                <label for="year" class="form-label">Год</label>
+                <input type="number" class="form-control" id="year" name="year" value="{{ year }}">
+              </div>
+
+              <div class="col-md-5">
+                <label for="roles" class="form-label">Роли для проверки</label>
+                <select class="form-select" id="roles" name="roles" multiple size="4">
+                  {% for r in available_roles %}
+                    <option value="{{ r.role }}" {% if r.role in selected_roles %}selected{% endif %}>
+                      {{ r.get_role_display }} (параграф {{ r.source_paragraph }})
+                    </option>
+                  {% endfor %}
+                </select>
+                <div class="form-text">
+                  Если ничего не выбрать — проверяются все доступные роли.
+                </div>
+              </div>
+
+              <div class="col-md-2 d-flex align-items-end">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="1" id="only_problems" name="only_problems"
+                         {% if only_problems == "1" %}checked{% endif %}>
+                  <label class="form-check-label" for="only_problems">
+                    Только проблемные
+                  </label>
+                </div>
+              </div>
+
+              <div class="col-md-12">
+                <button type="submit" class="btn btn-primary">
+                  Проверить
+                </button>
+              </div>
+            </form>
+
+            {% if month_path %}
+              <div class="mt-2">
+                <small class="text-muted">Папка месяца: {{ month_path }}</small><br>
+                <small class="text-muted">Папка актов: {{ acts_folder|default:"не найдена (нет папки 'Акты*')" }}</small>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if error %}
+          <div class="alert alert-danger">Ошибка: {{ error }}</div>
+        {% else %}
+
+          <div class="row mb-4">
+            <div class="col-md-6">
+              <div class="card text-center bg-light">
+                <div class="card-body">
+                  <h6 class="card-title">Актов проверено</h6>
+                  <h3>{{ total_acts_checked }}</h3>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="card text-center {% if total_problem_acts > 0 %}bg-danger text-white{% else %}bg-success text-white{% endif %}">
+                <div class="card-body">
+                  <h6 class="card-title">Проблемные акты</h6>
+                  <h3>{{ total_problem_acts }}</h3>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title"><i class="bi bi-list-check"></i> Результаты</h5>
+
+              {% if act_results %}
+                <div class="table-responsive">
+                  <table class="table table-hover align-middle">
+                    <thead>
+                      <tr>
+                        <th style="width: 4%">#</th>
+                        <th style="width: 40%">Файл</th>
+                        <th style="width: 22%">Статусы</th>
+                        <th>Детали проблем</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for act in act_results %}
+                        <tr>
+                          <td><span class="badge bg-dark">{{ forloop.counter }}</span></td>
+
+                          <td style="word-break: break-all;">
+                            <code>{{ act.file_path }}</code>
+                          </td>
+
+                          <td>
+                            {% for c in act.checks %}
+                              {% if c.status == "OK" %}
+                                <span class="badge bg-success me-1">{{ c.role_label }}</span>
+                              {% elif c.status == "NO_IN_DB" %}
+                                <span class="badge bg-warning text-dark me-1">{{ c.role_label }}</span>
+                              {% else %}
+                                <span class="badge bg-danger me-1">{{ c.role_label }}</span>
+                              {% endif %}
+                            {% endfor %}
+                          </td>
+
+                          <td>
+                            {% for c in act.checks %}
+                              {% if c.status != "OK" and c.status != "NO_IN_DB" %}
+                                {% if forloop.first %}
+                                  <details>
+                                    <summary class="text-danger">Показать</summary>
+                                    <div class="mt-2">
+                                {% endif %}
+
+                                <div class="mb-3">
+                                  <div class="mb-1">
+                                    <span class="badge bg-dark">{{ c.role_label }}</span>
+                                    <span class="badge bg-secondary">параграф {{ c.paragraph }}</span>
+                                  </div>
+
+                                  <pre class="small mb-0" style="white-space: pre-wrap;">{{ c.details }}</pre>
+                                </div>
+
+                                {% if forloop.last %}
+                                    </div>
+                                  </details>
+                                {% endif %}
+                              {% endif %}
+                            {% empty %}
+                              <span class="text-muted">—</span>
+                            {% endfor %}
+                          </td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <div class="alert alert-secondary mb-0">
+                  Актов для проверки не найдено (нет файлов "Акты_*.docx" в папке "Акты*").
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  {% endif %}
+</main>
+{% endblock %}

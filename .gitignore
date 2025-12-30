@@ -1,0 +1,66 @@
+# ======================
+# Python
+# ======================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment variables
+.env
+.env.*
+*.env
+
+# ======================
+# Django
+# ======================
+db.sqlite3
+db.sqlite3-journal
+
+media/
+staticfiles/
+
+# Django cache / sessions
+*.log
+local_settings.py
+
+# ======================
+# Migrations
+# ======================
+# ОСТАВЛЯЙ миграции в git!
+# migrations/__pycache__/
+# migrations/*.pyc
+
+# ======================
+# Tests / coverage
+# ======================
+.coverage
+htmlcov/
+.pytest_cache/
+
+# ======================
+# IDE
+# ======================
+.idea/
+.vscode/
+*.iml
+
+# ======================
+# OS
+# ======================
+Thumbs.db
+.DS_Store
+
+# ======================
+# Build / misc
+# ======================
+dist/
+build/
+*.egg-info/

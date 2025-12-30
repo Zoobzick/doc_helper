@@ -1,0 +1,289 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+
+<main id="main" class="main">
+    <div class="pagetitle">
+        <h1>Добавить новый приказ</h1>
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="#">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'list_directive' %}">Приказы</a></li>
+                <li class="breadcrumb-item active">Добавить приказ</li>
+            </ol>
+        </nav>
+    </div><!-- End Page Title -->
+
+    <section class="section">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Форма добавления приказа</h5>
+
+                        {% if not user.is_superuser and not perms.directive_app.create_directive_page %}
+                          <div class="alert alert-danger">
+                            У вас нет прав на добавление приказов.
+                          </div>
+                        {% else %}
+
+                        <!-- Форма добавления приказа -->
+                        <form method="post" enctype="multipart/form-data" class="row g-3">
+                            {% csrf_token %}
+
+                            <!-- Номер приказа -->
+                            <div class="col-md-6">
+                                <label for="{{ form.number.id_for_label }}" class="form-label">
+                                    {{ form.number.label }}
+                                </label>
+                                {{ form.number }}
+                                {% if form.number.errors %}
+                                <div class="text-danger">
+                                    {{ form.number.errors }}
+                                </div>
+                                {% endif %}
+                                <div class="form-text">{{ form.number.help_text }}</div>
+                            </div>
+
+                            <!-- Дата приказа -->
+                            <div class="col-md-6">
+                                <label for="{{ form.date.id_for_label }}" class="form-label">
+                                    {{ form.date.label }}
+                                </label>
+                                {{ form.date }}
+                                {% if form.date.errors %}
+                                <div class="text-danger">
+                                    {{ form.date.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Дата вступления в силу -->
+                            <div class="col-md-6">
+                              <label for="{{ form.effective_date.id_for_label }}" class="form-label">
+                                {{ form.effective_date.label }}
+                              </label>
+                              {{ form.effective_date }}
+                              {% if form.effective_date.errors %}
+                                <div class="text-danger">{{ form.effective_date.errors }}</div>
+                              {% endif %}
+                              <div class="form-text">{{ form.effective_date.help_text }}</div>
+                            </div>
+
+                            <!-- ФИО сотрудника -->
+                            <div class="col-md-6">
+                                <label for="{{ form.employee_full_name.id_for_label }}" class="form-label">
+                                    {{ form.employee_full_name.label }}
+                                </label>
+                                {{ form.employee_full_name }}
+                                {% if form.employee_full_name.errors %}
+                                <div class="text-danger">
+                                    {{ form.employee_full_name.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Должность сотрудника -->
+                            <div class="col-md-6">
+                                <label for="{{ form.employee_position.id_for_label }}" class="form-label">
+                                    {{ form.employee_position.label }}
+                                </label>
+                                {{ form.employee_position }}
+                                {% if form.employee_position.errors %}
+                                <div class="text-danger">
+                                    {{ form.employee_position.errors }}
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Организация -->
+                            <div class="col-md-6">
+                                <label for="{{ form.organization.id_for_label }}" class="form-label">
+                                    {{ form.organization.label }}
+                                </label>
+                                {{ form.organization }}
+                                {% if form.organization.errors %}
+                                <div class="text-danger">
+                                    {{ form.organization.errors }}
+                                </div>
+                                {% endif %}
+                                <div class="form-text">{{ form.organization.help_text }}</div>
+                            </div>
+
+                            <!-- Файл приказа -->
+                            <div class="col-md-12">
+                                <label for="{{ form.pdf_file.id_for_label }}" class="form-label">
+                                    {{ form.pdf_file.label }}
+                                </label>
+
+                                <!-- Drag & Drop зона -->
+                                <div class="drag-drop-zone" id="dropZone"
+                                     style="border: 2px dashed #ccc; padding: 40px; text-align: center; border-radius: 10px; margin-bottom: 20px; cursor: pointer;">
+                                    <i class="bi bi-cloud-upload" style="font-size: 48px; color: #4154f1;"></i>
+                                    <h5>Перетащите файл приказа сюда</h5>
+                                    <p class="text-muted">или нажмите для выбора файла</p>
+                                    <p class="text-muted small">Поддерживаемые форматы: PDF, DOC, DOCX</p>
+                                </div>
+
+                                <!-- Скрытый input для файла -->
+                                <input type="file"
+                                       name="pdf_file"
+                                       id="fileInput"
+                                       class="form-control"
+                                       accept=".pdf,.doc,.docx"
+                                       hidden>
+
+                                <!-- Поле для отображения выбранного файла -->
+                                <div id="fileInfo" class="mt-2" style="display: none;">
+                                    <div class="alert alert-info">
+                                        <i class="bi bi-file-earmark-text me-2"></i>
+                                        <span id="fileName"></span>
+                                        <span id="fileSize" class="ms-2 text-muted"></span>
+                                        <button type="button" id="removeFile" class="btn btn-sm btn-danger ms-3">
+                                            <i class="bi bi-trash"></i> Удалить
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {% if form.pdf_file.errors %}
+                                <div class="text-danger">
+                                    {{ form.pdf_file.errors }}
+                                </div>
+                                {% endif %}
+                                <div class="form-text">{{ form.pdf_file.help_text }}</div>
+                            </div>
+
+                            <!-- Кнопки -->
+                            <div class="col-12">
+                                <div class="d-flex justify-content-between">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-save me-1"></i> Сохранить приказ
+                                    </button>
+                                    <a href="{% url 'list_directive' %}" class="btn btn-secondary">
+                                        <i class="bi bi-arrow-left me-1"></i> Назад к списку
+                                    </a>
+                                </div>
+                            </div>
+                        </form><!-- End Form -->
+
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main><!-- End #main -->
+
+{% endblock content %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const removeFileBtn = document.getElementById('removeFile');
+
+    if (!dropZone || !fileInput) return;
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', function() {
+        if (this.files.length > 0) updateFileInfo(this.files[0]);
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#4154f1';
+        dropZone.style.backgroundColor = '#f8f9fa';
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.style.borderColor = '#ccc';
+        dropZone.style.backgroundColor = '';
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ccc';
+        dropZone.style.backgroundColor = '';
+
+        if (e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+
+            const allowedTypes = ['.pdf', '.doc', '.docx'];
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+
+            if (!allowedTypes.includes(fileExtension)) {
+                alert('Пожалуйста, выберите файл с расширением .pdf, .doc или .docx');
+                return;
+            }
+
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            fileInput.files = dataTransfer.files;
+
+            updateFileInfo(file);
+        }
+    });
+
+    removeFileBtn?.addEventListener('click', function() {
+        fileInput.value = '';
+        fileInfo.style.display = 'none';
+        dropZone.style.display = 'block';
+    });
+
+    function updateFileInfo(file) {
+        fileName.textContent = file.name;
+
+        let size = file.size;
+        let sizeText;
+        if (size < 1024) sizeText = size + ' байт';
+        else if (size < 1024 * 1024) sizeText = (size / 1024).toFixed(2) + ' КБ';
+        else sizeText = (size / (1024 * 1024)).toFixed(2) + ' МБ';
+
+        fileSize.textContent = '(' + sizeText + ')';
+
+        fileInfo.style.display = 'block';
+        dropZone.style.display = 'none';
+    }
+
+    const formInputs = document.querySelectorAll('input[type="text"], input[type="date"], select, textarea');
+    formInputs.forEach(input => input.classList.add('form-control'));
+});
+</script>
+
+<style>
+.drag-drop-zone:hover {
+    border-color: #4154f1 !important;
+    background-color: #f8f9fa;
+}
+
+.form-control:focus {
+    border-color: #4154f1;
+    box-shadow: 0 0 0 0.2rem rgba(65, 84, 241, 0.25);
+}
+
+.breadcrumb-item a {
+    color: #4154f1;
+    text-decoration: none;
+}
+
+.breadcrumb-item a:hover {
+    text-decoration: underline;
+}
+
+.btn-primary {
+    background-color: #4154f1;
+    border-color: #4154f1;
+}
+
+.btn-primary:hover {
+    background-color: #2a3db6;
+    border-color: #2a3db6;
+}
+</style>
+{% endblock extra_js %}

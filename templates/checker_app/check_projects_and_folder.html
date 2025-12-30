@@ -1,0 +1,185 @@
+{% extends 'base.html' %}
+
+{% load static %}
+
+{% block content %}
+
+  <main id="main" class="main">
+
+    <div class="pagetitle">
+      <h1>Проверка актов</h1>
+      <nav>
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="#">Home</a></li>
+          <li class="breadcrumb-item">Проверки</li>
+          <li class="breadcrumb-item active">Проверка актов</li>
+        </ol>
+      </nav>
+    </div><!-- End Page Title -->
+
+    {% if not user.is_superuser and not perms.checker_app.check_projects_and_folder_page %}
+      <div class="alert alert-danger">
+        У вас нет прав на открытие этой страницы.
+      </div>
+    {% else %}
+
+    <section class="section">
+      <div class="row">
+        <div class="col-lg-12">
+
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5 class="card-title">Параметры проверки</h5>
+              <form method="get" class="row g-3">
+                <div class="col-md-3">
+                  <label for="month" class="form-label">Месяц</label>
+                  <select class="form-select" id="month" name="month">
+                    {% for num, name in months.items %}
+                      <option value="{{ num }}" {% if num == month|stringformat:"02d" or num == month %}selected{% endif %}>
+                        {{ name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <label for="year" class="form-label">Год</label>
+                  <input type="number" class="form-control" id="year" name="year" value="{{ year }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                  <button type="submit" class="btn btn-primary">Выполнить проверку</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">Результаты проверки</h5>
+
+              {% if error %}
+                <div class="alert alert-danger" role="alert">
+                  Ошибка: {{ error }}
+                </div>
+              {% else %}
+                <div class="row mb-4">
+                  <div class="col-md-4">
+                    <div class="card text-center bg-light">
+                      <div class="card-body">
+                        <h6 class="card-title">Всего файлов</h6>
+                        <h3>{{ total_files }}</h3>
+                        <p class="text-muted">За {{ month }}.{{ year }}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="card text-center bg-success text-white">
+                      <div class="card-body">
+                        <h6 class="card-title">Соответствуют</h6>
+                        <h3>{{ matches }}</h3>
+                        {% if total_files > 0 %}
+                          <p>{{ matches_percentage|floatformat:0 }}%</p>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="card text-center bg-danger text-white">
+                      <div class="card-body">
+                        <h6 class="card-title">Не соответствуют</h6>
+                        <h3>{{ mismatches }}</h3>
+                        {% if total_files > 0 %}
+                          <p>{{ mismatches_percentage|floatformat:0 }}%</p>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {% if mismatches > 0 %}
+                <div class="mt-4">
+                  <h6>Детали по файлам с несоответствиями:</h6>
+                  <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Путь к файлу</th>
+                          <th>Проект из акта</th>
+                          <th>Статус</th>
+                          <th>Рекомендация</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for detail in check_details %}
+                          {% if not detail.is_match %}
+                          <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td>
+                              <small class="text-muted">{{ detail.file_path }}</small>
+                            </td>
+                            <td>
+                              <span class="badge bg-info">{{ detail.project_name|default:"Не найден" }}</span>
+                            </td>
+                            <td>
+                              <span class="badge bg-danger">{{ detail.status }}</span>
+                            </td>
+                            <td>
+                              {% if detail.project_name %}
+                                <small>Переместите файл в папку, содержащую '{{ detail.project_name }}'</small>
+                              {% else %}
+                                <small>Не удалось определить проект</small>
+                              {% endif %}
+                            </td>
+                          </tr>
+                          {% endif %}
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                {% else %}
+                  <div class="alert alert-success" role="alert">
+                    ✅ Все файлы соответствуют требованиям!
+                  </div>
+                {% endif %}
+
+                {% if show_all_files %}
+                <div class="mt-4">
+                  <h6>Все проверенные файлы:</h6>
+                  <div class="list-group">
+                    {% for detail in check_details %}
+                      <div class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                          <h6 class="mb-1">
+                            {% if detail.is_match %}
+                              ✅
+                            {% else %}
+                              ❌
+                            {% endif %}
+                            {{ detail.project_name|default:"Неизвестный проект" }}
+                          </h6>
+                          <span class="badge {% if detail.is_match %}bg-success{% else %}bg-danger{% endif %}">
+                            {{ detail.status }}
+                          </span>
+                        </div>
+                        <p class="mb-1">
+                          <small>{{ detail.file_path }}</small>
+                        </p>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </div>
+                {% endif %}
+
+              {% endif %}
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {% endif %}
+
+  </main><!-- End #main -->
+{% endblock content %}

@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main id="main" class="main">
+<div class="pagetitle">
+  <h1>Добавить проект</h1>
+</div>
+
+<section class="section">
+  <div class="row">
+    <div class="col-12 col-lg-10">
+
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">1) Загрузите PDF проекта</h5>
+
+          <div
+            id="dropZone"
+            class="border border-2 border-secondary rounded-3 p-5 text-center"
+            style="border-style:dashed; user-select:none; cursor:pointer;"
+          >
+            <div class="fw-semibold">Перетащите сюда PDF</div>
+            <div class="text-muted small">или кликните, чтобы выбрать файл</div>
+            <input id="fileInput" type="file" accept="application/pdf" class="d-none">
+          </div>
+
+          <div id="uploadStatus" class="mt-3"></div>
+
+          <hr class="my-4">
+
+          <div id="formBlock" class="{% if form.errors %}{% else %}d-none{% endif %}">
+            <h5 class="card-title">2) Заполните данные</h5>
+
+            <div class="alert alert-info py-2">
+              <strong>Полный шифр:</strong>
+              <span id="fullCodePreview" class="ms-1">—</span>
+            </div>
+
+            <form method="post" action="{% url 'projects:project_create_save' %}" class="row g-3" id="projectForm">
+              {% csrf_token %}
+              {{ form.upload_id }}
+
+              <!-- 1-я строка: справочники -->
+              <div class="col-md-4">
+                <label class="form-label d-flex justify-content-between align-items-center">
+                  <span>Проектировщик</span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                          onclick="openCatalogModal('designer','Проектировщик',true)">+</button>
+                </label>
+                {{ form.designer }}
+                {% if form.designer.errors %}<div class="text-danger small">{{ form.designer.errors }}</div>{% endif %}
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label d-flex justify-content-between align-items-center">
+                  <span>Линия</span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                          onclick="openCatalogModal('line','Линия',true)">+</button>
+                </label>
+                {{ form.line }}
+                {% if form.line.errors %}<div class="text-danger small">{{ form.line.errors }}</div>{% endif %}
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label d-flex justify-content-between align-items-center">
+                  <span>Стадия проектирования</span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                          onclick="openCatalogModal('design_stage','Стадия проектирования',true)">+</button>
+                </label>
+                {{ form.design_stage }}
+                {% if form.design_stage.errors %}<div class="text-danger small">{{ form.design_stage.errors }}</div>{% endif %}
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label d-flex justify-content-between align-items-center">
+                  <span>Этап</span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                          onclick="openCatalogModal('stage','Этап',false)">+</button>
+                </label>
+                {{ form.stage }}
+                {% if form.stage.errors %}<div class="text-danger small">{{ form.stage.errors }}</div>{% endif %}
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label d-flex justify-content-between align-items-center">
+                  <span>Площадка (Plot)</span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                          onclick="openCatalogModal('plot','Площадка',false)">+</button>
+                </label>
+                {{ form.plot }}
+                {% if form.plot.errors %}<div class="text-danger small">{{ form.plot.errors }}</div>{% endif %}
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label d-flex justify-content-between align-items-center">
+                  <span>Раздел (Section)</span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                          onclick="openCatalogModal('section','Раздел',false)">+</button>
+                </label>
+                {{ form.section }}
+                {% if form.section.errors %}<div class="text-danger small">{{ form.section.errors }}</div>{% endif %}
+              </div>
+
+              <!-- 2-я строка: код/номер -->
+              <div class="col-md-4">
+                <label class="form-label">Внутренний код (опционально)</label>
+                {{ form.internal_code }}
+                {% if form.internal_code.errors %}<div class="text-danger small">{{ form.internal_code.errors }}</div>{% endif %}
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Номер</label>
+                {{ form.number }}
+                {% if form.number.errors %}<div class="text-danger small">{{ form.number.errors }}</div>{% endif %}
+              </div>
+
+              <div class="col-md-4 d-flex align-items-end">
+                <div class="form-check">
+                  {{ form.needs_review }}
+                  <label class="form-check-label ms-1" for="id_needs_review">Требует проверки</label>
+                </div>
+              </div>
+
+              <!-- 3-я строка: описание -->
+              <div class="col-12">
+                <label class="form-label">Наименование / конструктив</label>
+                {{ form.construction }}
+                {% if form.construction.errors %}<div class="text-danger small">{{ form.construction.errors }}</div>{% endif %}
+              </div>
+
+              <div class="col-12">
+                <button class="btn btn-success" type="submit">Сохранить</button>
+              </div>
+            </form>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ===== MODAL (без зависимости от bootstrap.Modal) ===== -->
+<div class="modal fade" id="catalogModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="catalogModalTitle">Добавить</h5>
+        <button type="button" class="btn-close" aria-label="Close" onclick="hideModal()"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="catalogKind">
+
+        <div class="mb-3">
+          <label class="form-label">Код</label>
+          <input type="text" class="form-control" id="catalogCode">
+        </div>
+
+        <div class="mb-3" id="catalogFullNameBlock">
+          <label class="form-label">Полное имя</label>
+          <input type="text" class="form-control" id="catalogFullName">
+        </div>
+
+        <div id="catalogError" class="text-danger small"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="hideModal()">Отмена</button>
+        <button type="button" class="btn btn-primary" onclick="saveCatalogItem()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+</main>
+
+<script>
+(function () {
+  const uploadUrl = "{% url 'projects:project_upload_temp' %}";
+  const catalogAddUrl = "{% url 'projects:catalog_add' %}";
+
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const uploadStatus = document.getElementById('uploadStatus');
+  const formBlock = document.getElementById('formBlock');
+
+  // ✅ фикс “браузер открывает PDF”
+  ['dragenter','dragover','dragleave','drop'].forEach(evt => {
+    window.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false);
+    document.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false);
+  });
+
+  function setStatus(html) { uploadStatus.innerHTML = html || ''; }
+
+  function csrfToken() {
+    const name = 'csrftoken=';
+    const parts = document.cookie.split(';').map(s => s.trim());
+    for (const p of parts) if (p.startsWith(name)) return decodeURIComponent(p.substring(name.length));
+    return '';
+  }
+
+  function safeJson(resp) {
+    const ct = (resp.headers.get("content-type") || "");
+    if (!ct.includes("application/json")) {
+      return resp.text().then(() => ({
+        ok: false,
+        error: `Сервер вернул не JSON (status ${resp.status}). Часто это 403/redirect.`
+      }));
+    }
+    return resp.json().catch(() => ({
+      ok:false,
+      error:`Не удалось разобрать JSON (status ${resp.status}).`
+    }));
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setStatus('<div class="alert alert-danger py-2">Разрешены только PDF</div>');
+      return;
+    }
+
+    setStatus('<div class="text-muted">Загрузка…</div>');
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrfToken() },
+      body: fd
+    })
+    .then(safeJson)
+    .then(data => {
+      if (!data || data.ok !== true) {
+        const msg = (data && (data.error || data.message)) ? (data.error || data.message) : 'Ошибка загрузки';
+        setStatus(`<div class="alert alert-danger py-2">${msg}</div>`);
+        return;
+      }
+
+      if (data.duplicate) {
+        setStatus(`<div class="alert alert-warning py-2">${data.message || 'Дубликат по sha256'}</div>`);
+        formBlock.classList.add('d-none');
+        return;
+      }
+
+      setStatus(`<div class="alert alert-success py-2">Файл загружен: <strong>${data.filename || file.name}</strong></div>`);
+      formBlock.classList.remove('d-none');
+
+      const uploadIdInput = document.getElementById('id_upload_id');
+      if (uploadIdInput) uploadIdInput.value = data.upload_id || '';
+
+      refreshPreview();
+    })
+    .catch(err => {
+      setStatus(`<div class="alert alert-danger py-2">Ошибка сети/сервера: ${String(err)}</div>`);
+    });
+  }
+
+  // ===== превью полного шифра (как в модели full_code) =====
+  function refreshPreview() {
+    const getText = (id) => {
+      const el = document.getElementById(id);
+      if (!el) return '';
+      if (el.tagName === 'SELECT') {
+        const opt = el.options[el.selectedIndex];
+        const t = (opt && opt.textContent) ? opt.textContent.trim() : '';
+        return t.includes('—') ? t.split('—')[0].trim() : t;
+      }
+      return (el.value || '').trim();
+    };
+
+    const designer = getText('id_designer');
+    const line = getText('id_line');
+    const designStage = getText('id_design_stage');
+    const stage = getText('id_stage');
+    const plot = getText('id_plot');
+
+    const internalCode = getText('id_internal_code');
+    const section = getText('id_section');
+    const number = getText('id_number');
+
+    const parts = [designer, line, designStage, stage, plot].filter(Boolean);
+    if (internalCode) parts.push(internalCode);
+    if (section || number) parts.push(`${section}${number}`);
+
+    document.getElementById('fullCodePreview').textContent = parts.length ? parts.join('-') : '—';
+  }
+
+  // подсветка dropzone
+  dropZone.addEventListener('dragover', () => dropZone.classList.add('bg-light'));
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('bg-light'));
+  dropZone.addEventListener('drop', (e) => {
+    dropZone.classList.remove('bg-light');
+    handleFile(e.dataTransfer.files[0]);
+  });
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+  // обновлять превью при изменениях
+  [
+    'id_designer','id_line','id_design_stage','id_stage','id_plot','id_section',
+    'id_internal_code','id_number'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', refreshPreview);
+      el.addEventListener('input', refreshPreview);
+    }
+  });
+  refreshPreview();
+
+  // ===== модалка без bootstrap.Modal =====
+  const modalEl = document.getElementById('catalogModal');
+  let backdropEl = null;
+
+  window.showModal = function () {
+    if (!backdropEl) {
+      backdropEl = document.createElement('div');
+      backdropEl.className = 'modal-backdrop fade show';
+      backdropEl.addEventListener('click', hideModal);
+      document.body.appendChild(backdropEl);
+    }
+    modalEl.style.display = 'block';
+    modalEl.classList.add('show');
+    modalEl.removeAttribute('aria-hidden');
+    document.body.classList.add('modal-open');
+  };
+
+  window.hideModal = function () {
+    modalEl.classList.remove('show');
+    modalEl.setAttribute('aria-hidden', 'true');
+    modalEl.style.display = 'none';
+    document.body.classList.remove('modal-open');
+    if (backdropEl) {
+      backdropEl.remove();
+      backdropEl = null;
+    }
+  };
+
+  // ===== "+" добавление справочника =====
+  window.openCatalogModal = function(kind, title, needsFullName) {
+    document.getElementById('catalogModalTitle').textContent = `Добавить: ${title}`;
+    document.getElementById('catalogKind').value = kind;
+    document.getElementById('catalogCode').value = '';
+    document.getElementById('catalogFullName').value = '';
+    document.getElementById('catalogError').textContent = '';
+
+    document.getElementById('catalogFullNameBlock').style.display = needsFullName ? '' : 'none';
+    showModal();
+  };
+
+  // ✅ ВАЖНО: отправляем form-urlencoded, чтобы Django прочитал request.POST
+  window.saveCatalogItem = function() {
+    const kind = document.getElementById('catalogKind').value;              // kind (designer/line/...)
+    const code = document.getElementById('catalogCode').value.trim();       // code (например "ГИП")
+    const full_name = document.getElementById('catalogFullName').value.trim(); // full_name (например "АО ...")
+
+    const errBox = document.getElementById('catalogError');                 // errBox (блок ошибок)
+    errBox.textContent = '';
+
+    if (!kind || !code) {
+      errBox.textContent = 'kind и code обязательны';
+      return;
+    }
+
+    const payload = new URLSearchParams(); // payload (тело запроса для request.POST)
+    payload.append('kind', kind);
+    payload.append('code', code);
+    payload.append('full_name', full_name);
+
+    fetch(catalogAddUrl, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      },
+      body: payload.toString()
+    })
+    .then(safeJson)
+    .then(data => {
+      if (!data || data.ok !== true) {
+        errBox.textContent = (data && (data.error || data.message)) ? (data.error || data.message) : 'Ошибка';
+        return;
+      }
+
+      // ⬇️ используем kind, потому что бэк может не вернуть data.kind
+      const select = document.getElementById(`id_${kind}`);
+      if (select) {
+        const opt = document.createElement('option');
+        opt.value = data.id;
+        opt.textContent = data.text;
+        opt.selected = true;
+        select.appendChild(opt);
+        select.dispatchEvent(new Event('change'));
+      }
+
+      hideModal();
+      refreshPreview();
+    })
+    .catch(err => {
+      errBox.textContent = String(err);
+    });
+  };
+
+})();
+</script>
+{% endblock %}

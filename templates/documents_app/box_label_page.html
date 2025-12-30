@@ -1,0 +1,282 @@
+{# templates/documents_app/box_label_page.html #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Наклейка на коробку{% endblock %}
+
+{% block content %}
+
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>Наклейка на коробку</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+        <li class="breadcrumb-item active">Наклейка</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section">
+    <div class="row">
+
+      <!-- ЛЕВАЯ КОЛОНКА: поиск и список проектов -->
+      <div class="col-lg-7">
+        <div class="card">
+          <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div>
+                <h5 class="card-title mb-0">Выбор проектов</h5>
+                <p class="mb-0 text-muted">
+                  У каждого проекта две галочки: <b>ИД</b> и <b>РД</b>. Можно выбрать обе.
+                </p>
+              </div>
+            </div>
+
+            <div class="row g-2 align-items-center mb-3">
+              <div class="col-12">
+                <div class="input-group">
+                  <span class="input-group-text"><i class="bi bi-search"></i></span>
+                  <input id="searchInput"
+                         class="form-control"
+                         type="text"
+                         placeholder="Поиск по шифру / участку / конструкции...">
+                </div>
+                <small class="text-muted d-block mt-1">
+                  Подсказка: можно искать по кускам вроде “МРАЛ1”, “СТ06”, “КЖ”, “СМ12”.
+                </small>
+              </div>
+            </div>
+
+            <div id="searchResults" class="mt-2">
+              <div class="text-muted">Начните вводить для поиска…</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ПРАВАЯ КОЛОНКА: реквизиты + выбранные + кнопка -->
+      <div class="col-lg-5">
+        <div class="card">
+          <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div>
+                <h5 class="card-title mb-0">Параметры наклейки</h5>
+                <p class="mb-0 text-muted">DSM / MIP / SMU можно править двойным кликом.</p>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label mb-1">DSM</label>
+              <div id="DSM"
+                   class="form-control"
+                   style="min-height:38px; cursor: pointer;"
+                   contenteditable="false"
+                   ondblclick="makeEditable(this)"
+                   onblur="makeReadonly(this)">{{ default_dsm }}</div>
+              <div class="form-text">Двойной клик → редактирование</div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label mb-1">MIP</label>
+              <div id="MIP"
+                   class="form-control"
+                   style="min-height:38px; cursor: pointer;"
+                   contenteditable="false"
+                   ondblclick="makeEditable(this)"
+                   onblur="makeReadonly(this)">{{ default_mip }}</div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label mb-1">SMU</label>
+              <div id="SMU"
+                   class="form-control"
+                   style="min-height:38px; cursor: pointer;"
+                   contenteditable="false"
+                   ondblclick="makeEditable(this)"
+                   onblur="makeReadonly(this)">{{ default_smu }}</div>
+            </div>
+
+            <hr>
+
+            <h6 class="mb-2">Выбранные проекты</h6>
+
+            <div class="alert alert-light border mb-3" id="selectedBox">
+              <div class="text-muted">Пока ничего не выбрано</div>
+            </div>
+
+            <form id="genForm" method="post" action="{% url 'documents:box_label_generate' %}">
+              {% csrf_token %}
+              <input type="hidden" name="DSM" id="DSM_input">
+              <input type="hidden" name="MIP" id="MIP_input">
+              <input type="hidden" name="SMU" id="SMU_input">
+
+              <!-- CSV id -->
+              <input type="hidden" name="exec_ids" id="exec_ids_input">
+              <input type="hidden" name="work_ids" id="work_ids_input">
+
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-file-earmark-word me-1"></i>
+                Создать наклейку
+              </button>
+            </form>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // --- (selectedExec) выбранные проекты как ИД: Map(id -> {id, full_code})
+  const selectedExec = new Map();
+  // --- (selectedWork) выбранные проекты как РД: Map(id -> {id, full_code})
+  const selectedWork = new Map();
+
+  // --- DOM
+  const searchInput   = document.getElementById("searchInput");     // (searchInput) поле поиска
+  const searchResults = document.getElementById("searchResults");   // (searchResults) контейнер результатов
+  const selectedBox   = document.getElementById("selectedBox");     // (selectedBox) контейнер выбранных
+
+  // --- editables
+  function makeEditable(el) { el.contentEditable = "true"; el.focus(); }
+  function makeReadonly(el) { el.contentEditable = "false"; }
+
+  // --- render selected list + hidden CSV
+  function renderSelected() {
+    const execArr = Array.from(selectedExec.values());
+    const workArr = Array.from(selectedWork.values());
+
+    document.getElementById("exec_ids_input").value = execArr.map(x => x.id).join(",");
+    document.getElementById("work_ids_input").value = workArr.map(x => x.id).join(",");
+
+    if (!execArr.length && !workArr.length) {
+      selectedBox.innerHTML = '<div class="text-muted">Пока ничего не выбрано</div>';
+      return;
+    }
+
+    let html = "";
+
+    if (execArr.length) {
+      html += '<div class="mb-2"><span class="badge bg-success me-2">ИД</span></div>';
+      execArr.forEach(p => html += `<div class="small text-muted">${escapeHtml(p.full_code)}</div>`);
+    }
+
+    if (workArr.length) {
+      html += '<div class="mt-3 mb-2"><span class="badge bg-info me-2">РД</span></div>';
+      workArr.forEach(p => html += `<div class="small text-muted">${escapeHtml(p.full_code)}</div>`);
+    }
+
+    selectedBox.innerHTML = html;
+  }
+
+  function setOrDelete(map, id, full_code, checked) {
+    if (checked) map.set(id, { id, full_code });
+    else map.delete(id);
+  }
+
+  // --- on checkbox toggles (called from HTML)
+  window.onToggleExec = function(id, full_code, checked) {
+    setOrDelete(selectedExec, id, full_code, checked);
+    renderSelected();
+  }
+
+  window.onToggleWork = function(id, full_code, checked) {
+    setOrDelete(selectedWork, id, full_code, checked);
+    renderSelected();
+  }
+
+  // --- search
+  async function doSearch(q) {
+    const url = "{% url 'documents:box_label_search' %}?q=" + encodeURIComponent(q || "");
+    const resp = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+    const data = await resp.json();
+
+    if (!data.results || data.results.length === 0) {
+      searchResults.innerHTML = '<div class="text-muted">Ничего не найдено</div>';
+      return;
+    }
+
+    let html = "";
+    data.results.forEach(p => {
+      const execChecked = selectedExec.has(p.id) ? "checked" : "";
+      const workChecked = selectedWork.has(p.id) ? "checked" : "";
+
+      html += `
+        <div class="d-flex justify-content-between align-items-start py-2 border-bottom">
+          <div class="me-3">
+            <div class="fw-semibold">${escapeHtml(p.full_code || "")}</div>
+            <div class="small text-muted">${escapeHtml(p.construction || "—")}</div>
+          </div>
+
+          <div class="text-nowrap">
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" ${execChecked}
+                     onchange="onToggleExec(${p.id}, '${jsStr(p.full_code || "")}', this.checked)">
+              <label class="form-check-label">ИД</label>
+            </div>
+            <div class="form-check form-check-inline ms-2">
+              <input class="form-check-input" type="checkbox" ${workChecked}
+                     onchange="onToggleWork(${p.id}, '${jsStr(p.full_code || "")}', this.checked)">
+              <label class="form-check-label">РД</label>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    searchResults.innerHTML = html;
+  }
+
+  // --- helpers
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  // jsStr: чтобы безопасно вставлять в атрибут строки в HTML-шаблоне
+  function jsStr(s) {
+    return String(s).replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+  }
+
+  // --- submit: pack DSM/MIP/SMU + validate at least one project
+  document.getElementById("genForm").addEventListener("submit", (e) => {
+    document.getElementById("DSM_input").value = document.getElementById("DSM").innerText.trim();
+    document.getElementById("MIP_input").value = document.getElementById("MIP").innerText.trim();
+    document.getElementById("SMU_input").value = document.getElementById("SMU").innerText.trim();
+
+    const execCsv = document.getElementById("exec_ids_input").value.trim();
+    const workCsv = document.getElementById("work_ids_input").value.trim();
+
+    if (!execCsv && !workCsv) {
+      e.preventDefault();
+      alert("Выбери хотя бы один проект (ИД или РД).");
+    }
+  });
+
+  // --- debounce search input
+  let t = null;
+  searchInput.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => doSearch(searchInput.value), 200);
+  });
+
+  // --- init
+  doSearch("");
+  renderSelected();
+</script>
+{% endblock %}

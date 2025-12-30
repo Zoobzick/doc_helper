@@ -1,0 +1,19 @@
+{% extends 'base_empty.html' %}
+{% load static %}
+
+{% block main %}
+  {% include 'header.html' %}
+
+  {% include 'sidebar.html' %}
+
+    {% block content %}
+    {% endblock content %}
+
+
+  {% include 'footer.html' %}
+
+  <a href="#"
+     class="back-to-top d-flex align-items-center justify-content-center"><i
+      class="bi bi-arrow-up-short"></i>
+  </a>
+{% endblock main %}

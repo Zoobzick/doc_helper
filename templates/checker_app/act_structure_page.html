@@ -1,0 +1,284 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>Структура документа (DOCX / XLSX)</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="#">Home</a></li>
+        <li class="breadcrumb-item">Инструменты</li>
+        <li class="breadcrumb-item active">Структура документа</li>
+      </ol>
+    </nav>
+  </div>
+
+  {% if not user.is_superuser and not perms.checker_app.view_doc_structure %}
+    <div class="alert alert-danger">У вас нет прав на открытие этой страницы.</div>
+  {% else %}
+
+  <section class="section">
+    <div class="row">
+
+      <div class="col-lg-4">
+
+        <div class="card mb-4">
+          <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-folder2-open"></i> Шаблоны из папки</h5>
+
+            <ul class="nav nav-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <a class="nav-link {% if doc_type == 'docx' %}active{% endif %}"
+                   href="?type=docx">
+                  DOCX
+                </a>
+              </li>
+              <li class="nav-item" role="presentation">
+                <a class="nav-link {% if doc_type == 'xlsx' %}active{% endif %}"
+                   href="?type=xlsx">
+                  XLSX
+                </a>
+              </li>
+            </ul>
+
+            <div class="mt-3">
+              {% if doc_type == 'docx' %}
+                {% if available_docx %}
+                  <div class="list-group">
+                    {% for f in available_docx %}
+                      <a class="list-group-item list-group-item-action {% if shown_filename == f %}active{% endif %}"
+                         href="?type=docx&file={{ f|urlencode }}">
+                        <i class="bi bi-file-earmark-word"></i> {{ f }}
+                      </a>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="alert alert-warning mb-0">В папке нет .docx файлов.</div>
+                {% endif %}
+              {% else %}
+                {% if available_xlsx %}
+                  <div class="list-group">
+                    {% for f in available_xlsx %}
+                      <a class="list-group-item list-group-item-action {% if shown_filename == f %}active{% endif %}"
+                         href="?type=xlsx&file={{ f|urlencode }}">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> {{ f }}
+                      </a>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="alert alert-warning mb-0">В папке нет .xlsx файлов.</div>
+                {% endif %}
+              {% endif %}
+            </div>
+
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-upload"></i> Загрузить свой файл</h5>
+
+            <form method="post" enctype="multipart/form-data" class="row g-3">
+              {% csrf_token %}
+
+              <div class="col-12">
+                {{ upload_form.doc_type.label_tag }}
+                {{ upload_form.doc_type }}
+              </div>
+
+              <div class="col-12">
+                {{ upload_form.file.label_tag }}
+                {{ upload_form.file }}
+              </div>
+
+              {% if upload_form.errors %}
+                <div class="col-12">
+                  <div class="text-danger small">
+                    {{ upload_form.errors }}
+                  </div>
+                </div>
+              {% endif %}
+
+              <div class="col-12">
+                <button type="submit" class="btn btn-primary">
+                  <i class="bi bi-eye"></i> Показать структуру
+                </button>
+              </div>
+            </form>
+
+            <div class="mt-3">
+              <small class="text-muted">
+                <i class="bi bi-shield-check"></i>
+                Файл парсится в памяти (не сохраняется на диск).
+              </small>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="col-lg-8">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-diagram-3"></i> Результат</h5>
+
+            {% if shown_filename %}
+              <div class="alert alert-info">
+                <strong>Тип:</strong> {{ doc_type|upper }}<br>
+                <strong>Файл:</strong> {{ shown_filename }}
+              </div>
+
+              {% if doc_type == 'docx' %}
+                <div class="accordion" id="structureAccordionDocx">
+
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingParagraphs">
+                      <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                              data-bs-target="#collapseParagraphs" aria-expanded="true">
+                        <i class="bi bi-text-paragraph me-2"></i> Параграфы ({{ paragraphs|length }})
+                      </button>
+                    </h2>
+                    <div id="collapseParagraphs" class="accordion-collapse collapse show">
+                      <div class="accordion-body">
+                        {% if paragraphs %}
+                          <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                              <thead>
+                                <tr><th style="width:10%">#</th><th>Текст</th></tr>
+                              </thead>
+                              <tbody>
+                                {% for p in paragraphs %}
+                                  <tr>
+                                    <td><span class="badge bg-dark">{{ p.index }}</span></td>
+                                    <td style="white-space: pre-wrap;">{{ p.text }}</td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        {% else %}
+                          <div class="alert alert-secondary mb-0">Параграфы не найдены.</div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingTables">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                              data-bs-target="#collapseTables" aria-expanded="false">
+                        <i class="bi bi-table me-2"></i> Таблицы/ячейки ({{ cells|length }})
+                      </button>
+                    </h2>
+                    <div id="collapseTables" class="accordion-collapse collapse">
+                      <div class="accordion-body">
+                        {% if cells %}
+                          <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                              <thead>
+                                <tr><th style="width:260px;">Расположение</th><th>Текст</th></tr>
+                              </thead>
+                              <tbody>
+                                {% for c in cells %}
+                                  <tr>
+                                    <td class="mono">tables[{{ c.table_index }}].rows[{{ c.row }}].cells[{{ c.col }}]</td>
+                                    <td style="white-space: pre-wrap;">{{ c.text }}</td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        {% else %}
+                          <div class="alert alert-secondary mb-0">Таблицы не найдены.</div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+              {% else %}
+                <div class="accordion" id="structureAccordionXlsx">
+
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingSheets">
+                      <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                              data-bs-target="#collapseSheets" aria-expanded="true">
+                        <i class="bi bi-layers me-2"></i> Листы ({{ sheets|length }})
+                      </button>
+                    </h2>
+                    <div id="collapseSheets" class="accordion-collapse collapse show">
+                      <div class="accordion-body">
+                        {% if sheets %}
+                          <ul class="list-group">
+                            {% for s in sheets %}
+                              <li class="list-group-item">
+                                <span class="badge bg-dark me-2">{{ s.index }}</span> {{ s.title }}
+                              </li>
+                            {% endfor %}
+                          </ul>
+                        {% else %}
+                          <div class="alert alert-secondary mb-0">Листы не найдены.</div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingCells">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                              data-bs-target="#collapseCells" aria-expanded="false">
+                        <i class="bi bi-grid-3x3 me-2"></i> Непустые ячейки ({{ xlsx_cells|length }})
+                      </button>
+                    </h2>
+                    <div id="collapseCells" class="accordion-collapse collapse">
+                      <div class="accordion-body">
+                        {% if xlsx_cells %}
+                          <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                              <thead>
+                                <tr>
+                                  <th style="width: 220px;">Лист</th>
+                                  <th style="width: 120px;">Ячейка</th>
+                                  <th>Значение</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for c in xlsx_cells %}
+                                  <tr>
+                                    <td class="mono">worksheets[{{ c.sheet_index }}] ({{ c.sheet_title }})</td>
+                                    <td class="mono">{{ c.coordinate }}</td>
+                                    <td style="white-space: pre-wrap;">{{ c.value }}</td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        {% else %}
+                          <div class="alert alert-secondary mb-0">Непустые ячейки не найдены.</div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              {% endif %}
+
+            {% else %}
+              <div class="alert alert-secondary mb-0">
+                Выбери файл слева или загрузи свой документ.
+              </div>
+            {% endif %}
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  {% endif %}
+</main>
+{% endblock content %}

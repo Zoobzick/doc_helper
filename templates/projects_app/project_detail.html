@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>Проект</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+          <a href="{% url 'projects:projects_list' %}">Проекты</a>
+        </li>
+        <li class="breadcrumb-item active">{{ project.full_code }}</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section">
+
+    <!-- Основная информация -->
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card">
+          <div class="card-body">
+
+            <h5 class="card-title mb-3">
+              {{ project.full_code }}
+              {% if project.needs_review %}
+                <span class="badge bg-warning text-dark ms-2">Требует заполнения</span>
+              {% endif %}
+            </h5>
+
+            <div class="row g-3">
+
+              <div class="col-md-6">
+                <strong>Проектировщик:</strong><br>
+                {{ project.designer.full_name }}
+              </div>
+
+              <div class="col-md-6">
+                <strong>Линия:</strong><br>
+                {{ project.line.full_name }}
+              </div>
+
+              <div class="col-md-6">
+                <strong>Стадия проектирования:</strong><br>
+                {{ project.design_stage.full_name }}
+              </div>
+
+              <div class="col-md-6">
+                <strong>Этап строительства:</strong><br>
+                {{ project.stage.name }} ({{ project.stage.code }})
+              </div>
+
+              <div class="col-md-6">
+                <strong>Участок:</strong><br>
+                {{ project.plot.name }} ({{ project.plot.code }})
+              </div>
+
+              <div class="col-md-6">
+                <strong>Внутренний код:</strong><br>
+                {{ project.internal_code|default:"—" }}
+              </div>
+
+              <div class="col-12">
+                <strong>Конструкция:</strong>
+                <div class="mt-1">
+                  {% if project.construction %}
+                    {{ project.construction }}
+                  {% else %}
+                    <span class="text-muted fst-italic">Описание конструкции отсутствует</span>
+                  {% endif %}
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Версии проекта -->
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card">
+          <div class="card-body">
+
+            <h5 class="card-title mb-3">Версии проекта</h5>
+
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th class="text-nowrap">Версия</th>
+                    <th>Файл</th>
+                    <th class="text-nowrap text-end">Действия</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {% for rev in project.revisions.all %}
+                  <tr>
+                    <td class="fw-semibold text-nowrap">
+                      {{ rev.revision }}
+                      {% if rev.is_latest %}
+                        <span class="badge bg-success ms-1">Актуальная</span>
+                      {% endif %}
+                    </td>
+
+                    <td>{{ rev.file_name }}</td>
+
+                    <td class="text-end text-nowrap">
+                      {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
+                        <a href="{% url 'projects:project_revision_open' rev.pk %}"
+                           target="_blank"
+                           class="btn btn-sm btn-outline-danger"
+                           title="Открыть PDF">
+                          <i class="bi bi-file-earmark-pdf-fill"></i>
+                        </a>
+                      {% else %}
+                        <span class="text-muted fst-italic">Нет прав</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% empty %}
+                  <tr>
+                    <td colspan="3" class="text-center text-muted py-4">
+                      Файлы проекта не найдены
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </section>
+</main>
+{% endblock %}

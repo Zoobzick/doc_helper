@@ -1,0 +1,238 @@
+{% extends 'base.html' %}
+
+{% load static %}
+
+{% block content %}
+
+  <main id="main" class="main">
+
+    <div class="pagetitle">
+      <h1>Проверка актов в формате .doc</h1>
+      <nav>
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="#">Home</a></li>
+          <li class="breadcrumb-item">Проверки</li>
+          <li class="breadcrumb-item active">Акты .doc</li>
+        </ol>
+      </nav>
+    </div><!-- End Page Title -->
+
+    {% if not user.is_superuser and not perms.checker_app.check_doc_acts_page %}
+      <div class="alert alert-danger">
+        У вас нет прав на открытие этой страницы.
+      </div>
+    {% else %}
+
+    <section class="section">
+      <div class="row">
+        <div class="col-lg-12">
+
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5 class="card-title">Параметры проверки</h5>
+              <form method="get" class="row g-3">
+                <div class="col-md-3">
+                  <label for="month" class="form-label">Месяц</label>
+                  <select class="form-select" id="month" name="month">
+                    {% for num, name in months.items %}
+                      <option value="{{ num }}" {% if num == month|stringformat:"02d" or num == month %}selected{% endif %}>
+                        {{ name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <label for="year" class="form-label">Год</label>
+                  <input type="number" class="form-control" id="year" name="year" value="{{ year }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                  <button type="submit" class="btn btn-primary">Выполнить проверку</button>
+                </div>
+              </form>
+              {% if start_directory %}
+                <div class="mt-2">
+                  <small class="text-muted">Корневая папка проверки: {{ start_directory }}</small>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if error %}
+            <div class="alert alert-danger" role="alert">
+              Ошибка: {{ error }}
+            </div>
+          {% else %}
+
+            <div class="row mb-4">
+              <div class="col-md-4">
+                <div class="card text-center {% if total_files > 0 %}bg-danger text-white{% else %}bg-success text-white{% endif %}">
+                  <div class="card-body">
+                    <h6 class="card-title">
+                      {% if total_files > 0 %}⚠️ Найдено .doc файлов{% else %}✅ Нет .doc файлов{% endif %}
+                    </h6>
+                    <h3>{{ total_files }}</h3>
+                    <p class="{% if total_files > 0 %}text-light{% else %}text-light{% endif %}">
+                      {% if total_files > 0 %}
+                        <i class="bi bi-exclamation-triangle"></i> Требуется ручное исправление
+                      {% else %}
+                        <i class="bi bi-check-circle"></i> Все в порядке
+                      {% endif %}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="card text-center bg-light">
+                  <div class="card-body">
+                    <h6 class="card-title">Папок с файлами</h6>
+                    <h3>{{ directories_count }}</h3>
+                    <p class="text-muted">За {{ month }}.{{ year }}</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="card text-center bg-info text-white">
+                  <div class="card-body">
+                    <h6 class="card-title">Ручное исправление</h6>
+                    <p class="text-light mb-0">
+                      <i class="bi bi-info-circle"></i> Проверьте пути файлов ниже
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {% if has_doc_files %}
+              <div class="alert alert-warning" role="alert">
+                <h4 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> Инструкция по исправлению</h4>
+                <p>Для каждого найденного файла выполните следующие действия вручную:</p>
+                <ol class="mb-2">
+                  <li>Откройте файл по указанному ниже пути</li>
+                  <li>Сохраните его в формате .docx через "Сохранить как..."</li>
+                  <li>Удалите оригинальный .doc файл</li>
+                  <li>Убедитесь, что файл .docx открывается корректно</li>
+                </ol>
+                <hr>
+                <p class="mb-0"><strong>Внимание:</strong> Не закрывайте эту страницу до завершения исправлений.</p>
+              </div>
+
+              <div class="card">
+                <div class="card-body">
+                  <h5 class="card-title">
+                    <i class="bi bi-list-check"></i> Список файлов для ручного исправления
+                    <span class="badge bg-danger">{{ total_files }}</span>
+                  </h5>
+
+                  <div class="table-responsive">
+                    <table class="table table-hover">
+                      <thead>
+                        <tr>
+                          <th style="width: 5%">#</th>
+                          <th style="width: 20%">Имя файла</th>
+                          <th style="width: 50%">Полный путь к файлу</th>
+                          <th style="width: 10%">Размер</th>
+                          <th style="width: 15%">Дата изменения</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for file in files_info %}
+                        <tr class="{% if file.is_danger %}table-danger{% endif %}">
+                          <td>
+                            <span class="badge bg-dark">{{ forloop.counter }}</span>
+                          </td>
+                          <td>
+                            <strong class="text-danger">{{ file.file_name }}</strong>
+                            <br>
+                            <small class="text-muted">
+                              <i class="bi bi-folder"></i> {{ file.directory }}
+                            </small>
+                          </td>
+                          <td>
+                            <div class="file-path">
+                              <code style="word-break: break-all; font-size: 0.85rem; background: #f8f9fa; padding: 5px; border-radius: 3px;">
+                                {{ file.file_path }}
+                              </code>
+                              <div class="mt-1">
+                                <small>
+                                  <i class="bi bi-clipboard"></i>
+                                  <a href="#" onclick="navigator.clipboard.writeText('{{ file.file_path|escapejs }}'); return false;"
+                                     class="text-primary" title="Копировать путь">
+                                    Скопировать путь
+                                  </a>
+                                </small>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span class="badge bg-info">{{ file.size }}</span>
+                          </td>
+                          <td>
+                            <small class="text-muted">{{ file.modified }}</small>
+                          </td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div class="mt-4">
+                    <div class="card border-warning">
+                      <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0"><i class="bi bi-clipboard-check"></i> Сводка по исправлениям</h6>
+                      </div>
+                      <div class="card-body">
+                        <div class="row">
+                          <div class="col-md-6">
+                            <h6>Что нужно сделать:</h6>
+                            <ul>
+                              <li>Файлы для конвертации: <strong>{{ total_files }}</strong></li>
+                              <li>Папок для проверки: <strong>{{ directories_count }}</strong></li>
+                              <li>Формат назначения: <strong>.docx</strong></li>
+                            </ul>
+                          </div>
+                          <div class="col-md-6">
+                            <h6>Порядок работы:</h6>
+                            <ol style="padding-left: 1.2rem; margin-bottom: 0;">
+                              <li>Скопируйте путь к файлу</li>
+                              <li>Откройте файл в Word</li>
+                              <li>Сохраните как .docx</li>
+                              <li>Удалите старый .doc файл</li>
+                            </ol>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            {% else %}
+              <div class="card">
+                <div class="card-body text-center">
+                  <div class="py-5">
+                    <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
+                    <h4 class="mt-3">Файлы .doc не найдены</h4>
+                    <p class="text-muted">
+                      В папке {{ month }}.{{ year }} не обнаружено актов в формате .doc
+                    </p>
+                    <div class="mt-4">
+                      <div class="alert alert-success" role="alert">
+                        <i class="bi bi-info-circle"></i>
+                        Все акты имеют правильный формат .docx. Это соответствует требованиям.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+
+          {% endif %}
+
+        </div>
+      </div>
+    </section>
+
+    {% endif %}
+
+  </main><!-- End #main -->
+{% endblock content %}

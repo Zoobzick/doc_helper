@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>На согласовании</h1>
+  </div>
+
+  <section class="section">
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card">
+          <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 class="card-title mb-0">Согласования у проектировщика</h5>
+
+              {% if perms.approvals_app.add_approvals_pending %}
+              <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addApprovalModal">
+                <i class="bi bi-plus-lg me-1"></i> Добавить
+              </button>
+              {% endif %}
+            </div>
+
+            <form method="get" class="row g-2 mt-3">
+              <div class="col-md-7">
+                <input type="text" name="q" value="{{ request.GET.q }}"
+                       class="form-control" placeholder="Поиск: КЖ39 или текст">
+              </div>
+              <div class="col-md-2">
+                <button class="btn btn-outline-primary w-100" type="submit">
+                  <i class="bi bi-search me-1"></i> Найти
+                </button>
+              </div>
+              {% if request.GET.q %}
+              <div class="col-md-2">
+                <a class="btn btn-outline-secondary w-100" href="{% url 'approvals:pending' %}">Сброс</a>
+              </div>
+              {% endif %}
+            </form>
+
+            <div class="table-responsive mt-3">
+              <table class="table table-striped table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th class="text-nowrap">Шифр проекта</th>
+                    <th>Описание</th>
+                    <th class="text-nowrap">Дата_создания</th>
+                    <th class="text-nowrap text-center">Действие</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {% for a in approvals %}
+                  <tr>
+                    <td class="fw-semibold">
+                      {% if a.project %}
+                        {{ a.project.full_code }}
+                      {% else %}
+                        <span class="badge bg-secondary">Общее</span>
+                      {% endif %}
+                    </td>
+
+                    <td>{{ a.description|default:"—" }}</td>
+
+                    <td class="text-nowrap">{{ a.created_at|date:"d.m.Y H:i" }}</td>
+
+                    <td class="text-center text-nowrap">
+
+                      {% if a.file %}
+                      <a class="btn btn-sm btn-outline-danger"
+                         href="{% url 'approvals:open_pdf' a.pk %}"
+                         target="_blank"
+                         title="Открыть PDF">
+                        <i class="bi bi-file-earmark-pdf-fill"></i>
+                      </a>
+                      {% else %}
+                      <span class="text-muted" title="Файл не прикреплён">—</span>
+                      {% endif %}
+
+                      {% if perms.approvals_app.view_approvals_done_page %}
+                      <form method="post"
+                            action="{% url 'approvals:mark_done' a.pk %}"
+                            class="d-inline"
+                            onsubmit="return confirm('Перевести в «Все согласования»? Запись исчезнет из «На согласовании».');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-success ms-1" title="Согласовано">
+                          <i class="bi bi-check-lg"></i>
+                        </button>
+                      </form>
+                      {% endif %}
+
+                      {% if perms.approvals_app.delete_approvals %}
+                      <form method="post"
+                            action="{% url 'approvals:delete' a.pk %}"
+                            class="d-inline"
+                            onsubmit="return confirm('Точно удалить согласование?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-secondary ms-1" title="Удалить">
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </form>
+                      {% endif %}
+
+                    </td>
+                  </tr>
+                  {% empty %}
+                  <tr>
+                    <td colspan="4" class="text-center text-muted py-4">
+                      Ничего не найдено
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            {% if is_paginated %}
+            <nav class="mt-3">
+              <ul class="pagination">
+                {% if page_obj.has_previous %}
+                  <li class="page-item">
+                    <a class="page-link"
+                       href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">←</a>
+                  </li>
+                {% endif %}
+
+                <li class="page-item disabled">
+                  <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                </li>
+
+                {% if page_obj.has_next %}
+                  <li class="page-item">
+                    <a class="page-link"
+                       href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">→</a>
+                  </li>
+                {% endif %}
+              </ul>
+            </nav>
+            {% endif %}
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{% if perms.approvals_app.add_approvals_pending %}
+<!-- Modal: Добавить (PENDING) -->
+<div class="modal fade" id="addApprovalModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+
+      <form method="post" action="{% url 'approvals:pending' %}" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-lg me-2"></i> Добавить (На согласовании)</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+
+          <div class="mb-3">
+            <label class="form-label">Проект (необязательно)</label>
+            {{ form.project }}
+            <small class="text-muted">Можно ввести “КЖ39” для быстрого поиска.</small>
+            {% if form.project.errors %}
+              <div class="text-danger small">{{ form.project.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Описание</label>
+            {{ form.description }}
+            {% if form.description.errors %}
+              <div class="text-danger small">{{ form.description.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">PDF файл (необязательно)</label>
+
+            <div id="dropzone"
+                 class="border rounded-2 p-3 text-center"
+                 style="border-style:dashed!important; cursor:pointer;">
+              <div class="text-muted">Перетащи PDF сюда или кликни для выбора</div>
+              <div id="fileName" class="mt-2 fw-semibold"></div>
+            </div>
+
+            <div class="mt-2 d-none">
+              {{ form.file }}
+            </div>
+
+            {% if form.file.errors %}
+              <div class="text-danger small mt-1">{{ form.file.errors }}</div>
+            {% endif %}
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i> Сохранить
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+
+{% if open_modal %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    new bootstrap.Modal(document.getElementById('addApprovalModal')).show();
+  });
+</script>
+{% endif %}
+
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // Drag&Drop
+  const dz = document.getElementById("dropzone");
+  const fileInput = document.querySelector('input[type="file"][name="file"]');
+  const fileName = document.getElementById("fileName");
+
+  function setFileName() {
+    const f = fileInput.files && fileInput.files[0];
+    fileName.textContent = f ? f.name : "";
+  }
+
+  dz.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", setFileName);
+
+  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("bg-light"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("bg-light"));
+  dz.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dz.classList.remove("bg-light");
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      setFileName();
+    }
+  });
+
+  // Select2 search проектов
+  const $el = $('.js-project-select');
+  $el.select2({
+    dropdownParent: $('#addApprovalModal'),
+    placeholder: '— Общее согласование (без проекта) —',
+    allowClear: true,
+    ajax: {
+      url: "{% url 'approvals:project_search' %}",
+      dataType: 'json',
+      delay: 250,
+      data: function (params) { return { q: params.term || "" }; },
+      processResults: function (data) { return data; }
+    }
+  });
+});
+</script>
+{% endif %}
+
+{% endblock %}
