@@ -1,14 +1,17 @@
 from django import forms
 
-from .models import Project
+from .models import (
+    Project,
+    Designer,
+    Line,
+    DesignStage,
+    Stage,
+    Plot,
+    Section,
+)
 
 
 class ProjectCreateForm(forms.ModelForm):
-    """
-    Создание проекта через WEB.
-    ВАЖНО: needs_review НЕ вводится вручную — вычисляется автоматически.
-    """
-
     upload_id = forms.UUIDField(required=True, widget=forms.HiddenInput())
 
     class Meta:
@@ -39,10 +42,6 @@ class ProjectCreateForm(forms.ModelForm):
 
 
 class ProjectUpdateForm(forms.ModelForm):
-    """
-    Редактирование карточки проекта (классификаторы).
-    """
-
     class Meta:
         model = Project
         fields = (
@@ -66,5 +65,14 @@ class ProjectUpdateForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # показываем только активные значения справочников
+        self.fields["designer"].queryset = Designer.objects.filter(is_active=True).order_by("code")
+        self.fields["line"].queryset = Line.objects.filter(is_active=True).order_by("code")
+        self.fields["design_stage"].queryset = DesignStage.objects.filter(is_active=True).order_by("code")
+        self.fields["stage"].queryset = Stage.objects.filter(is_active=True).order_by("code")
+        self.fields["plot"].queryset = Plot.objects.filter(is_active=True).order_by("code")
+        self.fields["section"].queryset = Section.objects.filter(is_active=True).order_by("code")
+
         for name in ("designer", "line", "design_stage", "stage", "plot", "section"):
             self.fields[name].empty_label = "— выберите —"

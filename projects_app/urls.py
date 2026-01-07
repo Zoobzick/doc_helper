@@ -11,6 +11,7 @@ from .views import (
     ProjectRevisionSetInProductionView,
     ProjectUpdateView,
     ProjectRevisionDeleteView,
+    DictItemCreateView,
 )
 
 app_name = "projects"
@@ -27,8 +28,10 @@ urlpatterns = [
          name="project_revision_set_in_production"),
     path("revision/<int:pk>/delete/", ProjectRevisionDeleteView.as_view(), name="project_revision_delete"),
 
-    # ручное добавление (web)
     path("create/", ProjectCreateStartView.as_view(), name="project_create"),
     path("create/upload-temp/", TempUploadPdfView.as_view(), name="project_upload_temp"),
     path("create/save/", ProjectCreateWithPdfView.as_view(), name="project_create_save"),
+
+    # Variant 1: быстрое добавление справочников
+    path("dicts/<str:dict_name>/create/", DictItemCreateView.as_view(), name="dict_item_create"),
 ]
