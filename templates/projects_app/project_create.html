@@ -8,8 +8,9 @@
 
 <section class="section">
   <div class="row">
-    <div class="col-12 col-lg-10">
 
+    <!-- Левая колонка: загрузка + форма -->
+    <div class="col-12 col-lg-6">
       <div class="card">
         <div class="card-body">
           <h5 class="card-title">1) Загрузите PDF проекта</h5>
@@ -50,12 +51,7 @@
                 {% if form.construction.errors %}<div class="text-danger small">{{ form.construction.errors }}</div>{% endif %}
               </div>
 
-              <div class="col-12">
-                <div class="form-check">
-                  {{ form.needs_review }}
-                  <label class="form-check-label ms-1" for="id_needs_review">Требует заполнения</label>
-                </div>
-              </div>
+              <!-- УБРАНО: ручная галка needs_review (теперь это вычисляется автоматически) -->
 
               <div class="col-12">
                 <button class="btn btn-success" type="submit">Сохранить</button>
@@ -65,8 +61,26 @@
 
         </div>
       </div>
-
     </div>
+
+    <!-- Правая колонка: предпросмотр -->
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Предпросмотр PDF (1-я страница)</h5>
+
+          <div id="pdfPreviewEmpty" class="text-muted">
+            Выберите один PDF — здесь появится предпросмотр.
+          </div>
+
+          <iframe
+            id="pdfPreviewFrame"
+            style="display:none; width:100%; height:70vh; border:1px solid #e5e5e5; border-radius:8px;"
+          ></iframe>
+        </div>
+      </div>
+    </div>
+
   </div>
 </section>
 </main>
@@ -79,6 +93,10 @@
   const fileInput = document.getElementById('fileInput');
   const uploadStatus = document.getElementById('uploadStatus');
   const formBlock = document.getElementById('formBlock');
+
+  const frame = document.getElementById("pdfPreviewFrame");
+  const empty = document.getElementById("pdfPreviewEmpty");
+  let currentObjectUrl = null;
 
   ['dragenter','dragover','dragleave','drop'].forEach(evt => {
     window.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false);
@@ -108,8 +126,39 @@
     }));
   }
 
+  function showPreview(file) {
+    if (!frame || !empty) return;
+
+    if (currentObjectUrl) {
+      URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = null;
+    }
+
+    if (!file) {
+      frame.style.display = "none";
+      empty.style.display = "block";
+      empty.textContent = "Выберите один PDF — здесь появится предпросмотр.";
+      return;
+    }
+
+    const isPdf = (file.type === "application/pdf") || (file.name || "").toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      frame.style.display = "none";
+      empty.style.display = "block";
+      empty.textContent = "Выберите PDF файл.";
+      return;
+    }
+
+    currentObjectUrl = URL.createObjectURL(file);
+    frame.src = currentObjectUrl + "#page=1";
+    empty.style.display = "none";
+    frame.style.display = "block";
+  }
+
   function handleFile(file) {
     if (!file) return;
+
+    showPreview(file);
 
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
       setStatus('<div class="alert alert-danger py-2">Разрешены только PDF</div>');
@@ -155,7 +204,8 @@
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('bg-light'));
   dropZone.addEventListener('drop', (e) => {
     dropZone.classList.remove('bg-light');
-    handleFile(e.dataTransfer.files[0]);
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    handleFile(f);
   });
 
   dropZone.addEventListener('click', () => fileInput.click());

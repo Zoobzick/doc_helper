@@ -2,162 +2,138 @@
 {% load static %}
 
 {% block content %}
-    <main id="main" class="main">
+<main id="main" class="main">
 
-        <div class="pagetitle">
-            <h1>Проекты</h1>
+  <div class="pagetitle">
+    <h1>Проекты</h1>
+  </div>
+
+  <section class="section">
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card">
+          <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h5 class="card-title mb-0">Реестр проектов</h5>
+                <p class="text-muted mb-0">
+                  Отображаются актуальные версии проектов
+                </p>
+              </div>
+
+              <div class="d-flex align-items-center gap-3">
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input"
+                         type="checkbox"
+                         id="needsReviewOnly"
+                         {% if needs_review_filter_on %}checked{% endif %}>
+                  <label class="form-check-label" for="needsReviewOnly">
+                    Требуют уточнения ({{ needs_review_count }})
+                  </label>
+                </div>
+
+                {% if user.is_superuser or perms.projects_app.add_project %}
+                  <a href="{% url 'projects:project_create' %}"
+                     class="btn btn-sm btn-success">
+                    <i class="bi bi-plus-circle me-1"></i>
+                    Добавить проекты
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+
+            <table id="projectsTable" class="table table-striped table-bordered align-middle">
+              <thead>
+                <tr>
+                  <th>Шифр проекта</th>
+                  <th class="text-center">Ревизия</th>
+                  <th class="text-center">Статус</th>
+                  <th class="text-center">Производство</th>
+                  <th class="text-center">Действия</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {% if revisions %}
+                  {% for rev in revisions %}
+                    <tr {% if rev.project.needs_review %}class="table-warning"{% endif %}>
+                      <td>{{ rev.project.full_code|default:"—" }}</td>
+
+                      <td class="text-center fw-semibold">
+                        {{ rev.revision }}
+                        {% if rev.is_latest %}
+                          <span class="badge bg-success ms-1">Актуальная</span>
+                        {% endif %}
+                      </td>
+
+                      <td class="text-center">
+                        {% if rev.project.needs_review %}
+                          <span class="badge bg-warning text-dark">Требует уточнения</span>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+
+                      <td class="text-center">
+                        {% if rev.in_production %}
+                          <span class="badge bg-primary">В производстве</span>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+
+                      <td class="text-center text-nowrap">
+                        {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
+                          <a href="{% url 'projects:project_detail' rev.project.id %}"
+                             class="btn btn-sm btn-outline-primary"
+                             title="Открыть проект">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                          </a>
+                        {% endif %}
+
+                        {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
+                          <a href="{% url 'projects:project_revision_open' rev.id %}"
+                             target="_blank"
+                             class="btn btn-sm btn-outline-danger ms-1"
+                             title="Открыть PDF">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                          </a>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-4">
+                      Проекты не найдены
+                    </td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+
+          </div>
         </div>
 
-        <section class="section">
-            <div class="row">
-                <div class="col-lg-12">
+      </div>
+    </div>
+  </section>
 
-                    <div class="card">
-                        <div class="card-body">
+</main>
 
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <div>
-                                    <h5 class="card-title mb-0">Реестр проектов</h5>
-                                    <p class="text-muted mb-0">
-                                        Отображаются актуальные версии проектов
-                                    </p>
-                                </div>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const sw = document.getElementById("needsReviewOnly");
+    if (!sw) return;
 
-                                <div class="d-flex align-items-center gap-3">
-                                    <div class="form-check form-switch mb-0">
-                                        <input class="form-check-input" type="checkbox" id="needsReviewOnly">
-                                        <label class="form-check-label" for="needsReviewOnly">
-                                            Требуют уточнения
-                                        </label>
-                                    </div>
-
-                                    {% if user.is_superuser or perms.projects_app.add_project %}
-                                        <a href="{% url 'projects:project_create' %}"
-                                           class="btn btn-sm btn-success">
-                                            <i class="bi bi-plus-circle me-1"></i>
-                                            Добавить проекты
-                                        </a>
-                                    {% endif %}
-                                </div>
-                            </div>
-
-                            <table id="projectsTable" class="table table-striped table-bordered align-middle">
-                                <thead>
-                                <tr>
-                                    <th>Шифр проекта</th>
-                                    <th class="text-center">Ревизия</th>
-                                    <th class="text-center">Статус</th>
-                                    <th class="text-center">Производство</th>
-                                    <th class="text-center">Действия</th>
-                                </tr>
-                                </thead>
-
-                                <tbody>
-                                {% if revisions %}
-                                    {% for rev in revisions %}
-                                        <tr
-                                                data-needs-review="{{ rev.project.needs_review|yesno:'1,0' }}"
-                                                {% if rev.project.needs_review %}class="table-warning"{% endif %}
-                                        >
-
-                                            <td>
-                                                {{ rev.project.full_code|default:"—" }}
-                                            </td>
-
-                                            <td class="text-center fw-semibold">
-                                                {{ rev.revision }}
-                                                {% if rev.is_latest %}
-                                                    <span class="badge bg-success ms-1">Актуальная</span>
-                                                {% endif %}
-                                            </td>
-
-                                            <td class="text-center">
-                                                {% if rev.project.needs_review %}
-                                                    <span class="badge bg-warning text-dark">
-            Требует уточнения
-          </span>
-                                                {% else %}
-                                                    <span class="text-muted">—</span>
-                                                {% endif %}
-                                            </td>
-
-                                            <td class="text-center">
-                                                {% if rev.in_production %}
-                                                    <span class="badge bg-primary">
-            В производстве
-          </span>
-                                                {% else %}
-                                                    <span class="text-muted">—</span>
-                                                {% endif %}
-                                            </td>
-
-                                            <td class="text-center text-nowrap">
-                                                {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
-                                                    <a href="{% url 'projects:project_detail' rev.project.id %}"
-                                                       class="btn btn-sm btn-outline-primary"
-                                                       title="Открыть проект">
-                                                        <i class="bi bi-box-arrow-up-right"></i>
-                                                    </a>
-                                                {% endif %}
-
-                                                {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
-                                                    <a href="{% url 'projects:project_revision_open' rev.id %}"
-                                                       target="_blank"
-                                                       class="btn btn-sm btn-outline-danger ms-1"
-                                                       title="Открыть PDF">
-                                                        <i class="bi bi-file-earmark-pdf"></i>
-                                                    </a>
-                                                {% endif %}
-                                            </td>
-
-                                        </tr>
-                                    {% endfor %}
-                                {% else %}
-                                    <tr>
-                                        <td class="text-center text-muted">—</td>
-                                        <td class="text-center text-muted">—</td>
-                                        <td class="text-center text-muted">—</td>
-                                        <td class="text-center text-muted">—</td>
-                                        <td class="text-center text-muted">
-                                            Проекты не найдены
-                                        </td>
-                                    </tr>
-                                {% endif %}
-                                </tbody>
-
-                            </table>
-
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-        </section>
-
-    </main>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-
-            const table = $('#projectsTable').DataTable({
-                language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json'
-                }
-            });
-
-            $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-                const needsOnly = document.getElementById('needsReviewOnly')?.checked;
-                if (!needsOnly) return true;
-
-                const tr = settings.aoData[dataIndex].nTr;
-                return tr.dataset.needsReview === '1';
-            });
-
-            $('#needsReviewOnly').on('change', function () {
-                table.draw();
-            });
-
-        });
-    </script>
-
+    sw.addEventListener("change", function () {
+      const url = new URL(window.location.href);
+      if (sw.checked) url.searchParams.set("needs_review", "1");
+      else url.searchParams.delete("needs_review");
+      window.location.href = url.toString();
+    });
+  });
+</script>
 {% endblock %}

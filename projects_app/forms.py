@@ -5,21 +5,15 @@ from .models import Project
 
 class ProjectCreateForm(forms.ModelForm):
     """
-    Форма СОЗДАНИЯ проекта (WEB).
-    Используется ТОЛЬКО на странице добавления проекта.
+    Создание проекта через WEB.
+    ВАЖНО: needs_review НЕ вводится вручную — вычисляется автоматически.
     """
 
-    upload_id = forms.UUIDField(
-        required=True,
-        widget=forms.HiddenInput()
-    )
+    upload_id = forms.UUIDField(required=True, widget=forms.HiddenInput())
 
     class Meta:
         model = Project
-        fields = [
-            "full_code",
-            "construction",
-        ]
+        fields = ("upload_id", "full_code", "construction")
         widgets = {
             "full_code": forms.TextInput(
                 attrs={
@@ -28,7 +22,11 @@ class ProjectCreateForm(forms.ModelForm):
                 }
             ),
             "construction": forms.Textarea(
-                attrs={"class": "form-control", "rows": 3}
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": "Короткое описание / конструктив (необязательно)",
+                }
             ),
         }
 
@@ -42,12 +40,12 @@ class ProjectCreateForm(forms.ModelForm):
 
 class ProjectUpdateForm(forms.ModelForm):
     """
-    Форма РЕДАКТИРОВАНИЯ проекта.
+    Редактирование карточки проекта (классификаторы).
     """
 
     class Meta:
         model = Project
-        fields = [
+        fields = (
             "designer",
             "line",
             "design_stage",
@@ -55,7 +53,7 @@ class ProjectUpdateForm(forms.ModelForm):
             "plot",
             "section",
             "construction",
-        ]
+        )
         widgets = {
             "designer": forms.Select(attrs={"class": "form-select"}),
             "line": forms.Select(attrs={"class": "form-select"}),
@@ -63,19 +61,10 @@ class ProjectUpdateForm(forms.ModelForm):
             "stage": forms.Select(attrs={"class": "form-select"}),
             "plot": forms.Select(attrs={"class": "form-select"}),
             "section": forms.Select(attrs={"class": "form-select"}),
-            "construction": forms.Textarea(
-                attrs={"class": "form-control", "rows": 3}
-            ),
+            "construction": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in (
-            "designer",
-            "line",
-            "design_stage",
-            "stage",
-            "plot",
-            "section",
-        ):
+        for name in ("designer", "line", "design_stage", "stage", "plot", "section"):
             self.fields[name].empty_label = "— выберите —"

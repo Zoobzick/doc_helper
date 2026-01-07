@@ -54,6 +54,7 @@ class DesignStage(models.Model):
 
 class Stage(models.Model):
     code = models.CharField(max_length=10, unique=True)
+    full_name = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -81,6 +82,8 @@ class Plot(models.Model):
 
 class Section(models.Model):
     code = models.CharField(max_length=5, unique=True)
+    full_name = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["code"]
