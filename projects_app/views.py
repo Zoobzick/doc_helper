@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.db import transaction, IntegrityError
 from django.http import FileResponse, Http404, JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView, UpdateView
@@ -198,8 +198,10 @@ class ProjectCreateWithPdfView(PermissionRequiredMixin, View):
     @transaction.atomic
     def post(self, request):
         form = ProjectCreateForm(request.POST)
+
+        # ✅ ВАЖНО: рендерим шаблон нормальным способом, а не TemplateView
         if not form.is_valid():
-            return TemplateView.as_view(template_name="projects_app/project_create.html")(request, form=form)
+            return render(request, "projects_app/project_create.html", {"form": form})
 
         upload = get_object_or_404(
             TempUpload.objects.select_for_update(),

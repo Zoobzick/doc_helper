@@ -11,27 +11,34 @@ from .models import (
 )
 
 
-class ProjectCreateForm(forms.ModelForm):
+class ProjectCreateForm(forms.Form):
+    """
+    Форма загрузки проекта / ревизии.
+    НЕ ModelForm, потому что:
+    - проект может уже существовать
+    - full_code не обязан быть уникальным на уровне формы
+    """
+
     upload_id = forms.UUIDField(required=True, widget=forms.HiddenInput())
 
-    class Meta:
-        model = Project
-        fields = ("upload_id", "full_code", "construction")
-        widgets = {
-            "full_code": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "ИМИП-МРАЛ1-Р-Г0200-СТ06-001-01-КЖ16",
-                }
-            ),
-            "construction": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 3,
-                    "placeholder": "Короткое описание / конструктив (необязательно)",
-                }
-            ),
-        }
+    full_code = forms.CharField(
+        label="Полный шифр проекта",
+        max_length=255,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "ИМИП-МРАЛ1-Р-Г0200-СТ06-001-01-КЖ16",
+            }
+        ),
+    )
+
+    construction = forms.CharField(
+        label="Описание / конструкция",
+        required=False,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 3}
+        ),
+    )
 
     def clean_full_code(self):
         value = (self.cleaned_data.get("full_code") or "").strip()
@@ -39,6 +46,7 @@ class ProjectCreateForm(forms.ModelForm):
         if not value:
             raise forms.ValidationError("Введите полный шифр проекта.")
         return value
+
 
 
 class ProjectUpdateForm(forms.ModelForm):

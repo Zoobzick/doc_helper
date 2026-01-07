@@ -15,7 +15,7 @@
         <div class="card">
           <div class="card-body">
 
-            <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
               <div>
                 <h5 class="card-title mb-0">Реестр проектов</h5>
                 <p class="text-muted mb-0">
@@ -23,7 +23,7 @@
                 </p>
               </div>
 
-              <div class="d-flex align-items-center gap-3">
+              <div class="d-flex align-items-center gap-3 flex-wrap">
                 <div class="form-check form-switch mb-0">
                   <input class="form-check-input"
                          type="checkbox"
@@ -44,75 +44,80 @@
               </div>
             </div>
 
-            <table id="projectsTable" class="table table-striped table-bordered align-middle">
-              <thead>
-                <tr>
-                  <th>Шифр проекта</th>
-                  <th class="text-center">Ревизия</th>
-                  <th class="text-center">Статус</th>
-                  <th class="text-center">Производство</th>
-                  <th class="text-center">Действия</th>
-                </tr>
-              </thead>
+            <!-- ✅ МОБИЛЬНЫЙ СКРОЛЛ -->
+            <div class="table-responsive">
+              <table id="projectsTable" class="table table-striped table-bordered align-middle w-100">
+                <thead>
+                  <tr>
+                    <th>Шифр проекта</th>
+                    <th class="text-center">Ревизия</th>
+                    <th class="text-center">Статус</th>
+                    <th class="text-center">Производство</th>
+                    <th class="text-center">Действия</th>
+                  </tr>
+                </thead>
 
-              <tbody>
-                {% if revisions %}
-                  {% for rev in revisions %}
-                    <tr {% if rev.project.needs_review %}class="table-warning"{% endif %}>
-                      <td>{{ rev.project.full_code|default:"—" }}</td>
+                <tbody>
+                  {% if revisions %}
+                    {% for rev in revisions %}
+                      <tr {% if rev.project.needs_review %}class="table-warning"{% endif %}>
+                        <td style="word-break: break-word;">
+                          {{ rev.project.full_code|default:"—" }}
+                        </td>
 
-                      <td class="text-center fw-semibold">
-                        {{ rev.revision }}
-                        {% if rev.is_latest %}
-                          <span class="badge bg-success ms-1">Актуальная</span>
-                        {% endif %}
-                      </td>
+                        <td class="text-center fw-semibold">
+                          {{ rev.revision }}
+                          {% if rev.is_latest %}
+                            <span class="badge bg-success ms-1">Актуальная</span>
+                          {% endif %}
+                        </td>
 
-                      <td class="text-center">
-                        {% if rev.project.needs_review %}
-                          <span class="badge bg-warning text-dark">Требует уточнения</span>
-                        {% else %}
-                          <span class="text-muted">—</span>
-                        {% endif %}
-                      </td>
+                        <td class="text-center">
+                          {% if rev.project.needs_review %}
+                            <span class="badge bg-warning text-dark">Требует уточнения</span>
+                          {% else %}
+                            <span class="text-muted">—</span>
+                          {% endif %}
+                        </td>
 
-                      <td class="text-center">
-                        {% if rev.in_production %}
-                          <span class="badge bg-primary">В производстве</span>
-                        {% else %}
-                          <span class="text-muted">—</span>
-                        {% endif %}
-                      </td>
+                        <td class="text-center">
+                          {% if rev.in_production %}
+                            <span class="badge bg-primary">В производстве</span>
+                          {% else %}
+                            <span class="text-muted">—</span>
+                          {% endif %}
+                        </td>
 
-                      <td class="text-center text-nowrap">
-                        {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
-                          <a href="{% url 'projects:project_detail' rev.project.id %}"
-                             class="btn btn-sm btn-outline-primary"
-                             title="Открыть проект">
-                            <i class="bi bi-box-arrow-up-right"></i>
-                          </a>
-                        {% endif %}
+                        <td class="text-center text-nowrap">
+                          {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
+                            <a href="{% url 'projects:project_detail' rev.project.id %}"
+                               class="btn btn-sm btn-outline-primary"
+                               title="Открыть проект">
+                              <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                          {% endif %}
 
-                        {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
-                          <a href="{% url 'projects:project_revision_open' rev.id %}"
-                             target="_blank"
-                             class="btn btn-sm btn-outline-danger ms-1"
-                             title="Открыть PDF">
-                            <i class="bi bi-file-earmark-pdf"></i>
-                          </a>
-                        {% endif %}
+                          {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
+                            <a href="{% url 'projects:project_revision_open' rev.id %}"
+                               target="_blank"
+                               class="btn btn-sm btn-outline-danger ms-1"
+                               title="Открыть PDF">
+                              <i class="bi bi-file-earmark-pdf"></i>
+                            </a>
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr>
+                      <td colspan="5" class="text-center text-muted py-4">
+                        Проекты не найдены
                       </td>
                     </tr>
-                  {% endfor %}
-                {% else %}
-                  <tr>
-                    <td colspan="5" class="text-center text-muted py-4">
-                      Проекты не найдены
-                    </td>
-                  </tr>
-                {% endif %}
-              </tbody>
-            </table>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
 
           </div>
         </div>
@@ -124,16 +129,25 @@
 </main>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    const sw = document.getElementById("needsReviewOnly");
-    if (!sw) return;
+document.addEventListener('DOMContentLoaded', function () {
 
+  // ✅ Вернули DataTables (поиск появится сам)
+  const table = $('#projectsTable').DataTable({
+    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json' },
+    scrollX: true,   // ✅ на телефоне не ломаемся
+  });
+
+  // ✅ Серверный фильтр "Требуют уточнения" (как у тебя сейчас), но НЕ убиваем DataTables
+  const sw = document.getElementById("needsReviewOnly");
+  if (sw) {
     sw.addEventListener("change", function () {
       const url = new URL(window.location.href);
       if (sw.checked) url.searchParams.set("needs_review", "1");
       else url.searchParams.delete("needs_review");
       window.location.href = url.toString();
     });
-  });
+  }
+
+});
 </script>
 {% endblock %}
