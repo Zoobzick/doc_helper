@@ -2,156 +2,162 @@
 {% load static %}
 
 {% block content %}
+    <main id="main" class="main">
 
-<main id="main" class="main">
-
-  <div class="pagetitle">
-    <h1>FastProjects</h1>
-  </div><!-- End Page Title -->
-
-  <section class="section">
-    <div class="row">
-      <div class="col-lg-12">
-
-        <div class="card">
-          <div class="card-body">
-
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <div>
-                <h5 class="card-title mb-0">Реестр проектов</h5>
-                <p class="mb-0">
-                  При отсутствии данных о проекте, заполните справочник в админке.
-                </p>
-              </div>
-
-              <div class="d-flex align-items-center gap-3">
-                <div class="form-check form-switch mb-0">
-                  <input class="form-check-input" type="checkbox" id="needsReviewOnly">
-                  <label class="form-check-label" for="needsReviewOnly">
-                    Требуют заполнения
-                    <span class="badge bg-warning text-dark ms-1">{{ needs_review_count }}</span>
-                  </label>
-                </div>
-
-                {% if user.is_superuser or perms.projects_app.scan_projects %}
-                <form method="post" action="{% url 'projects:scan_projects' %}" class="mb-0">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-sm btn-outline-secondary"
-                          title="Сканировать папку и обновить проекты">
-                    <i class="bi bi-arrow-repeat me-1"></i>
-                    Обновить проекты
-                  </button>
-                </form>
-                {% endif %}
-              </div>
-            </div>
-
-            <table id="projectsTable" class="table table-striped table-bordered">
-              <thead>
-                <tr>
-                  <th>Шифр</th>
-                  <th>Версия</th>
-                  <th>Конструкция</th>
-                  <th class="text-center">Действие</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {% for rev in revisions %}
-                <tr data-needs-review="{{ rev.project.needs_review|yesno:'1,0' }}"{% if rev.project.needs_review %} class="table-warning"{% endif %}>
-                  <td>{{ rev.project.full_code }}</td>
-                  <td>
-                    {{ rev.revision }}
-                    {% if rev.is_latest %}
-                      <span class="badge bg-success ms-1">Актуальная</span>
-                    {% endif %}
-                  </td>
-                  <td>{{ rev.project.construction|default:"—" }}</td>
-
-                  <td class="text-center text-nowrap">
-
-                    {% if rev.project.needs_review %}
-                      <span class="text-warning me-1" title="Проект требует заполнения/уточнения данных">
-                        <i class="bi bi-exclamation-triangle-fill"></i>
-                      </span>
-                    {% endif %}
-
-                    {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
-                    <a href="{% url 'projects:project_detail' rev.project.id %}"
-                       class="btn btn-sm btn-outline-primary"
-                       title="Открыть проект">
-                      <i class="bi bi-box-arrow-up-right"></i>
-                    </a>
-                    {% endif %}
-
-                    {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
-                    <a href="{% url 'projects:project_revision_open' rev.id %}"
-                       target="_blank"
-                       class="btn btn-sm btn-outline-danger ms-1"
-                       title="Открыть PDF">
-                      <i class="bi bi-file-earmark-pdf"></i>
-                    </a>
-                    {% endif %}
-
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-
-          </div>
+        <div class="pagetitle">
+            <h1>Проекты</h1>
         </div>
 
-      </div>
-    </div>
-  </section>
+        <section class="section">
+            <div class="row">
+                <div class="col-lg-12">
 
-</main>
+                    <div class="card">
+                        <div class="card-body">
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <h5 class="card-title mb-0">Реестр проектов</h5>
+                                    <p class="text-muted mb-0">
+                                        Отображаются актуальные версии проектов
+                                    </p>
+                                </div>
 
-  const table = $('#projectsTable').DataTable({
-    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json' },
-  });
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="needsReviewOnly">
+                                        <label class="form-check-label" for="needsReviewOnly">
+                                            Требуют уточнения
+                                        </label>
+                                    </div>
 
-  // (settings) настройки DataTable, (data) массив строк текущей строки таблицы
-  $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+                                    {% if user.is_superuser or perms.projects_app.add_project %}
+                                        <a href="{% url 'projects:project_create' %}"
+                                           class="btn btn-sm btn-success">
+                                            <i class="bi bi-plus-circle me-1"></i>
+                                            Добавить проекты
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </div>
 
-    // (needsReviewOnly) чекбокс "только требующие заполнения"
-    const needsOnly = document.getElementById('needsReviewOnly')?.checked;
-    if (needsOnly) {
-      const tr = settings.aoData?.[dataIndex]?.nTr;  // (tr) DOM-строка таблицы
-      const isNeeds = tr?.dataset?.needsReview === '1';
-      if (!isNeeds) return false;
-    }
+                            <table id="projectsTable" class="table table-striped table-bordered align-middle">
+                                <thead>
+                                <tr>
+                                    <th>Шифр проекта</th>
+                                    <th class="text-center">Ревизия</th>
+                                    <th class="text-center">Статус</th>
+                                    <th class="text-center">Производство</th>
+                                    <th class="text-center">Действия</th>
+                                </tr>
+                                </thead>
 
-    const input = $('.dataTables_filter input').val();  // (input) строка из поля поиска DataTables
-    if (!input) return true;
+                                <tbody>
+                                {% if revisions %}
+                                    {% for rev in revisions %}
+                                        <tr
+                                                data-needs-review="{{ rev.project.needs_review|yesno:'1,0' }}"
+                                                {% if rev.project.needs_review %}class="table-warning"{% endif %}
+                                        >
 
-    const q = input.trim().toUpperCase();               // (q) нормализованный запрос
+                                            <td>
+                                                {{ rev.project.full_code|default:"—" }}
+                                            </td>
 
-    const fullCode = (data[0] || '').toUpperCase();     // (data[0]) колонка "Шифр"
-    const version = (data[1] || '').toUpperCase();      // (data[1]) колонка "Версия"
+                                            <td class="text-center fw-semibold">
+                                                {{ rev.revision }}
+                                                {% if rev.is_latest %}
+                                                    <span class="badge bg-success ms-1">Актуальная</span>
+                                                {% endif %}
+                                            </td>
 
-    // Быстрый поиск по типу: "Р1" => матчим окончание "-Р1"
-    const m = q.match(/^([А-ЯA-Z]{2})(\d+)$/);
-    if (m) {
-      return fullCode.endsWith(`-${m[1]}${m[2]}`);
-    }
+                                            <td class="text-center">
+                                                {% if rev.project.needs_review %}
+                                                    <span class="badge bg-warning text-dark">
+            Требует уточнения
+          </span>
+                                                {% else %}
+                                                    <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
 
-    return fullCode.includes(q) || version.includes(q);
-  });
+                                            <td class="text-center">
+                                                {% if rev.in_production %}
+                                                    <span class="badge bg-primary">
+            В производстве
+          </span>
+                                                {% else %}
+                                                    <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
 
-  $('.dataTables_filter input').on('keyup', function () {
-    table.draw();
-  });
+                                            <td class="text-center text-nowrap">
+                                                {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
+                                                    <a href="{% url 'projects:project_detail' rev.project.id %}"
+                                                       class="btn btn-sm btn-outline-primary"
+                                                       title="Открыть проект">
+                                                        <i class="bi bi-box-arrow-up-right"></i>
+                                                    </a>
+                                                {% endif %}
 
-  $('#needsReviewOnly').on('change', function () {
-    table.draw();
-  });
+                                                {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
+                                                    <a href="{% url 'projects:project_revision_open' rev.id %}"
+                                                       target="_blank"
+                                                       class="btn btn-sm btn-outline-danger ms-1"
+                                                       title="Открыть PDF">
+                                                        <i class="bi bi-file-earmark-pdf"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </td>
 
-});
-</script>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td class="text-center text-muted">—</td>
+                                        <td class="text-center text-muted">—</td>
+                                        <td class="text-center text-muted">—</td>
+                                        <td class="text-center text-muted">—</td>
+                                        <td class="text-center text-muted">
+                                            Проекты не найдены
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                                </tbody>
+
+                            </table>
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+
+            const table = $('#projectsTable').DataTable({
+                language: {
+                    url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json'
+                }
+            });
+
+            $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+                const needsOnly = document.getElementById('needsReviewOnly')?.checked;
+                if (!needsOnly) return true;
+
+                const tr = settings.aoData[dataIndex].nTr;
+                return tr.dataset.needsReview === '1';
+            });
+
+            $('#needsReviewOnly').on('change', function () {
+                table.draw();
+            });
+
+        });
+    </script>
 
 {% endblock %}

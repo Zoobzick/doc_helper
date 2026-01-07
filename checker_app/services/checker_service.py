@@ -2,7 +2,7 @@ import os
 
 from docx import Document
 from openpyxl.workbook import Workbook
-
+from django.conf import settings
 
 class CheckService:
 
@@ -12,7 +12,7 @@ class CheckService:
                  ):
         self.year = year
         self.month = month
-        self.base_path = r"\\Marina\ид участок №5 (липовая роща)"
+        self.base_path = settings.BASE_ID_DIR
         self.months = {'январь': '01',
                        'февраль': '02',
                        'март': '03',

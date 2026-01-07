@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>Редактирование проекта</h1>
+  </div>
+
+  <section class="section">
+    <div class="row">
+      <div class="col-lg-8">
+
+        <div class="card">
+          <div class="card-body">
+
+            <h5 class="card-title">
+              {{ project.full_code|default:"Черновик проекта" }}
+            </h5>
+
+            {% if project.needs_review %}
+              <div class="alert alert-warning">
+                Проект требует заполнения обязательных данных
+              </div>
+            {% endif %}
+
+            <form method="post" class="row g-3">
+              {% csrf_token %}
+
+              <div class="col-12">
+                <label class="form-label">Проектировщик</label>
+                {{ form.designer }}
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Линия</label>
+                {{ form.line }}
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Стадия проектирования</label>
+                {{ form.design_stage }}
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Этап</label>
+                {{ form.stage }}
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Участок</label>
+                {{ form.plot }}
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Раздел</label>
+                {{ form.section }}
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Описание / конструкция</label>
+                {{ form.construction }}
+              </div>
+
+              <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-success">
+                  Сохранить
+                </button>
+                <a href="{% url 'projects:project_detail' project.id %}"
+                   class="btn btn-secondary">
+                  Отмена
+                </a>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+{% endblock %}
