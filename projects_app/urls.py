@@ -13,7 +13,7 @@ from .views import (
     ProjectUpdateView,
     ProjectRevisionDeleteView,
 
-    DictItemCreateView,
+    DictItemCreateView, ProjectUploadArchiveView,
 )
 
 app_name = "projects"
@@ -36,4 +36,9 @@ urlpatterns = [
 
     # dicts
     path("dicts/<str:dict_name>/create/", DictItemCreateView.as_view(), name="dict_item_create"),
+    path(
+        "create/upload-archive/",
+        ProjectUploadArchiveView.as_view(),
+        name="project_upload_archive",
+    ),
 ]

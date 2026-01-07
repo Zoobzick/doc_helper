@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Tuple
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
 
@@ -99,11 +101,11 @@ def _next_revision_code(project: Project) -> str:
 
 @transaction.atomic
 def attach_revision_to_project(
-    *,
-    project: Project,
-    file_name: str,
-    file_path: str,
-    sha256: str | None,
+        *,
+        project: Project,
+        file_name: str,
+        file_path: str,
+        sha256: str | None,
 ) -> Tuple[ProjectRevision, bool]:
     """
     Добавляет ревизию к проекту:
@@ -212,3 +214,62 @@ def assign_full_code_to_draft(*, draft_project_id: int, full_code_input: str) ->
     # после назначения шифра пересчитаем needs_review (скорее всего останется True, пока не заполнены классификаторы)
     sync_needs_review(draft, save=True)
     return draft
+
+
+def process_single_pdf(
+        *,
+        pdf_path: Path,
+        original_name: str,
+        user,
+) -> dict:
+    """
+    Обрабатывает один PDF:
+    - sha256
+    - дедуп
+    - проект / ревизия
+    """
+
+    # --- sha256 ---
+    h = hashlib.sha256()
+    with pdf_path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    sha256 = h.hexdigest()
+
+    if ProjectRevision.objects.filter(sha256=sha256).exists():
+        return {
+            "status": "duplicate",
+            "file": original_name,
+        }
+
+    # --- временный full_code из имени файла ---
+    full_code = pdf_path.stem.strip()
+
+    project, created = Project.objects.get_or_create(
+        full_code=full_code,
+        defaults={
+            "needs_review": True,
+        },
+    )
+
+    project_dir = Path(settings.PROJECTS_DIR) / project.full_code
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    target_path = project_dir / original_name
+    pdf_path.replace(target_path)
+
+    revision, created_rev = attach_revision_to_project(
+        project=project,
+        file_name=original_name,
+        file_path=str(target_path),
+        sha256=sha256,
+    )
+
+    sync_needs_review(project, save=True)
+
+    return {
+        "status": "created" if created_rev else "exists",
+        "project": project.full_code,
+        "revision": revision.revision,
+        "file": original_name,
+    }

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
+import zipfile
 from pathlib import Path
 
 from django.conf import settings
@@ -35,6 +37,7 @@ from .services import (
     set_revision_in_production,
     delete_project_revision,
     sync_needs_review,
+    process_single_pdf,
 )
 
 
@@ -419,3 +422,40 @@ class DictItemCreateView(JsonPermissionRequiredMixin, View):
                 "text": str(obj),
             }
         )
+
+
+class ProjectUploadArchiveView(PermissionRequiredMixin, View):
+    permission_required = "projects_app.add_project"
+    raise_exception = True
+
+    def post(self, request):
+        archive = request.FILES.get("archive")
+        if not archive or not archive.name.lower().endswith(".zip"):
+            return JsonResponse({"ok": False, "error": "Нужен ZIP архив"}, status=400)
+
+        results = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            zip_path = tmpdir / archive.name
+
+            with zip_path.open("wb") as f:
+                for chunk in archive.chunks():
+                    f.write(chunk)
+
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(tmpdir)
+
+            for pdf in tmpdir.rglob("*.pdf"):
+                res = process_single_pdf(
+                    pdf_path=pdf,
+                    original_name=pdf.name,
+                    user=request.user,
+                )
+                results.append(res)
+
+        return JsonResponse({
+            "ok": True,
+            "processed": len(results),
+            "results": results,
+        })
