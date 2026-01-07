@@ -12,13 +12,6 @@ from .models import (
 
 
 class ProjectCreateForm(forms.Form):
-    """
-    Форма загрузки проекта / ревизии.
-    НЕ ModelForm, потому что:
-    - проект может уже существовать
-    - full_code не обязан быть уникальным на уровне формы
-    """
-
     upload_id = forms.UUIDField(required=True, widget=forms.HiddenInput())
 
     full_code = forms.CharField(
@@ -35,9 +28,7 @@ class ProjectCreateForm(forms.Form):
     construction = forms.CharField(
         label="Описание / конструкция",
         required=False,
-        widget=forms.Textarea(
-            attrs={"class": "form-control", "rows": 3}
-        ),
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
     )
 
     def clean_full_code(self):
@@ -53,6 +44,7 @@ class ProjectUpdateForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = (
+            "full_code",
             "designer",
             "line",
             "design_stage",
@@ -62,19 +54,21 @@ class ProjectUpdateForm(forms.ModelForm):
             "construction",
         )
         widgets = {
+            "full_code": forms.TextInput(attrs={"class": "form-control"}),
+
             "designer": forms.Select(attrs={"class": "form-select"}),
             "line": forms.Select(attrs={"class": "form-select"}),
             "design_stage": forms.Select(attrs={"class": "form-select"}),
             "stage": forms.Select(attrs={"class": "form-select"}),
             "plot": forms.Select(attrs={"class": "form-select"}),
             "section": forms.Select(attrs={"class": "form-select"}),
+
             "construction": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # показываем только активные значения справочников
         self.fields["designer"].queryset = Designer.objects.filter(is_active=True).order_by("code")
         self.fields["line"].queryset = Line.objects.filter(is_active=True).order_by("code")
         self.fields["design_stage"].queryset = DesignStage.objects.filter(is_active=True).order_by("code")
@@ -84,3 +78,6 @@ class ProjectUpdateForm(forms.ModelForm):
 
         for name in ("designer", "line", "design_stage", "stage", "plot", "section"):
             self.fields[name].empty_label = "— выберите —"
+
+        # подсказка пользователю
+        self.fields["full_code"].help_text = "Можно изменить шифр. Если шифр уже существует — ревизии будут объединены."

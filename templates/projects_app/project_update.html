@@ -1,274 +1,295 @@
 {% extends "base.html" %}
 
 {% block content %}
-<main id="main" class="main">
+    <main id="main" class="main">
 
-  <div class="pagetitle">
-    <h1>Редактирование проекта</h1>
-  </div>
-
-  <section class="section">
-    <div class="row">
-
-      <!-- Левая колонка: форма -->
-      <div class="col-12 col-lg-6">
-        <div class="card">
-          <div class="card-body">
-
-            <h5 class="card-title">
-              {{ project.full_code|default:"Черновик проекта" }}
-            </h5>
-
-            {% if project.needs_review %}
-              <div class="alert alert-warning">
-                Проект требует заполнения обязательных данных
-              </div>
-            {% endif %}
-
-            <form method="post" class="row g-3">
-              {% csrf_token %}
-
-              <div class="col-12">
-                <label class="form-label">Проектировщик</label>
-                <div class="input-group">
-                  {{ form.designer }}
-                  <button type="button" class="btn btn-outline-secondary js-dict-add"
-                          data-dict="designer" data-select-id="id_designer" data-title="Проектировщик">+</button>
-                </div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Линия</label>
-                <div class="input-group">
-                  {{ form.line }}
-                  <button type="button" class="btn btn-outline-secondary js-dict-add"
-                          data-dict="line" data-select-id="id_line" data-title="Линия">+</button>
-                </div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Стадия проектирования</label>
-                <div class="input-group">
-                  {{ form.design_stage }}
-                  <button type="button" class="btn btn-outline-secondary js-dict-add"
-                          data-dict="design_stage" data-select-id="id_design_stage" data-title="Стадия проектирования">+</button>
-                </div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Этап</label>
-                <div class="input-group">
-                  {{ form.stage }}
-                  <button type="button" class="btn btn-outline-secondary js-dict-add"
-                          data-dict="stage" data-select-id="id_stage" data-title="Этап">+</button>
-                </div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Участок</label>
-                <div class="input-group">
-                  {{ form.plot }}
-                  <button type="button" class="btn btn-outline-secondary js-dict-add"
-                          data-dict="plot" data-select-id="id_plot" data-title="Участок">+</button>
-                </div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Раздел</label>
-                <div class="input-group">
-                  {{ form.section }}
-                  <button type="button" class="btn btn-outline-secondary js-dict-add"
-                          data-dict="section" data-select-id="id_section" data-title="Раздел">+</button>
-                </div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Описание / конструкция</label>
-                {{ form.construction }}
-              </div>
-
-              <div class="col-12 d-flex gap-2">
-                <button type="submit" class="btn btn-success">Сохранить</button>
-                <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-secondary">Отмена</a>
-              </div>
-
-            </form>
-
-          </div>
+        <div class="pagetitle">
+            <h1>Редактирование проекта</h1>
         </div>
-      </div>
 
-      <!-- Правая колонка: предпросмотр PDF -->
-      <div class="col-12 col-lg-6">
-        <div class="card">
-          <div class="card-body">
+        <section class="section">
+            <div class="row">
 
-            <div class="d-flex justify-content-between align-items-center">
-              <h5 class="card-title mb-0">Предпросмотр PDF (актуальная версия)</h5>
+                <!-- Левая колонка: форма -->
+                <div class="col-12 col-lg-6">
+                    <div class="card">
+                        <div class="card-body">
 
-              {% if latest_revision %}
-                <a class="btn btn-sm btn-outline-danger"
-                   href="{% url 'projects:project_revision_open' latest_revision.id %}"
-                   target="_blank">
-                  <i class="bi bi-file-earmark-pdf"></i> Открыть
-                </a>
-              {% endif %}
+                            <h5 class="card-title">
+                                {{ project.full_code|default:"Черновик проекта" }}
+                            </h5>
+
+                            {% if project.needs_review %}
+                                <div class="alert alert-warning">
+                                    Проект требует заполнения обязательных данных
+                                </div>
+                            {% endif %}
+
+                            <form method="post" class="row g-3">
+                                {% csrf_token %}
+
+                                <div class="col-12">
+                                    <label class="form-label">Полный шифр проекта</label>
+                                    {{ form.full_code }}
+                                    {% if form.full_code.help_text %}
+                                        <div class="form-text">{{ form.full_code.help_text }}</div>
+                                    {% endif %}
+                                    {% if form.full_code.errors %}
+                                        <div class="text-danger small">{{ form.full_code.errors }}</div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">Проектировщик</label>
+                                    <div class="input-group">
+                                        {{ form.designer }}
+                                        <button type="button" class="btn btn-outline-secondary js-dict-add"
+                                                data-dict="designer" data-select-id="id_designer"
+                                                data-title="Проектировщик">+
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">Линия</label>
+                                    <div class="input-group">
+                                        {{ form.line }}
+                                        <button type="button" class="btn btn-outline-secondary js-dict-add"
+                                                data-dict="line" data-select-id="id_line" data-title="Линия">+
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">Стадия проектирования</label>
+                                    <div class="input-group">
+                                        {{ form.design_stage }}
+                                        <button type="button" class="btn btn-outline-secondary js-dict-add"
+                                                data-dict="design_stage" data-select-id="id_design_stage"
+                                                data-title="Стадия проектирования">+
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">Этап</label>
+                                    <div class="input-group">
+                                        {{ form.stage }}
+                                        <button type="button" class="btn btn-outline-secondary js-dict-add"
+                                                data-dict="stage" data-select-id="id_stage" data-title="Этап">+
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">Участок</label>
+                                    <div class="input-group">
+                                        {{ form.plot }}
+                                        <button type="button" class="btn btn-outline-secondary js-dict-add"
+                                                data-dict="plot" data-select-id="id_plot" data-title="Участок">+
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">Раздел</label>
+                                    <div class="input-group">
+                                        {{ form.section }}
+                                        <button type="button" class="btn btn-outline-secondary js-dict-add"
+                                                data-dict="section" data-select-id="id_section" data-title="Раздел">+
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">Описание / конструкция</label>
+                                    {{ form.construction }}
+                                </div>
+
+                                <div class="col-12 d-flex gap-2">
+                                    <button type="submit" class="btn btn-success">Сохранить</button>
+                                    <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-secondary">Отмена</a>
+                                </div>
+
+                            </form>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Правая колонка: предпросмотр PDF -->
+                <div class="col-12 col-lg-6">
+                    <div class="card">
+                        <div class="card-body">
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Предпросмотр PDF (актуальная версия)</h5>
+
+                                {% if latest_revision %}
+                                    <a class="btn btn-sm btn-outline-danger"
+                                       href="{% url 'projects:project_revision_open' latest_revision.id %}"
+                                       target="_blank">
+                                        <i class="bi bi-file-earmark-pdf"></i> Открыть
+                                    </a>
+                                {% endif %}
+                            </div>
+
+                            <div class="mt-3">
+                                {% if latest_revision %}
+                                    <iframe
+                                            src="{% url 'projects:project_revision_open' latest_revision.id %}#page=1"
+                                            style="width:100%; height:75vh; border:1px solid #e5e5e5; border-radius:8px;"
+                                    ></iframe>
+                                {% else %}
+                                    <div class="text-muted">
+                                        У проекта нет загруженного PDF (нечего показывать).
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
             </div>
+        </section>
 
-            <div class="mt-3">
-              {% if latest_revision %}
-                <iframe
-                  src="{% url 'projects:project_revision_open' latest_revision.id %}#page=1"
-                  style="width:100%; height:75vh; border:1px solid #e5e5e5; border-radius:8px;"
-                ></iframe>
-              {% else %}
-                <div class="text-muted">
-                  У проекта нет загруженного PDF (нечего показывать).
+    </main>
+
+    <!-- МОДАЛКА: добавить значение справочника -->
+    <div class="modal fade" id="dictAddModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="dictAddTitle">Добавить</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
                 </div>
-              {% endif %}
+
+                <div class="modal-body">
+                    <div id="dictAddAlert" class="alert alert-danger d-none"></div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Код</label>
+                        <input type="text" class="form-control" id="dictAddCode" placeholder="Например: 01 / Л1 / П">
+                        <div class="form-text">Код должен быть уникальным.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Наименование</label>
+                        <input type="text" class="form-control" id="dictAddName" placeholder="Полное название">
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="dictAddSaveBtn">Сохранить</button>
+                </div>
+
             </div>
-
-          </div>
         </div>
-      </div>
-
     </div>
-  </section>
-
-</main>
-
-<!-- МОДАЛКА: добавить значение справочника -->
-<div class="modal fade" id="dictAddModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-
-      <div class="modal-header">
-        <h5 class="modal-title" id="dictAddTitle">Добавить</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
-      </div>
-
-      <div class="modal-body">
-        <div id="dictAddAlert" class="alert alert-danger d-none"></div>
-
-        <div class="mb-3">
-          <label class="form-label">Код</label>
-          <input type="text" class="form-control" id="dictAddCode" placeholder="Например: 01 / Л1 / П">
-          <div class="form-text">Код должен быть уникальным.</div>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Наименование</label>
-          <input type="text" class="form-control" id="dictAddName" placeholder="Полное название">
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-        <button type="button" class="btn btn-primary" id="dictAddSaveBtn">Сохранить</button>
-      </div>
-
-    </div>
-  </div>
-</div>
 {% endblock %}
 
 
 {% block extra_js %}
-<script>
-(function () {
-  function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return '';
-  }
-  const csrftoken = getCookie('csrftoken');
+    <script>
+        (function () {
+            function getCookie(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+                return '';
+            }
 
-  const modalEl = document.getElementById('dictAddModal');
-  const modal = (modalEl && window.bootstrap && bootstrap.Modal)
-    ? new bootstrap.Modal(modalEl)
-    : null;
+            const csrftoken = getCookie('csrftoken');
 
-  const titleEl = document.getElementById('dictAddTitle');
-  const alertEl = document.getElementById('dictAddAlert');
-  const codeEl = document.getElementById('dictAddCode');
-  const nameEl = document.getElementById('dictAddName');
-  const saveBtn = document.getElementById('dictAddSaveBtn');
+            const modalEl = document.getElementById('dictAddModal');
+            const modal = (modalEl && window.bootstrap && bootstrap.Modal)
+                ? new bootstrap.Modal(modalEl)
+                : null;
 
-  let current = { dict: null, selectId: null, title: null };
+            const titleEl = document.getElementById('dictAddTitle');
+            const alertEl = document.getElementById('dictAddAlert');
+            const codeEl = document.getElementById('dictAddCode');
+            const nameEl = document.getElementById('dictAddName');
+            const saveBtn = document.getElementById('dictAddSaveBtn');
 
-  function showError(msg) {
-    alertEl.textContent = msg || 'Ошибка';
-    alertEl.classList.remove('d-none');
-  }
-  function clearError() {
-    alertEl.textContent = '';
-    alertEl.classList.add('d-none');
-  }
+            let current = {dict: null, selectId: null, title: null};
 
-  document.querySelectorAll('.js-dict-add').forEach(btn => {
-    btn.addEventListener('click', function () {
-      current.dict = this.dataset.dict;
-      current.selectId = this.dataset.selectId;
-      current.title = this.dataset.title;
+            function showError(msg) {
+                alertEl.textContent = msg || 'Ошибка';
+                alertEl.classList.remove('d-none');
+            }
 
-      clearError();
-      titleEl.textContent = `Добавить: ${current.title}`;
-      codeEl.value = '';
-      nameEl.value = '';
+            function clearError() {
+                alertEl.textContent = '';
+                alertEl.classList.add('d-none');
+            }
 
-      if (!modal) {
-        alert('Modal недоступна (bootstrap.Modal не найден). Проверь порядок подключения скриптов.');
-        return;
-      }
-      modal.show();
-      setTimeout(() => codeEl.focus(), 150);
-    });
-  });
+            document.querySelectorAll('.js-dict-add').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    current.dict = this.dataset.dict;
+                    current.selectId = this.dataset.selectId;
+                    current.title = this.dataset.title;
 
-  saveBtn.addEventListener('click', function () {
-    clearError();
+                    clearError();
+                    titleEl.textContent = `Добавить: ${current.title}`;
+                    codeEl.value = '';
+                    nameEl.value = '';
 
-    const code = (codeEl.value || '').trim();
-    const full_name = (nameEl.value || '').trim();
+                    if (!modal) {
+                        alert('Modal недоступна (bootstrap.Modal не найден). Проверь порядок подключения скриптов.');
+                        return;
+                    }
+                    modal.show();
+                    setTimeout(() => codeEl.focus(), 150);
+                });
+            });
 
-    if (!current.dict || !current.selectId) return showError('Не выбран справочник');
-    if (!code) return showError('Заполните код');
-    if (!full_name) return showError('Заполните наименование');
+            saveBtn.addEventListener('click', function () {
+                clearError();
 
-    const url = `/projects/dicts/${current.dict}/create/`;
-    const body = new URLSearchParams();
-    body.set('code', code);
-    body.set('full_name', full_name);
+                const code = (codeEl.value || '').trim();
+                const full_name = (nameEl.value || '').trim();
 
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': csrftoken,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body.toString(),
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (!data.ok) return showError(data.error || 'Ошибка создания');
+                if (!current.dict || !current.selectId) return showError('Не выбран справочник');
+                if (!code) return showError('Заполните код');
+                if (!full_name) return showError('Заполните наименование');
 
-      const select = document.getElementById(current.selectId);
-      if (!select) return showError('Select не найден на странице');
+                const url = `/projects/dicts/${current.dict}/create/`;
+                const body = new URLSearchParams();
+                body.set('code', code);
+                body.set('full_name', full_name);
 
-      const exists = Array.from(select.options).find(o => String(o.value) === String(data.id));
-      if (!exists) {
-        const opt = document.createElement('option');
-        opt.value = String(data.id);
-        opt.textContent = data.text || `${code} — ${full_name}`;
-        select.appendChild(opt);
-      }
-      select.value = String(data.id);
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: body.toString(),
+                })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.ok) return showError(data.error || 'Ошибка создания');
 
-      modal.hide();
-    })
-    .catch(() => showError('Ошибка сети'));
-  });
-})();
-</script>
+                        const select = document.getElementById(current.selectId);
+                        if (!select) return showError('Select не найден на странице');
+
+                        const exists = Array.from(select.options).find(o => String(o.value) === String(data.id));
+                        if (!exists) {
+                            const opt = document.createElement('option');
+                            opt.value = String(data.id);
+                            opt.textContent = data.text || `${code} — ${full_name}`;
+                            select.appendChild(opt);
+                        }
+                        select.value = String(data.id);
+
+                        modal.hide();
+                    })
+                    .catch(() => showError('Ошибка сети'));
+            });
+        })();
+    </script>
 {% endblock %}

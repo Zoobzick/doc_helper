@@ -37,7 +37,7 @@ from .services import (
     set_revision_in_production,
     delete_project_revision,
     sync_needs_review,
-    process_single_pdf,
+    process_single_pdf, change_project_full_code,
 )
 
 
@@ -316,20 +316,31 @@ class ProjectUpdateView(PermissionRequiredMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-
-        # (latest_rev) актуальная ревизия, чтобы показать PDF в preview
-        latest_rev = (
+        ctx["latest_revision"] = (
             ProjectRevision.objects
             .filter(project=self.object, is_latest=True)
             .order_by("-created_at")
             .first()
         )
-        ctx["latest_revision"] = latest_rev
         return ctx
 
+    @transaction.atomic
     def form_valid(self, form):
-        project = form.save()
+        # self.object — проект из БД ДО сохранения формы
+        project = self.object
+
+        # 1) full_code меняем бизнес-логикой ДО любых save()
+        new_full_code = form.cleaned_data.get("full_code")
+        if new_full_code:
+            project = change_project_full_code(project, new_full_code)
+
+        # 2) остальные поля переносим вручную (form.instance может быть уже неактуален после merge)
+        for field in ("designer", "line", "design_stage", "stage", "plot", "section", "construction"):
+            setattr(project, field, form.cleaned_data.get(field))
+
+        project.save()
         sync_needs_review(project, save=True)
+
         messages.success(self.request, "Данные проекта сохранены")
         return redirect("projects:project_detail", pk=project.pk)
 
@@ -459,3 +470,4 @@ class ProjectUploadArchiveView(PermissionRequiredMixin, View):
             "processed": len(results),
             "results": results,
         })
+

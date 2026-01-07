@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 from pathlib import Path
 from typing import Tuple
 
@@ -273,3 +274,102 @@ def process_single_pdf(
         "revision": revision.revision,
         "file": original_name,
     }
+
+
+@transaction.atomic
+def change_project_full_code(project: Project, new_full_code_input: str) -> Project:
+
+
+
+
+    new_full_code = " ".join((new_full_code_input or "").strip().split())
+    print(f"[change_project_full_code] project.id={project.id} old='{project.full_code}' new='{new_full_code}'")
+    if not new_full_code:
+        raise ValueError("new_full_code пустой")
+
+    if project.full_code == new_full_code:
+        return project
+
+    projects_root = Path(settings.PROJECTS_DIR).resolve()
+    print(f"[change_project_full_code] PROJECTS_DIR={projects_root}")
+    new_dir = (projects_root / new_full_code).resolve()
+    print(f"[change_project_full_code] new_dir={new_dir}")
+    new_dir.mkdir(parents=True, exist_ok=True)
+
+    # ✅ ВАЖНО: old_dir берём из фактического пути ревизии (как показала диагностика)
+    any_rev = (
+        ProjectRevision.objects
+        .select_for_update()
+        .filter(project=project)
+        .order_by("-created_at")
+        .first()
+    )
+    if not any_rev:
+        # нет файлов — можно просто переименовать full_code
+        project.full_code = new_full_code
+        project.save(update_fields=["full_code"])
+        return project
+
+    old_dir = Path(any_rev.file_path).parent.resolve()
+    print(f"[change_project_full_code] old_dir(from rev)={old_dir} exists={old_dir.exists()}")
+
+    # безопасность: old_dir должен быть внутри PROJECTS_DIR
+    if projects_root not in old_dir.parents:
+        raise RuntimeError(f"old_dir вне PROJECTS_DIR: {old_dir}")
+
+    target_project = Project.objects.select_for_update().filter(full_code=new_full_code).first()
+
+    # ---------------------------------------------------------
+    # MERGE: такой проект уже есть
+    # ---------------------------------------------------------
+    if target_project and target_project.pk != project.pk:
+        for rev in ProjectRevision.objects.select_for_update().filter(project=project):
+            src = Path(rev.file_path).resolve()
+            if not src.exists():
+                raise RuntimeError(f"Файл ревизии не найден: {src}")
+
+            dst = new_dir / src.name
+            if not dst.exists():
+                print(f"[change_project_full_code] MOVE src={src} exists={src.exists()} -> dst={dst}")
+
+                shutil.move(str(src), str(dst))
+
+            rev.file_path = str(dst)
+            rev.project = target_project
+            rev.save(update_fields=["file_path", "project"])
+
+        # удаляем старую папку, если пустая
+        try:
+            old_dir.rmdir()
+        except OSError:
+            pass
+
+        project.delete()
+        return target_project
+
+    # ---------------------------------------------------------
+    # RENAME: просто переименовать проект
+    # ---------------------------------------------------------
+    for rev in ProjectRevision.objects.select_for_update().filter(project=project):
+        src = Path(rev.file_path).resolve()
+        if not src.exists():
+            raise RuntimeError(f"Файл ревизии не найден: {src}")
+
+        dst = new_dir / src.name
+        if not dst.exists():
+            print(f"[change_project_full_code] MOVE src={src} exists={src.exists()} -> dst={dst}")
+
+            shutil.move(str(src), str(dst))
+
+        rev.file_path = str(dst)
+        rev.save(update_fields=["file_path"])
+
+    # удалить старую папку, если пустая
+    try:
+        old_dir.rmdir()
+    except OSError:
+        pass
+
+    project.full_code = new_full_code
+    project.save(update_fields=["full_code"])
+    return project
