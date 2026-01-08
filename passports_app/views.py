@@ -6,12 +6,14 @@ from pathlib import Path
 
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 
-from .forms import PassportUploadForm
+from .forms import PassportUploadForm, PassportUpdateForm
 from .models import Passport, Material
 from .services import import_single_passport_file
 from .services_archive import import_passports_from_zip
@@ -89,7 +91,6 @@ class PassportUploadView(PermissionRequiredMixin, View):
                 f"пропущено: {stats['skipped']}, ошибок: {stats['errors']}.",
             )
 
-            # сбрасываем форму (чтобы повторно можно было грузить)
             new_form = PassportUploadForm()
             return render(
                 request,
@@ -102,7 +103,7 @@ class PassportUploadView(PermissionRequiredMixin, View):
                 },
             )
 
-        # ===== Одиночный файл: старое поведение (поля + 2 кнопки) =====
+        # ===== Одиночный файл =====
         try:
             passport = import_single_passport_file(
                 uploaded_file=uploaded,
@@ -129,14 +130,57 @@ class PassportUploadView(PermissionRequiredMixin, View):
 
 
 class PassportDetailView(PermissionRequiredMixin, View):
+    """
+    Детали + редактирование.
+    - Просмотр: passports_app.view_passport
+    - Сохранение: passports_app.change_passport (проверяем вручную в post)
+    """
     permission_required = "passports_app.view_passport"
     raise_exception = True
 
     def get(self, request, pk: int):
         passport = get_object_or_404(Passport.objects.select_related("material", "uploaded_by"), pk=pk)
-        return render(request, "passports_app/passport_detail.html", {"passport": passport})
 
+        # (is_pdf) определяем, можно ли показывать iframe preview
+        ext = (passport.file_ext or "").lower()
+        if not ext and passport.file:
+            ext = _ext(passport.file.name)
+        is_pdf = ext == "pdf"
 
+        form = PassportUpdateForm(instance=passport)
+        materials = list(Material.objects.order_by("name").values_list("name", flat=True))
+
+        return render(
+            request,
+            "passports_app/passport_detail.html",
+            {"passport": passport, "form": form, "materials": materials, "is_pdf": is_pdf},
+        )
+
+    def post(self, request, pk: int):
+        if not request.user.has_perm("passports_app.change_passport"):
+            return HttpResponseForbidden("Нет прав на редактирование паспорта.")
+
+        passport = get_object_or_404(Passport.objects.select_related("material", "uploaded_by"), pk=pk)
+        form = PassportUpdateForm(request.POST, instance=passport)
+        materials = list(Material.objects.order_by("name").values_list("name", flat=True))
+
+        ext = (passport.file_ext or "").lower()
+        if not ext and passport.file:
+            ext = _ext(passport.file.name)
+        is_pdf = ext == "pdf"
+
+        if not form.is_valid():
+            return render(
+                request,
+                "passports_app/passport_detail.html",
+                {"passport": passport, "form": form, "materials": materials, "is_pdf": is_pdf},
+            )
+
+        form.save()
+        messages.success(request, "Данные паспорта сохранены.")
+        return redirect(reverse("passports:passport_detail", kwargs={"pk": passport.pk}))
+
+@method_decorator(xframe_options_sameorigin, name="dispatch")
 class PassportOpenView(PermissionRequiredMixin, View):
     permission_required = "passports_app.view_passport"
     raise_exception = True

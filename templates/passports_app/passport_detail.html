@@ -3,116 +3,149 @@
 
 {% block content %}
 
-    <div class="pagetitle">
-        <h1>Паспорт</h1>
-        <nav>
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'passports:passports_list' %}">Паспорта</a></li>
-                <li class="breadcrumb-item active">Детали</li>
-            </ol>
-        </nav>
-    </div>
+<div class="pagetitle">
+  <h1>Паспорт</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'passports:passports_list' %}">Паспорта</a></li>
+      <li class="breadcrumb-item active">Детали</li>
+    </ol>
+  </nav>
+</div>
 
-    <section class="section">
-        <div class="row">
+<section class="section">
+  <div class="row">
 
-            <div class="col-lg-8">
-                <div class="card">
-                    <div class="card-body">
+    <!-- LEFT: edit -->
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body">
+        
 
-                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                            <div>
-                                <h5 class="card-title mb-1">{{ passport.document_name }}</h5>
-                                <div class="text-muted">
-                                    Материал: <span class="fw-semibold">{{ passport.material.name|default:"—" }}</span>
-                                </div>
-                            </div>
+          {% if passport.needs_review %}
+            <div class="alert alert-warning">
+              Требует проверки: данные могли не распознаться из имени файла.
+            </div>
+          {% endif %}
 
-                            <div class="d-flex gap-2">
-                                <a href="{% url 'passports:passport_open' passport.id %}"
-                                   target="_blank"
-                                   class="btn btn-sm btn-outline-danger"
-                                   title="Открыть файл">
-                                    <i class="bi bi-file-earmark-pdf"></i>
-                                    Открыть
-                                </a>
+          <!-- DATALIST материалов (подсказки) -->
+          <datalist id="materialsList">
+            {% for name in materials %}
+              <option value="{{ name }}"></option>
+            {% endfor %}
+          </datalist>
 
-                                <a href="{% url 'passports:passports_list' %}"
-                                   class="btn btn-sm btn-outline-secondary">
-                                    Назад
-                                </a>
-                            </div>
-                        </div>
+          <form method="post" class="mt-3">
+            {% csrf_token %}
 
-                        <hr>
+            <div class="row g-3">
 
-                        {% if passport.needs_review %}
-                            <div class="alert alert-warning">
-                                Требует проверки: данные могли не распознаться из имени файла.
-                            </div>
-                        {% endif %}
+              <div class="col-12">
+                <label class="form-label">{{ form.material_name.label }}</label>
+                {{ form.material_name }}
+                <script>
+                  // добавляем list динамически, чтобы не ломать виджет формы
+                  (function(){
+                    const el = document.querySelector('input[name="material_name"]');
+                    if (el) el.setAttribute("list", "materialsList");
+                  })();
+                </script>
+                {% if form.material_name.errors %}
+                  <div class="text-danger small mt-1">{{ form.material_name.errors }}</div>
+                {% endif %}
+              </div>
 
-                        <dl class="row mb-0">
-                            <dt class="col-sm-4">Наименование документа</dt>
-                            <dd class="col-sm-8">{{ passport.document_name }}</dd>
+              <div class="col-12">
+                <label class="form-label">{{ form.document_name.label }}</label>
+                {{ form.document_name }}
+                {% if form.document_name.errors %}
+                  <div class="text-danger small mt-1">{{ form.document_name.errors }}</div>
+                {% endif %}
+              </div>
 
-                            <dt class="col-sm-4">Номер</dt>
-                            <dd class="col-sm-8">{{ passport.document_number|default:"—" }}</dd>
+              <div class="col-12">
+                <label class="form-label">{{ form.document_number.label }}</label>
+                {{ form.document_number }}
+                {% if form.document_number.errors %}
+                  <div class="text-danger small mt-1">{{ form.document_number.errors }}</div>
+                {% endif %}
+              </div>
 
-                            <dt class="col-sm-4">Дата</dt>
-                            <dd class="col-sm-8">
-                                {% if passport.document_date %}
-                                    {{ passport.document_date|date:"d.m.Y" }}
-                                {% else %}
-                                    —
-                                {% endif %}
-                            </dd>
+              <div class="col-12">
+                <label class="form-label">{{ form.document_date.label }}</label>
+                {{ form.document_date }}
+                {% if form.document_date.errors %}
+                  <div class="text-danger small mt-1">{{ form.document_date.errors }}</div>
+                {% endif %}
+              </div>
 
-                            <dt class="col-sm-4">Файл</dt>
-                            <dd class="col-sm-8">
-                                {{ passport.original_name|default:"—" }}
-                                {% if passport.file_ext %}
-                                    <span class="text-muted">(.{{ passport.file_ext }})</span>
-                                {% endif %}
-                            </dd>
-
-                            <dt class="col-sm-4">Загрузил</dt>
-                            <dd class="col-sm-8">
-                                {% if passport.uploaded_by %}
-                                    {{ passport.uploaded_by.email|default:passport.uploaded_by.get_username }}
-                                {% else %}
-                                    —
-                                {% endif %}
-                            </dd>
-
-                            <dt class="col-sm-4">Создан</dt>
-                            <dd class="col-sm-8">{{ passport.created_at|date:"d.m.Y H:i" }}</dd>
-                        </dl>
-
-                    </div>
-                </div>
             </div>
 
-            <div class="col-lg-4">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Сервис</h5>
-
-                        <div class="small text-muted mb-2">
-                            Здесь позже появятся:
-                            <ul class="mb-0">
-                                <li>Редактирование данных паспорта</li>
-                                <li>Перенос файла в папку материала</li>
-                                <li>Привязка к актам</li>
-                            </ul>
-                        </div>
-
-                    </div>
+            <div class="mt-3 d-flex gap-2 flex-wrap">
+              {% if user.is_superuser or perms.passports_app.change_passport %}
+                <button class="btn btn-success" type="submit">
+                  <i class="bi bi-check2-circle me-1"></i> Сохранить
+                </button>
+              {% else %}
+                <div class="text-muted small">
+                  Нет прав на редактирование.
                 </div>
+              {% endif %}
             </div>
+          </form>
+
+          <hr class="my-4">
+
+          <!-- Низ: инфо -->
+          <dl class="row mb-0">
+            <dt class="col-sm-4">Файл</dt>
+            <dd class="col-sm-8">
+              {{ passport.original_name|default:"—" }}
+              {% if passport.file_ext %}
+                <span class="text-muted">(.{{ passport.file_ext }})</span>
+              {% endif %}
+            </dd>
+
+            <dt class="col-sm-4">Загрузил</dt>
+            <dd class="col-sm-8">
+              {% if passport.uploaded_by %}
+                {{ passport.uploaded_by.email|default:passport.uploaded_by.get_username }}
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+
+            <dt class="col-sm-4">Создан</dt>
+            <dd class="col-sm-8">{{ passport.created_at|date:"d.m.Y H:i" }}</dd>
+          </dl>
 
         </div>
-    </section>
+      </div>
+    </div>
+
+    <!-- RIGHT: preview -->
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Предпросмотр</h5>
+
+          {% if is_pdf %}
+            <iframe
+              src="{% url 'passports:passport_open' passport.id %}#page=1"
+              style="width:100%; height:75vh; border:1px solid #e5e5e5; border-radius:8px;"
+            ></iframe>
+          {% else %}
+            <div class="alert alert-info py-2 mb-0">
+              Предпросмотр доступен только для PDF. Текущий формат:
+              <strong>.{{ passport.file_ext|default:"—" }}</strong>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
 
 {% endblock %}
