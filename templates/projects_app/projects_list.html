@@ -169,14 +169,50 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
 
-            $('#projectsTable').DataTable({
+            const dt = $('#projectsTable').DataTable({
                 language: {
                     url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json',
                     emptyTable: "Проекты не найдены"
                 },
                 scrollX: true,
+                autoWidth: false,
             });
 
+            // ✅ Главное: при изменении ширины контейнера (sidebar toggle) пересчитать колонки.
+            function adjustTable() {
+                // draw(false) — без сброса пагинации
+                dt.columns.adjust().draw(false);
+            }
+
+            // 1) На resize окна
+            window.addEventListener('resize', function () {
+                // небольшая задержка, чтобы layout успел пересчитаться
+                window.setTimeout(adjustTable, 50);
+            });
+
+            // 2) На клик по кнопке скрытия sidebar (NiceAdmin: .toggle-sidebar-btn)
+            const toggleBtn = document.querySelector('.toggle-sidebar-btn');
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', function () {
+                    // после клика sidebar обычно едет с transition
+                    window.setTimeout(adjustTable, 50);
+                    window.setTimeout(adjustTable, 250);
+                    window.setTimeout(adjustTable, 450);
+                });
+            }
+
+            // 3) На завершение CSS transition (самое точное)
+            document.body.addEventListener('transitionend', function (e) {
+                // реагируем только на изменения размеров/позиции, чтобы не дёргать таблицу лишний раз
+                if (e.propertyName === 'width' || e.propertyName === 'margin-left' || e.propertyName === 'left') {
+                    adjustTable();
+                }
+            });
+
+            // 4) Один раз после первичной отрисовки
+            window.setTimeout(adjustTable, 50);
+
+            // Фильтр needs_review
             const sw = document.getElementById("needsReviewOnly");
             if (sw) {
                 sw.addEventListener("change", function () {
