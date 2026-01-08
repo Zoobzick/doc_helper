@@ -82,6 +82,7 @@ class ProjectListView(PermissionRequiredMixin, ListView):
         ctx = super().get_context_data(**kwargs)
         ctx["needs_review_filter_on"] = str_to_bool(self.request.GET.get("needs_review"))
         ctx["needs_review_count"] = Project.objects.filter(needs_review=True).count()
+        ctx["title"] = "Проекты"
         return ctx
 
 
@@ -95,6 +96,7 @@ class ProjectDetailView(PermissionRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        project = self.object
         ctx["revisions"] = ProjectRevision.objects.filter(project=self.object).order_by("-created_at")
         ctx["latest_revision"] = (
             ProjectRevision.objects
@@ -102,6 +104,8 @@ class ProjectDetailView(PermissionRequiredMixin, DetailView):
             .order_by("-created_at")
             .first()
         )
+        ctx["title"] = f"Данные проекта — {project.full_code}"
+
         return ctx
 
 
@@ -134,6 +138,7 @@ class ProjectCreateStartView(PermissionRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["form"] = ProjectCreateForm()
+        ctx["title"] = "Добавить проект"
         return ctx
 
 
@@ -291,12 +296,14 @@ class ProjectUpdateView(PermissionRequiredMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        project = self.object
         ctx["latest_revision"] = (
             ProjectRevision.objects
             .filter(project=self.object, is_latest=True)
             .order_by("-created_at")
             .first()
         )
+        ctx["title"] = f"Редактирование — {project.full_code}"
         return ctx
 
     @transaction.atomic
