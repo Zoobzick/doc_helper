@@ -2,11 +2,24 @@
 {% load static %}
 
 {% block content %}
-    <main id="main" class="main">
+    
+    
+        {% block breadcrumbs %}
+            <div class="pagetitle">
+                <h1>Проекты</h1>
+                <nav>
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item">
+                            <a href="{% url 'authapp:home' %}">Главная</a>
+                        </li>
+                        <li class="breadcrumb-item active">Проекты</li>
+                    </ol>
+                </nav>
 
-        <div class="pagetitle">
-            <h1>Проекты</h1>
-        </div>
+
+            </div>
+        {% endblock breadcrumbs %}
+
 
         <section class="section">
             <div class="row">
@@ -79,7 +92,9 @@
                                                 <td class="text-center text-nowrap">
                                                     <!-- РЕВИЗИЯ -->
                                                     <span class="me-3"
-                                                          title="Ревизия {{ rev.revision }}{% if rev.is_latest %} (актуальная){% endif %}">
+                                                          title="Ревизия 
+                                                                  
+                                                                  {{ rev.revision }}{% if rev.is_latest %} (актуальная){% endif %}">
                                                         {% if rev.is_latest %}
                                                             <i class="bi bi-check-circle-fill text-success"></i>
                                                         {% else %}
@@ -164,7 +179,7 @@
             }
         </style>
 
-    </main>
+
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {

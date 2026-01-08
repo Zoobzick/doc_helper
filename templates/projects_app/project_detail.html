@@ -2,257 +2,262 @@
 {% load static %}
 
 {% block content %}
-<main id="main" class="main">
 
-  <div class="pagetitle">
-    <h1>Проект</h1>
-    <nav>
-      <ol class="breadcrumb">
-        <li class="breadcrumb-item">
-          <a href="{% url 'projects:projects_list' %}">Проекты</a>
-        </li>
-        <li class="breadcrumb-item active">
-          {{ project.full_code|default:"Черновик проекта" }}
-        </li>
-      </ol>
-    </nav>
-  </div>
+        {% block breadcrumbs %}
+            <div class="pagetitle">
+                <h1>Проект</h1>
+                <nav>
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item">
+                            <a href="{% url 'projects:projects_list' %}">Проекты</a>
+                        </li>
+                        <li class="breadcrumb-item active">
+                            {{ project.full_code|default:"Черновик проекта" }}
+                        </li>
+                    </ol>
+                </nav>
+            </div>
+        {% endblock breadcrumbs %}
 
-  <section class="section">
 
-    <div class="row">
-      <div class="col-lg-12">
+        <section class="section">
 
-        <div class="card">
-          <div class="card-body">
+            <div class="row">
+                <div class="col-lg-12">
 
-            <h5 class="card-title mb-3 d-flex align-items-center gap-3">
-              <span>{{ project.full_code|default:"Черновик проекта" }}</span>
+                    <div class="card">
+                        <div class="card-body">
 
-              {% if project.needs_review %}
-                <span class="badge bg-warning text-dark">Требует заполнения</span>
-              {% endif %}
-            </h5>
+                            <h5 class="card-title mb-3 d-flex align-items-center gap-3">
+                                <span>{{ project.full_code|default:"Черновик проекта" }}</span>
 
-            {% if not project.full_code %}
-              <div class="alert alert-warning py-2">
-                <div class="fw-semibold mb-1">Проект без шифра</div>
-                Введите <strong>полный шифр проекта</strong>.
-                Если такой шифр уже существует, текущие файлы станут
-                <strong>новыми ревизиями</strong> существующего проекта.
-              </div>
+                                {% if project.needs_review %}
+                                    <span class="badge bg-warning text-dark">Требует заполнения</span>
+                                {% endif %}
+                            </h5>
 
-              <form method="post"
-                    action="{% url 'projects:project_assign_full_code' project.id %}"
-                    class="row g-2 mb-4">
-                {% csrf_token %}
-                <div class="col-md-8">
-                  <input type="text"
-                         name="full_code"
-                         class="form-control"
-                         placeholder="ИМИП-МРАЛ1-Р-Г0200-СТ06-001-01-КЖ16"
-                         value="{{ project.full_code|default:'' }}">
+                            {% if not project.full_code %}
+                                <div class="alert alert-warning py-2">
+                                    <div class="fw-semibold mb-1">Проект без шифра</div>
+                                    Введите <strong>полный шифр проекта</strong>.
+                                    Если такой шифр уже существует, текущие файлы станут
+                                    <strong>новыми ревизиями</strong> существующего проекта.
+                                </div>
+
+                                <form method="post"
+                                      action="{% url 'projects:project_assign_full_code' project.id %}"
+                                      class="row g-2 mb-4">
+                                    {% csrf_token %}
+                                    <div class="col-md-8">
+                                        <input type="text"
+                                               name="full_code"
+                                               class="form-control"
+                                               placeholder="ИМИП-МРАЛ1-Р-Г0200-СТ06-001-01-КЖ16"
+                                               value="{{ project.full_code|default:'' }}">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-primary w-100">Сохранить шифр</button>
+                                    </div>
+                                </form>
+                            {% elif project.needs_review %}
+                                <div class="alert alert-warning py-2">
+                                    <div class="fw-semibold mb-1">Проект требует заполнения обязательных данных</div>
+                                    Заполни классификаторы (Линия/Стадия/Этап/Участок/Раздел и т.д.) на странице
+                                    редактирования.
+                                    <div class="mt-2">
+                                        <a class="btn btn-sm btn-outline-secondary"
+                                           href="{% url 'projects:project_update' project.id %}">
+                                            Перейти к заполнению
+                                        </a>
+                                    </div>
+                                </div>
+                            {% endif %}
+
+                            <!-- ДАННЫЕ ПРОЕКТА (как в Project_update, но выводом) -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-12">
+                                    <div><strong>Проектировщик:</strong> {{ project.designer.full_name|default:"—" }}
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div><strong>Линия:</strong> {{ project.line.full_name|default:"—" }}</div>
+                                </div>
+                                <div class="col-12">
+                                    <div><strong>Этап:</strong> {{ project.stage.full_name|default:"—" }}</div>
+                                </div>
+                                <div class="col-12">
+                                    <div><strong>Участок:</strong> {{ project.plot.full_name|default:"—" }}</div>
+                                </div>
+                                <div class="col-12">
+                                    <div><strong>Конструкция:</strong> {{ project.construction|default:"—" }}</div>
+                                </div>
+                            </div>
+
+                            <div class="mt-2">
+                                <a href="{% url 'projects:project_update' project.id %}"
+                                   class="btn btn-outline-secondary btn-sm">
+                                    Редактировать
+                                </a>
+                            </div>
+
+                        </div>
+                    </div>
+
                 </div>
-                <div class="col-md-4">
-                  <button type="submit" class="btn btn-primary w-100">Сохранить шифр</button>
-                </div>
-              </form>
-            {% elif project.needs_review %}
-              <div class="alert alert-warning py-2">
-                <div class="fw-semibold mb-1">Проект требует заполнения обязательных данных</div>
-                Заполни классификаторы (Линия/Стадия/Этап/Участок/Раздел и т.д.) на странице редактирования.
-                <div class="mt-2">
-                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'projects:project_update' project.id %}">
-                    Перейти к заполнению
-                  </a>
-                </div>
-              </div>
-            {% endif %}
-
-            <!-- ДАННЫЕ ПРОЕКТА (как в Project_update, но выводом) -->
-            <div class="row g-2 mb-3">
-              <div class="col-12">
-                <div><strong>Проектировщик:</strong> {{ project.designer.full_name|default:"—" }}</div>
-              </div>
-              <div class="col-12">
-                <div><strong>Линия:</strong> {{ project.line.full_name|default:"—" }}</div>
-              </div>
-              <div class="col-12">
-                <div><strong>Этап:</strong> {{ project.stage.full_name|default:"—" }}</div>
-              </div>
-              <div class="col-12">
-                <div><strong>Участок:</strong> {{ project.plot.full_name|default:"—" }}</div>
-              </div>
-              <div class="col-12">
-                <div><strong>Конструкция:</strong> {{ project.construction|default:"—" }}</div>
-              </div>
             </div>
 
-            <div class="mt-2">
-              <a href="{% url 'projects:project_update' project.id %}" class="btn btn-outline-secondary btn-sm">
-                Редактировать
-              </a>
-            </div>
+            <div class="row">
+                <div class="col-lg-12">
 
-          </div>
-        </div>
+                    <div class="card">
+                        <div class="card-body">
 
-      </div>
-    </div>
+                            <h5 class="card-title mb-3">Версии проекта</h5>
 
-    <div class="row">
-      <div class="col-lg-12">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle">
+                                    <thead>
+                                    <tr>
+                                        <th class="text-center text-nowrap">Статус</th>
+                                        <th class="text-center text-nowrap">Дата загрузки</th>
+                                        <th class="text-center text-nowrap">В производство</th>
+                                        <th class="text-end text-nowrap">Действия</th>
+                                    </tr>
+                                    </thead>
 
-        <div class="card">
-          <div class="card-body">
-
-            <h5 class="card-title mb-3">Версии проекта</h5>
-
-            <div class="table-responsive">
-              <table class="table table-hover align-middle">
-                <thead>
-                  <tr>
-                    <th class="text-center text-nowrap">Статус</th>
-                    <th class="text-center text-nowrap">Дата загрузки</th>
-                    <th class="text-center text-nowrap">В производство</th>
-                    <th class="text-end text-nowrap">Действия</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {% for rev in project.revisions.all %}
-                    <tr>
-                      <!-- 1) Статус: иконка актуальности + иконка производства (без needs_review) -->
-                      <td class="text-center text-nowrap">
+                                    <tbody>
+                                    {% for rev in project.revisions.all %}
+                                        <tr>
+                                            <!-- 1) Статус: иконка актуальности + иконка производства (без needs_review) -->
+                                            <td class="text-center text-nowrap">
                         <span class="me-3"
                               title="Ревизия {{ rev.revision }}{% if rev.is_latest %} (актуальная){% endif %}">
                           {% if rev.is_latest %}
-                            <i class="bi bi-check-circle-fill text-success"></i>
+                              <i class="bi bi-check-circle-fill text-success"></i>
                           {% else %}
-                            <i class="bi bi-circle text-muted"></i>
+                              <i class="bi bi-circle text-muted"></i>
                           {% endif %}
-                          <span class="fw-semibold ms-1">{{ rev.revision }}</span>
+                            <span class="fw-semibold ms-1">{{ rev.revision }}</span>
                         </span>
 
-                        <span title="{% if rev.in_production %}В производстве{% else %}Не в производстве{% endif %}">
+                                                <span title="{% if rev.in_production %}В производстве{% else %}Не в производстве{% endif %}">
                           {% if rev.in_production %}
-                            <i class="bi bi-gear-fill text-primary"></i>
+                              <i class="bi bi-gear-fill text-primary"></i>
                           {% else %}
-                            <i class="bi bi-gear text-muted"></i>
+                              <i class="bi bi-gear text-muted"></i>
                           {% endif %}
                         </span>
-                      </td>
+                                            </td>
 
-                      <!-- 2) Дата загрузки DD.MM.YYYY -->
-                      <td class="text-center text-nowrap">
-                        {{ rev.created_at|date:"d.m.Y" }}
-                      </td>
+                                            <!-- 2) Дата загрузки DD.MM.YYYY -->
+                                            <td class="text-center text-nowrap">
+                                                {{ rev.created_at|date:"d.m.Y" }}
+                                            </td>
 
-                      <!-- 3) Ползунок оставить как есть -->
-                      <td class="text-center">
-                        {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
-                          <div class="form-check form-switch d-inline-flex justify-content-center">
-                            <input
-                              class="form-check-input js-in-production-toggle"
-                              type="checkbox"
-                              data-revision-id="{{ rev.id }}"
-                              {% if rev.in_production %}checked{% endif %}
-                            >
-                          </div>
-                        {% else %}
-                          <span class="text-muted">Нет прав</span>
-                        {% endif %}
-                      </td>
+                                            <!-- 3) Ползунок оставить как есть -->
+                                            <td class="text-center">
+                                                {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
+                                                    <div class="form-check form-switch d-inline-flex justify-content-center">
+                                                        <input
+                                                                class="form-check-input js-in-production-toggle"
+                                                                type="checkbox"
+                                                                data-revision-id="{{ rev.id }}"
+                                                                {% if rev.in_production %}checked{% endif %}
+                                                        >
+                                                    </div>
+                                                {% else %}
+                                                    <span class="text-muted">Нет прав</span>
+                                                {% endif %}
+                                            </td>
 
-                      <!-- 4) Действия -->
-                      <td class="text-end text-nowrap">
-                        {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
-                          <a href="{% url 'projects:project_revision_open' rev.id %}"
-                             target="_blank"
-                             class="btn btn-sm btn-outline-danger"
-                             title="Открыть PDF">
-                            <i class="bi bi-file-earmark-pdf-fill"></i>
-                          </a>
+                                            <!-- 4) Действия -->
+                                            <td class="text-end text-nowrap">
+                                                {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
+                                                    <a href="{% url 'projects:project_revision_open' rev.id %}"
+                                                       target="_blank"
+                                                       class="btn btn-sm btn-outline-danger"
+                                                       title="Открыть PDF">
+                                                        <i class="bi bi-file-earmark-pdf-fill"></i>
+                                                    </a>
 
-                          <a href="{% url 'projects:project_update' project.id %}"
-                             class="btn btn-outline-secondary btn-sm">
-                            Редактировать
-                          </a>
+                                                    <a href="{% url 'projects:project_update' project.id %}"
+                                                       class="btn btn-outline-secondary btn-sm">
+                                                        Редактировать
+                                                    </a>
 
-                          <form method="post"
-                                action="{% url 'projects:project_revision_delete' rev.id %}"
-                                class="d-inline"
-                                onsubmit="return confirm('Удалить эту версию проекта? Файл будет удалён без возможности восстановления.')">
-                            {% csrf_token %}
-                            <button type="submit"
-                                    class="btn btn-sm btn-outline-danger"
-                                    title="Удалить версию">
-                              <i class="bi bi-trash"></i>
-                            </button>
-                          </form>
-                        {% endif %}
-                      </td>
-                    </tr>
-                  {% empty %}
-                    <tr>
-                      <td colspan="4" class="text-center text-muted py-4">
-                        У проекта нет файлов
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+                                                    <form method="post"
+                                                          action="{% url 'projects:project_revision_delete' rev.id %}"
+                                                          class="d-inline"
+                                                          onsubmit="return confirm('Удалить эту версию проекта? Файл будет удалён без возможности восстановления.')">
+                                                        {% csrf_token %}
+                                                        <button type="submit"
+                                                                class="btn btn-sm btn-outline-danger"
+                                                                title="Удалить версию">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted py-4">
+                                                У проекта нет файлов
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
             </div>
 
-          </div>
-        </div>
+        </section>
 
-      </div>
-    </div>
+    <script>
+        (function () {
+            function getCookie(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+                return '';
+            }
 
-  </section>
-</main>
+            const csrftoken = getCookie('csrftoken');
 
-<script>
-(function () {
-  function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return '';
-  }
+            document.querySelectorAll('.js-in-production-toggle').forEach(function (checkbox) {
+                checkbox.addEventListener('change', function () {
+                    const revisionId = this.dataset.revisionId;
+                    const value = this.checked;
 
-  const csrftoken = getCookie('csrftoken');
-
-  document.querySelectorAll('.js-in-production-toggle').forEach(function (checkbox) {
-    checkbox.addEventListener('change', function () {
-      const revisionId = this.dataset.revisionId;
-      const value = this.checked;
-
-      fetch(`/projects/revision/${revisionId}/set-in-production/`, {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': csrftoken,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({value: value})
-      })
-      .then(resp => resp.json())
-      .then(data => {
-        if (!data.ok) {
-          alert(data.error || 'Ошибка изменения статуса');
-          checkbox.checked = !value;
-        } else {
-          window.location.reload();
-        }
-      })
-      .catch(() => {
-        alert('Ошибка сети');
-        checkbox.checked = !value;
-      });
-    });
-  });
-})();
-</script>
+                    fetch(`/projects/revision/${revisionId}/set-in-production/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrftoken,
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({value: value})
+                    })
+                        .then(resp => resp.json())
+                        .then(data => {
+                            if (!data.ok) {
+                                alert(data.error || 'Ошибка изменения статуса');
+                                checkbox.checked = !value;
+                            } else {
+                                window.location.reload();
+                            }
+                        })
+                        .catch(() => {
+                            alert('Ошибка сети');
+                            checkbox.checked = !value;
+                        });
+                });
+            });
+        })();
+    </script>
 
 {% endblock %}

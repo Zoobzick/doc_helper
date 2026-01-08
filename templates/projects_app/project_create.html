@@ -2,309 +2,336 @@
 {% load static %}
 
 {% block content %}
-<main id="main" class="main">
-  <div class="pagetitle">
-    <h1>Добавить проекты</h1>
-  </div>
+    {% block breadcrumbs %}
+        <div class="pagetitle">
+            <h1>Добавить проекты</h1>
+            <nav>
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'projects:projects_list' %}">Проекты</a>
+                    </li>
+                    <li class="breadcrumb-item active">Добавить</li>
+                </ol>
+            </nav>
+        </div>
+    {% endblock breadcrumbs %}
 
-  <section class="section">
-    <div class="card">
-      <div class="card-body">
 
-        <ul class="nav nav-tabs nav-tabs-bordered mt-3" id="createTabs" role="tablist">
-          <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="tab-onepdf" data-bs-toggle="tab" data-bs-target="#pane-onepdf"
-                    type="button" role="tab" aria-controls="pane-onepdf" aria-selected="true">
-              Один PDF
-            </button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-zip" data-bs-toggle="tab" data-bs-target="#pane-zip"
-                    type="button" role="tab" aria-controls="pane-zip" aria-selected="false">
-              ZIP архив
-            </button>
-          </li>
-        </ul>
+    <section class="section">
+        <div class="card">
+            <div class="card-body">
 
-        <div class="tab-content pt-3" id="createTabsContent">
+                <ul class="nav nav-tabs nav-tabs-bordered mt-3" id="createTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-onepdf" data-bs-toggle="tab"
+                                data-bs-target="#pane-onepdf"
+                                type="button" role="tab" aria-controls="pane-onepdf" aria-selected="true">
+                            Один PDF
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-zip" data-bs-toggle="tab" data-bs-target="#pane-zip"
+                                type="button" role="tab" aria-controls="pane-zip" aria-selected="false">
+                            ZIP архив
+                        </button>
+                    </li>
+                </ul>
 
-          <!-- ========================================================= -->
-          <!-- TAB: ONE PDF -->
-          <!-- ========================================================= -->
-          <div class="tab-pane fade show active" id="pane-onepdf" role="tabpanel" aria-labelledby="tab-onepdf">
+                <div class="tab-content pt-3" id="createTabsContent">
 
-            <div class="row">
-              <!-- Левая колонка: загрузка + форма -->
-              <div class="col-12 col-lg-6">
-                <div class="card">
-                  <div class="card-body">
-                    <h5 class="card-title">1) Загрузите PDF проекта</h5>
+                    <!-- ========================================================= -->
+                    <!-- TAB: ONE PDF -->
+                    <!-- ========================================================= -->
+                    <div class="tab-pane fade show active" id="pane-onepdf" role="tabpanel"
+                         aria-labelledby="tab-onepdf">
 
-                    <div id="pdfDropZone"
-                         class="border border-2 border-secondary rounded-3 p-5 text-center"
-                         style="border-style:dashed; user-select:none; cursor:pointer;">
-                      <div class="fw-semibold">Перетащите сюда PDF</div>
-                      <div class="text-muted small">или кликните, чтобы выбрать файл</div>
-                      <input id="pdfInput" type="file" accept="application/pdf" class="d-none">
+                        <div class="row">
+                            <!-- Левая колонка: загрузка + форма -->
+                            <div class="col-12 col-lg-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">1) Загрузите PDF проекта</h5>
+
+                                        <div id="pdfDropZone"
+                                             class="border border-2 border-secondary rounded-3 p-5 text-center"
+                                             style="border-style:dashed; user-select:none; cursor:pointer;">
+                                            <div class="fw-semibold">Перетащите сюда PDF</div>
+                                            <div class="text-muted small">или кликните, чтобы выбрать файл</div>
+                                            <input id="pdfInput" type="file" accept="application/pdf"
+                                                   class="d-none">
+                                        </div>
+
+                                        <div id="pdfUploadStatus" class="mt-3"></div>
+
+                                        <hr class="my-4">
+
+                                        <div id="pdfFormBlock"
+                                             class="{% if form.errors %}{% else %}d-none{% endif %}">
+                                            <h5 class="card-title">2) Заполните данные</h5>
+
+                                            <form method="post" action="{% url 'projects:project_create_save' %}"
+                                                  class="row g-3" id="projectForm">
+                                                {% csrf_token %}
+
+                                                {{ form.upload_id }}
+
+                                                <div class="col-12">
+                                                    <label class="form-label">Полный шифр проекта</label>
+                                                    {{ form.full_code }}
+                                                    {% if form.full_code.errors %}
+                                                        <div class="text-danger small">{{ form.full_code.errors }}</div>{% endif %}
+                                                    <div class="form-text">
+                                                        Если такой шифр уже есть — PDF будет добавлен как новая
+                                                        ревизия.
+                                                    </div>
+                                                </div>
+
+                                                <div class="col-12">
+                                                    <label class="form-label">Наименование / конструкция</label>
+                                                    {{ form.construction }}
+                                                    {% if form.construction.errors %}
+                                                        <div class="text-danger small">{{ form.construction.errors }}</div>{% endif %}
+                                                </div>
+
+                                                <div class="col-12">
+                                                    <button class="btn btn-success" type="submit">Сохранить</button>
+                                                </div>
+                                            </form>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Правая колонка: preview -->
+                            <div class="col-12 col-lg-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Предпросмотр PDF (1-я страница)</h5>
+
+                                        <div id="pdfPreviewEmpty" class="text-muted">
+                                            Выберите один PDF — здесь появится предпросмотр.
+                                        </div>
+
+                                        <iframe id="pdfPreviewFrame"
+                                                style="display:none; width:100%; height:70vh; border:1px solid #e5e5e5; border-radius:8px;"></iframe>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
 
-                    <div id="pdfUploadStatus" class="mt-3"></div>
+                    <!-- ========================================================= -->
+                    <!-- TAB: ZIP ARCHIVE -->
+                    <!-- ========================================================= -->
+                    <div class="tab-pane fade" id="pane-zip" role="tabpanel" aria-labelledby="tab-zip">
 
-                    <hr class="my-4">
+                        <div class="row">
+                            <!-- Левая: загрузка архива -->
+                            <div class="col-12 col-lg-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Загрузить ZIP архив</h5>
 
-                    <div id="pdfFormBlock" class="{% if form.errors %}{% else %}d-none{% endif %}">
-                      <h5 class="card-title">2) Заполните данные</h5>
+                                        <div id="zipDropZone"
+                                             class="border border-2 border-secondary rounded-3 p-5 text-center"
+                                             style="border-style:dashed; user-select:none; cursor:pointer;">
+                                            <div class="fw-semibold">Перетащите сюда ZIP</div>
+                                            <div class="text-muted small">или кликните, чтобы выбрать файл</div>
+                                            <input id="zipInput" type="file" accept=".zip,application/zip"
+                                                   class="d-none">
+                                        </div>
 
-                      <form method="post" action="{% url 'projects:project_create_save' %}" class="row g-3" id="projectForm">
-                        {% csrf_token %}
+                                        <div class="mt-3">
+                                            <div class="small text-muted">
+                                                Что произойдёт:
+                                                <ul class="mb-0">
+                                                    <li>Архив распакуется на сервере (PDF могут быть в папках)</li>
+                                                    <li>Файлы с тем же sha256 будут пропущены</li>
+                                                    <li>Остальные попадут в БД</li>
+                                                    <li>full_code временно берём из имени PDF</li>
+                                                    <li>Если такой full_code уже есть — будет новая ревизия</li>
+                                                </ul>
+                                            </div>
+                                        </div>
 
-                        {{ form.upload_id }}
+                                        <div id="zipUploadStatus" class="mt-3"></div>
 
-                        <div class="col-12">
-                          <label class="form-label">Полный шифр проекта</label>
-                          {{ form.full_code }}
-                          {% if form.full_code.errors %}<div class="text-danger small">{{ form.full_code.errors }}</div>{% endif %}
-                          <div class="form-text">
-                            Если такой шифр уже есть — PDF будет добавлен как новая ревизия.
-                          </div>
+                                        <div class="mt-3 d-flex gap-2">
+                                            <button id="zipBtnUpload" class="btn btn-success" disabled>
+                                                <i class="bi bi-upload me-1"></i> Загрузить архив
+                                            </button>
+                                            <button id="zipBtnReset" class="btn btn-outline-secondary" disabled>
+                                                Сбросить
+                                            </button>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Правая: результат -->
+                            <div class="col-12 col-lg-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Результат импорта</h5>
+
+                                        <div id="zipResultSummary" class="text-muted">
+                                            Здесь появится отчёт после обработки архива.
+                                        </div>
+
+                                        <div id="zipResultTableWrap" class="table-responsive mt-3 d-none">
+                                            <table class="table table-bordered table-striped align-middle">
+                                                <thead>
+                                                <tr>
+                                                    <th>Файл</th>
+                                                    <th>Проект (full_code)</th>
+                                                    <th class="text-center">Ревизия</th>
+                                                    <th class="text-center">Статус</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody id="zipResultTbody"></tbody>
+                                            </table>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
 
-                        <div class="col-12">
-                          <label class="form-label">Наименование / конструкция</label>
-                          {{ form.construction }}
-                          {% if form.construction.errors %}<div class="text-danger small">{{ form.construction.errors }}</div>{% endif %}
-                        </div>
-
-                        <div class="col-12">
-                          <button class="btn btn-success" type="submit">Сохранить</button>
-                        </div>
-                      </form>
                     </div>
 
-                  </div>
                 </div>
-              </div>
 
-              <!-- Правая колонка: preview -->
-              <div class="col-12 col-lg-6">
-                <div class="card">
-                  <div class="card-body">
-                    <h5 class="card-title">Предпросмотр PDF (1-я страница)</h5>
-
-                    <div id="pdfPreviewEmpty" class="text-muted">
-                      Выберите один PDF — здесь появится предпросмотр.
-                    </div>
-
-                    <iframe id="pdfPreviewFrame"
-                            style="display:none; width:100%; height:70vh; border:1px solid #e5e5e5; border-radius:8px;"></iframe>
-                  </div>
-                </div>
-              </div>
             </div>
-
-          </div>
-
-          <!-- ========================================================= -->
-          <!-- TAB: ZIP ARCHIVE -->
-          <!-- ========================================================= -->
-          <div class="tab-pane fade" id="pane-zip" role="tabpanel" aria-labelledby="tab-zip">
-
-            <div class="row">
-              <!-- Левая: загрузка архива -->
-              <div class="col-12 col-lg-6">
-                <div class="card">
-                  <div class="card-body">
-                    <h5 class="card-title">Загрузить ZIP архив</h5>
-
-                    <div id="zipDropZone"
-                         class="border border-2 border-secondary rounded-3 p-5 text-center"
-                         style="border-style:dashed; user-select:none; cursor:pointer;">
-                      <div class="fw-semibold">Перетащите сюда ZIP</div>
-                      <div class="text-muted small">или кликните, чтобы выбрать файл</div>
-                      <input id="zipInput" type="file" accept=".zip,application/zip" class="d-none">
-                    </div>
-
-                    <div class="mt-3">
-                      <div class="small text-muted">
-                        Что произойдёт:
-                        <ul class="mb-0">
-                          <li>Архив распакуется на сервере (PDF могут быть в папках)</li>
-                          <li>Файлы с тем же sha256 будут пропущены</li>
-                          <li>Остальные попадут в БД</li>
-                          <li>full_code временно берём из имени PDF</li>
-                          <li>Если такой full_code уже есть — будет новая ревизия</li>
-                        </ul>
-                      </div>
-                    </div>
-
-                    <div id="zipUploadStatus" class="mt-3"></div>
-
-                    <div class="mt-3 d-flex gap-2">
-                      <button id="zipBtnUpload" class="btn btn-success" disabled>
-                        <i class="bi bi-upload me-1"></i> Загрузить архив
-                      </button>
-                      <button id="zipBtnReset" class="btn btn-outline-secondary" disabled>
-                        Сбросить
-                      </button>
-                    </div>
-
-                  </div>
-                </div>
-              </div>
-
-              <!-- Правая: результат -->
-              <div class="col-12 col-lg-6">
-                <div class="card">
-                  <div class="card-body">
-                    <h5 class="card-title">Результат импорта</h5>
-
-                    <div id="zipResultSummary" class="text-muted">
-                      Здесь появится отчёт после обработки архива.
-                    </div>
-
-                    <div id="zipResultTableWrap" class="table-responsive mt-3 d-none">
-                      <table class="table table-bordered table-striped align-middle">
-                        <thead>
-                          <tr>
-                            <th>Файл</th>
-                            <th>Проект (full_code)</th>
-                            <th class="text-center">Ревизия</th>
-                            <th class="text-center">Статус</th>
-                          </tr>
-                        </thead>
-                        <tbody id="zipResultTbody"></tbody>
-                      </table>
-                    </div>
-
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-
         </div>
 
-      </div>
-    </div>
-
-  </section>
-</main>
+    </section>
 {% endblock %}
 
 
 {% block extra_js %}
-<script>
-(function () {
-  // =========================================================
-  // helpers
-  // =========================================================
-  function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return '';
-  }
-  const csrftoken = getCookie('csrftoken');
+    <script>
+        (function () {
+            // =========================================================
+            // helpers
+            // =========================================================
+            function getCookie(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+                return '';
+            }
 
-  function bindDnD(dropEl) {
-    ['dragenter','dragover','dragleave','drop'].forEach(evt => {
-      dropEl.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false);
-    });
-    dropEl.addEventListener('dragover', () => dropEl.classList.add('bg-light'));
-    dropEl.addEventListener('dragleave', () => dropEl.classList.remove('bg-light'));
-    dropEl.addEventListener('drop', () => dropEl.classList.remove('bg-light'));
-  }
+            const csrftoken = getCookie('csrftoken');
 
-  async function safeJson(resp) {
-    const ct = (resp.headers.get("content-type") || "");
-    if (!ct.includes("application/json")) {
-      return { ok: false, error: `Сервер вернул не JSON (status ${resp.status})` };
-    }
-    try { return await resp.json(); }
-    catch { return { ok:false, error:`Не удалось разобрать JSON (status ${resp.status})` }; }
-  }
+            function bindDnD(dropEl) {
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                    dropEl.addEventListener(evt, e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }, false);
+                });
+                dropEl.addEventListener('dragover', () => dropEl.classList.add('bg-light'));
+                dropEl.addEventListener('dragleave', () => dropEl.classList.remove('bg-light'));
+                dropEl.addEventListener('drop', () => dropEl.classList.remove('bg-light'));
+            }
 
-  // =========================================================
-  // TAB: ONE PDF
-  // =========================================================
-  const pdfUploadUrl = "{% url 'projects:project_upload_temp' %}";
+            async function safeJson(resp) {
+                const ct = (resp.headers.get("content-type") || "");
+                if (!ct.includes("application/json")) {
+                    return {ok: false, error: `Сервер вернул не JSON (status ${resp.status})`};
+                }
+                try {
+                    return await resp.json();
+                } catch {
+                    return {ok: false, error: `Не удалось разобрать JSON (status ${resp.status})`};
+                }
+            }
 
-  const pdfDropZone = document.getElementById('pdfDropZone');
-  const pdfInput = document.getElementById('pdfInput');
-  const pdfUploadStatus = document.getElementById('pdfUploadStatus');
-  const pdfFormBlock = document.getElementById('pdfFormBlock');
+            // =========================================================
+            // TAB: ONE PDF
+            // =========================================================
+            const pdfUploadUrl = "{% url 'projects:project_upload_temp' %}";
 
-  const frame = document.getElementById("pdfPreviewFrame");
-  const empty = document.getElementById("pdfPreviewEmpty");
-  let currentObjectUrl = null;
+            const pdfDropZone = document.getElementById('pdfDropZone');
+            const pdfInput = document.getElementById('pdfInput');
+            const pdfUploadStatus = document.getElementById('pdfUploadStatus');
+            const pdfFormBlock = document.getElementById('pdfFormBlock');
 
-  function pdfSetStatus(html) { pdfUploadStatus.innerHTML = html || ''; }
+            const frame = document.getElementById("pdfPreviewFrame");
+            const empty = document.getElementById("pdfPreviewEmpty");
+            let currentObjectUrl = null;
 
-  function showPdfPreview(file) {
-    if (currentObjectUrl) {
-      URL.revokeObjectURL(currentObjectUrl);
-      currentObjectUrl = null;
-    }
-    if (!file) {
-      frame.style.display = "none";
-      empty.style.display = "block";
-      empty.textContent = "Выберите один PDF — здесь появится предпросмотр.";
-      return;
-    }
-    const isPdf = (file.type === "application/pdf") || (file.name || "").toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
-      frame.style.display = "none";
-      empty.style.display = "block";
-      empty.textContent = "Выберите PDF файл.";
-      return;
-    }
-    currentObjectUrl = URL.createObjectURL(file);
-    frame.src = currentObjectUrl + "#page=1";
-    empty.style.display = "none";
-    frame.style.display = "block";
-  }
+            function pdfSetStatus(html) {
+                pdfUploadStatus.innerHTML = html || '';
+            }
 
-  async function handlePdfFile(file) {
-    if (!file) return;
-    showPdfPreview(file);
+            function showPdfPreview(file) {
+                if (currentObjectUrl) {
+                    URL.revokeObjectURL(currentObjectUrl);
+                    currentObjectUrl = null;
+                }
+                if (!file) {
+                    frame.style.display = "none";
+                    empty.style.display = "block";
+                    empty.textContent = "Выберите один PDF — здесь появится предпросмотр.";
+                    return;
+                }
+                const isPdf = (file.type === "application/pdf") || (file.name || "").toLowerCase().endsWith(".pdf");
+                if (!isPdf) {
+                    frame.style.display = "none";
+                    empty.style.display = "block";
+                    empty.textContent = "Выберите PDF файл.";
+                    return;
+                }
+                currentObjectUrl = URL.createObjectURL(file);
+                frame.src = currentObjectUrl + "#page=1";
+                empty.style.display = "none";
+                frame.style.display = "block";
+            }
 
-    const isPdf = (file.type === "application/pdf") || (file.name || "").toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
-      pdfSetStatus('<div class="alert alert-danger py-2">Разрешены только PDF</div>');
-      pdfFormBlock.classList.add('d-none');
-      return;
-    }
+            async function handlePdfFile(file) {
+                if (!file) return;
+                showPdfPreview(file);
 
-    pdfSetStatus('<div class="text-muted">Загрузка…</div>');
-    pdfFormBlock.classList.add('d-none');
+                const isPdf = (file.type === "application/pdf") || (file.name || "").toLowerCase().endsWith(".pdf");
+                if (!isPdf) {
+                    pdfSetStatus('<div class="alert alert-danger py-2">Разрешены только PDF</div>');
+                    pdfFormBlock.classList.add('d-none');
+                    return;
+                }
 
-    const fd = new FormData();
-    fd.append('file', file);
+                pdfSetStatus('<div class="text-muted">Загрузка…</div>');
+                pdfFormBlock.classList.add('d-none');
 
-    const resp = await fetch(pdfUploadUrl, {
-      method: 'POST',
-      headers: { 'X-CSRFToken': csrftoken },
-      body: fd
-    });
+                const fd = new FormData();
+                fd.append('file', file);
 
-    const data = await safeJson(resp);
+                const resp = await fetch(pdfUploadUrl, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': csrftoken},
+                    body: fd
+                });
 
-    // ✅ Понятное сообщение для пользователя при дубле sha256 (409)
-    if (resp.status === 409 || (data && data.status === "duplicate")) {
-      const sha = (data && data.sha256) ? data.sha256 : '';
-      const proj = (data && data.existing_project) ? data.existing_project : '';
-      const rev = (data && data.existing_revision) ? data.existing_revision : '';
+                const data = await safeJson(resp);
 
-      // сбрасываем upload_id, чтобы случайно не отправить старое
-      const uploadIdInput = document.getElementById('id_upload_id');
-      if (uploadIdInput) uploadIdInput.value = "";
+                // ✅ Понятное сообщение для пользователя при дубле sha256 (409)
+                if (resp.status === 409 || (data && data.status === "duplicate")) {
+                    const sha = (data && data.sha256) ? data.sha256 : '';
+                    const proj = (data && data.existing_project) ? data.existing_project : '';
+                    const rev = (data && data.existing_revision) ? data.existing_revision : '';
 
-      // сбрасываем input, чтобы пользователь мог сразу выбрать/перетащить другой файл
-      pdfInput.value = "";
+                    // сбрасываем upload_id, чтобы случайно не отправить старое
+                    const uploadIdInput = document.getElementById('id_upload_id');
+                    if (uploadIdInput) uploadIdInput.value = "";
 
-      pdfSetStatus(`
+                    // сбрасываем input, чтобы пользователь мог сразу выбрать/перетащить другой файл
+                    pdfInput.value = "";
+
+                    pdfSetStatus(`
         <div class="alert alert-warning py-2">
           <div class="fw-semibold">Этот PDF уже есть в системе</div>
           <div class="small text-muted">
@@ -315,108 +342,114 @@
           <div class="small mt-2">Можете сразу перетащить другой PDF.</div>
         </div>
       `);
-      return;
-    }
+                    return;
+                }
 
-    if (!data || data.ok !== true) {
-      pdfSetStatus(`<div class="alert alert-danger py-2">${(data && (data.error || data.message)) || 'Ошибка загрузки'}</div>`);
-      return;
-    }
+                if (!data || data.ok !== true) {
+                    pdfSetStatus(`<div class="alert alert-danger py-2">${(data && (data.error || data.message)) || 'Ошибка загрузки'}</div>`);
+                    return;
+                }
 
-    pdfSetStatus(`<div class="alert alert-success py-2">Файл загружен: <strong>${data.filename || file.name}</strong></div>`);
-    pdfFormBlock.classList.remove('d-none');
+                pdfSetStatus(`<div class="alert alert-success py-2">Файл загружен: <strong>${data.filename || file.name}</strong></div>`);
+                pdfFormBlock.classList.remove('d-none');
 
-    const uploadIdInput = document.getElementById('id_upload_id');
-    if (uploadIdInput) uploadIdInput.value = data.upload_id || '';
-  }
+                const uploadIdInput = document.getElementById('id_upload_id');
+                if (uploadIdInput) uploadIdInput.value = data.upload_id || '';
+            }
 
-  bindDnD(pdfDropZone);
-  pdfDropZone.addEventListener('drop', (e) => {
-    const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    handlePdfFile(f);
-  });
-  pdfDropZone.addEventListener('click', () => pdfInput.click());
-  pdfInput.addEventListener('change', e => handlePdfFile(e.target.files[0]));
+            bindDnD(pdfDropZone);
+            pdfDropZone.addEventListener('drop', (e) => {
+                const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                handlePdfFile(f);
+            });
+            pdfDropZone.addEventListener('click', () => pdfInput.click());
+            pdfInput.addEventListener('change', e => handlePdfFile(e.target.files[0]));
 
-  // =========================================================
-  // TAB: ZIP
-  // =========================================================
-  const zipUploadUrl = "{% url 'projects:project_upload_archive' %}";
+            // =========================================================
+            // TAB: ZIP
+            // =========================================================
+            const zipUploadUrl = "{% url 'projects:project_upload_archive' %}";
 
-  const zipDropZone = document.getElementById("zipDropZone");
-  const zipInput = document.getElementById("zipInput");
-  const zipBtnUpload = document.getElementById("zipBtnUpload");
-  const zipBtnReset = document.getElementById("zipBtnReset");
-  const zipUploadStatus = document.getElementById("zipUploadStatus");
+            const zipDropZone = document.getElementById("zipDropZone");
+            const zipInput = document.getElementById("zipInput");
+            const zipBtnUpload = document.getElementById("zipBtnUpload");
+            const zipBtnReset = document.getElementById("zipBtnReset");
+            const zipUploadStatus = document.getElementById("zipUploadStatus");
 
-  const zipResultSummary = document.getElementById("zipResultSummary");
-  const zipResultTableWrap = document.getElementById("zipResultTableWrap");
-  const zipResultTbody = document.getElementById("zipResultTbody");
+            const zipResultSummary = document.getElementById("zipResultSummary");
+            const zipResultTableWrap = document.getElementById("zipResultTableWrap");
+            const zipResultTbody = document.getElementById("zipResultTbody");
 
-  let zipSelected = null;
+            let zipSelected = null;
 
-  function zipSetStatus(html) { zipUploadStatus.innerHTML = html || ""; }
-  function zipSetButtons(enabled) { zipBtnUpload.disabled = !enabled; zipBtnReset.disabled = !enabled; }
+            function zipSetStatus(html) {
+                zipUploadStatus.innerHTML = html || "";
+            }
 
-  function zipReset() {
-    zipSelected = null;
-    zipInput.value = "";
-    zipSetStatus("");
-    zipSetButtons(false);
-    zipResultSummary.textContent = "Здесь появится отчёт после обработки архива.";
-    zipResultTableWrap.classList.add("d-none");
-    zipResultTbody.innerHTML = "";
-  }
+            function zipSetButtons(enabled) {
+                zipBtnUpload.disabled = !enabled;
+                zipBtnReset.disabled = !enabled;
+            }
 
-  function zipValidate(file) {
-    if (!file) return "Файл не выбран";
-    const name = (file.name || "").toLowerCase();
-    const ok = name.endsWith(".zip") || file.type === "application/zip";
-    if (!ok) return "Нужен ZIP архив (.zip)";
-    return null;
-  }
+            function zipReset() {
+                zipSelected = null;
+                zipInput.value = "";
+                zipSetStatus("");
+                zipSetButtons(false);
+                zipResultSummary.textContent = "Здесь появится отчёт после обработки архива.";
+                zipResultTableWrap.classList.add("d-none");
+                zipResultTbody.innerHTML = "";
+            }
 
-  function zipPick(file) {
-    const err = zipValidate(file);
-    if (err) {
-      zipSelected = null;
-      zipSetButtons(false);
-      zipSetStatus(`<div class="alert alert-danger py-2">${err}</div>`);
-      return;
-    }
-    zipSelected = file;
-    zipSetButtons(true);
-    zipSetStatus(`<div class="alert alert-info py-2">Выбран архив: <strong>${file.name}</strong></div>`);
-  }
+            function zipValidate(file) {
+                if (!file) return "Файл не выбран";
+                const name = (file.name || "").toLowerCase();
+                const ok = name.endsWith(".zip") || file.type === "application/zip";
+                if (!ok) return "Нужен ZIP архив (.zip)";
+                return null;
+            }
 
-  function zipBadge(status) {
-    if (status === "created") return `<span class="badge bg-success">Добавлено</span>`;
-    if (status === "duplicate") return `<span class="badge bg-secondary">Дубликат sha256</span>`;
-    if (status === "error") return `<span class="badge bg-danger">Ошибка</span>`;
-    return `<span class="badge bg-light text-dark">${status || "—"}</span>`;
-  }
+            function zipPick(file) {
+                const err = zipValidate(file);
+                if (err) {
+                    zipSelected = null;
+                    zipSetButtons(false);
+                    zipSetStatus(`<div class="alert alert-danger py-2">${err}</div>`);
+                    return;
+                }
+                zipSelected = file;
+                zipSetButtons(true);
+                zipSetStatus(`<div class="alert alert-info py-2">Выбран архив: <strong>${file.name}</strong></div>`);
+            }
 
-  function zipRender(results) {
-    let created = 0, duplicate = 0, error = 0;
+            function zipBadge(status) {
+                if (status === "created") return `<span class="badge bg-success">Добавлено</span>`;
+                if (status === "duplicate") return `<span class="badge bg-secondary">Дубликат sha256</span>`;
+                if (status === "error") return `<span class="badge bg-danger">Ошибка</span>`;
+                return `<span class="badge bg-light text-dark">${status || "—"}</span>`;
+            }
 
-    zipResultTbody.innerHTML = "";
-    (results || []).forEach(r => {
-      const st = r.status;
-      if (st === "created") created++;
-      else if (st === "duplicate") duplicate++;
-      else if (st === "error") error++;
+            function zipRender(results) {
+                let created = 0, duplicate = 0, error = 0;
 
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
+                zipResultTbody.innerHTML = "";
+                (results || []).forEach(r => {
+                    const st = r.status;
+                    if (st === "created") created++;
+                    else if (st === "duplicate") duplicate++;
+                    else if (st === "error") error++;
+
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
         <td style="word-break:break-word;">${r.file || "—"}</td>
         <td style="word-break:break-word;">${r.project || "—"}</td>
         <td class="text-center">${r.revision || "—"}</td>
         <td class="text-center">${zipBadge(st)}</td>
       `;
-      zipResultTbody.appendChild(tr);
-    });
+                    zipResultTbody.appendChild(tr);
+                });
 
-    zipResultSummary.innerHTML = `
+                zipResultSummary.innerHTML = `
       <div class="alert alert-primary py-2 mb-0">
         Обработано: <strong>${(results || []).length}</strong> |
         Добавлено: <strong>${created}</strong> |
@@ -425,48 +458,48 @@
       </div>
     `;
 
-    zipResultTableWrap.classList.toggle("d-none", !(results && results.length));
-  }
+                zipResultTableWrap.classList.toggle("d-none", !(results && results.length));
+            }
 
-  bindDnD(zipDropZone);
-  zipDropZone.addEventListener("drop", (e) => {
-    const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    zipPick(f);
-  });
-  zipDropZone.addEventListener("click", () => zipInput.click());
-  zipInput.addEventListener("change", (e) => zipPick(e.target.files[0]));
-  zipBtnReset.addEventListener("click", zipReset);
+            bindDnD(zipDropZone);
+            zipDropZone.addEventListener("drop", (e) => {
+                const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                zipPick(f);
+            });
+            zipDropZone.addEventListener("click", () => zipInput.click());
+            zipInput.addEventListener("change", (e) => zipPick(e.target.files[0]));
+            zipBtnReset.addEventListener("click", zipReset);
 
-  zipBtnUpload.addEventListener("click", async function () {
-    const err = zipValidate(zipSelected);
-    if (err) return zipSetStatus(`<div class="alert alert-danger py-2">${err}</div>`);
+            zipBtnUpload.addEventListener("click", async function () {
+                const err = zipValidate(zipSelected);
+                if (err) return zipSetStatus(`<div class="alert alert-danger py-2">${err}</div>`);
 
-    zipSetStatus(`<div class="text-muted">Загрузка и обработка архива…</div>`);
-    zipBtnUpload.disabled = true;
+                zipSetStatus(`<div class="text-muted">Загрузка и обработка архива…</div>`);
+                zipBtnUpload.disabled = true;
 
-    const fd = new FormData();
-    fd.append("archive", zipSelected);
+                const fd = new FormData();
+                fd.append("archive", zipSelected);
 
-    try {
-      const resp = await fetch(zipUploadUrl, {
-        method: "POST",
-        headers: { "X-CSRFToken": csrftoken },
-        body: fd
-      });
+                try {
+                    const resp = await fetch(zipUploadUrl, {
+                        method: "POST",
+                        headers: {"X-CSRFToken": csrftoken},
+                        body: fd
+                    });
 
-      const data = await safeJson(resp);
-      if (!data || data.ok !== true) throw new Error(data.error || data.message || "Ошибка обработки архива");
+                    const data = await safeJson(resp);
+                    if (!data || data.ok !== true) throw new Error(data.error || data.message || "Ошибка обработки архива");
 
-      zipSetStatus(`<div class="alert alert-success py-2">Готово. Обработано файлов: <strong>${data.processed}</strong></div>`);
-      zipRender(data.results || []);
-    } catch (e) {
-      zipSetStatus(`<div class="alert alert-danger py-2">Ошибка: ${String(e.message || e)}</div>`);
-    } finally {
-      zipBtnUpload.disabled = false;
-    }
-  });
+                    zipSetStatus(`<div class="alert alert-success py-2">Готово. Обработано файлов: <strong>${data.processed}</strong></div>`);
+                    zipRender(data.results || []);
+                } catch (e) {
+                    zipSetStatus(`<div class="alert alert-danger py-2">Ошибка: ${String(e.message || e)}</div>`);
+                } finally {
+                    zipBtnUpload.disabled = false;
+                }
+            });
 
-  zipReset();
-})();
-</script>
+            zipReset();
+        })();
+    </script>
 {% endblock %}
