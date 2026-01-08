@@ -8,12 +8,21 @@ from pathlib import Path
 from typing import Tuple
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from .models import Project, ProjectRevision
 
-from django.utils import timezone
+
+class DuplicatePdfSha256Error(Exception):
+    def __init__(self, sha256: str, existing: ProjectRevision):
+        self.sha256 = sha256
+        self.existing = existing
+        super().__init__(
+            f"Duplicate sha256={sha256} already exists: revision_id={existing.id}, project_id={existing.project_id}"
+        )
+
 
 @transaction.atomic
 def renumber_project_revisions(project: Project) -> None:
@@ -24,27 +33,20 @@ def renumber_project_revisions(project: Project) -> None:
         .order_by("created_at", "id")
     )
 
-    # 1) временные уникальные ревизии (<=10)
     for i, rev in enumerate(revisions, start=1):
-        rev.revision = f"T{i:09d}"   # например T000000001
+        rev.revision = f"T{i:09d}"
         rev.save(update_fields=["revision"])
 
-    # 2) финальные номера 01..NN
     for i, rev in enumerate(revisions, start=1):
         rev.revision = f"{i:02d}"
         rev.save(update_fields=["revision"])
 
-    # 3) is_latest = последняя
     ProjectRevision.objects.filter(project=project, is_latest=True).update(is_latest=False)
     if revisions:
         last = ProjectRevision.objects.filter(project=project).order_by("-created_at", "-id").first()
         last.is_latest = True
         last.save(update_fields=["is_latest"])
 
-
-# =========================================================
-# STORAGE: ROOT ONLY
-# =========================================================
 
 def projects_root() -> Path:
     root = Path(settings.PROJECTS_DIR).resolve()
@@ -60,10 +62,6 @@ def safe_inside_projects_dir(p: Path) -> None:
 
 
 def sanitize_filename(value: str) -> str:
-    """
-    (value) строка для имени файла (full_code)
-    Делаем безопасным для FS: убираем слэши, сжимаем пробелы.
-    """
     v = (value or "").strip()
     v = " ".join(v.split())
     v = v.replace("/", "_").replace("\\", "_")
@@ -71,30 +69,17 @@ def sanitize_filename(value: str) -> str:
 
 
 def normalize_full_code(value: str) -> str:
-    """
-    (value) ввод пользователя
-    Нормализация шифра (для хранения в БД).
-    """
     value = (value or "").strip()
     value = " ".join(value.split())
     return value
 
 
 def build_revision_filename(*, full_code: str, revision: str, suffix: str = ".pdf") -> str:
-    """
-    Итоговое имя файла ревизии в корне PROJECTS_DIR
-    """
     suffix = suffix if suffix.startswith(".") else f".{suffix}"
     return f"{sanitize_filename(full_code)}-{revision}{suffix}"
 
 
 def _safe_rename(src: Path, dst: Path) -> None:
-    """
-    (src) откуда
-    (dst) куда
-    Переименование/перемещение в пределах PROJECTS_DIR.
-    Используем os.replace (атомарно).
-    """
     safe_inside_projects_dir(src)
     safe_inside_projects_dir(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -102,12 +87,6 @@ def _safe_rename(src: Path, dst: Path) -> None:
 
 
 def ensure_project_files_named(project: Project) -> bool:
-    """
-    Приводит имена файлов ревизий к формату full_code-REV.pdf в PROJECTS_DIR.
-    Ничего никуда не переносим (всё в корне), только rename.
-
-    Возвращает True если что-то переименовали.
-    """
     root = projects_root()
 
     revisions = (
@@ -134,7 +113,6 @@ def ensure_project_files_named(project: Project) -> bool:
         if src == dst:
             continue
 
-        # не затираем существующий файл
         if dst.exists():
             dst = (root / f"{dst.stem}__dup{suffix}").resolve()
             safe_inside_projects_dir(dst)
@@ -147,10 +125,6 @@ def ensure_project_files_named(project: Project) -> bool:
 
     return changed
 
-
-# =========================================================
-# NEEDS_REVIEW (оставляем как было, но оно больше не влияет на хранение)
-# =========================================================
 
 REQUIRED_PROJECT_FIELDS = (
     "full_code",
@@ -182,10 +156,6 @@ def sync_needs_review(project: Project, *, save: bool = True) -> bool:
     return project.needs_review
 
 
-# =========================================================
-# REVISIONS
-# =========================================================
-
 def _next_revision_code(project: Project) -> str:
     max_rev = (
         ProjectRevision.objects
@@ -214,11 +184,22 @@ def attach_revision_to_project(
     sha256: str | None,
 ) -> Tuple[ProjectRevision, bool]:
     """
-    (temp_file_path) путь на временный файл (из temp upload или из распакованного архива)
-    1) считаем номер ревизии
-    2) кладём файл в PROJECTS_DIR с именем full_code-REV.pdf
-    3) создаём ProjectRevision
+    ГЛАВНАЯ точка защиты от дублей.
     """
+
+    sha256 = (sha256 or "").strip() or None
+
+    # ✅ Бизнес-правило: один и тот же PDF (sha256) нельзя сохранять второй раз вообще.
+    if sha256:
+        existing = (
+            ProjectRevision.objects
+            .select_related("project")
+            .filter(sha256=sha256)
+            .first()
+        )
+        if existing:
+            raise DuplicatePdfSha256Error(sha256, existing)
+
     ProjectRevision.objects.filter(project=project, is_latest=True).update(is_latest=False)
 
     revision_number = _next_revision_code(project)
@@ -237,7 +218,6 @@ def attach_revision_to_project(
         dst = (root / f"{dst.stem}__dup{suffix}").resolve()
         safe_inside_projects_dir(dst)
 
-    # перемещение/rename в пределах диска (если tmp на другом FS, replace может упасть EXDEV)
     try:
         src.replace(dst)
     except OSError as e:
@@ -249,14 +229,28 @@ def attach_revision_to_project(
         except Exception:
             pass
 
-    revision = ProjectRevision.objects.create(
-        project=project,
-        revision=revision_number,
-        file_name=file_name,
-        file_path=str(dst),
-        sha256=sha256 or "",
-        is_latest=True,
-    )
+    # ✅ На всякий случай: если где-то всё же проскочит гонка — UNIQUE constraint в БД нас защитит.
+    try:
+        revision = ProjectRevision.objects.create(
+            project=project,
+            revision=revision_number,
+            file_name=file_name,
+            file_path=str(dst),
+            sha256=sha256,
+            is_latest=True,
+        )
+    except IntegrityError:
+        # Подчистим файл, чтобы не копить мусор
+        try:
+            dst.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        if sha256:
+            existing = ProjectRevision.objects.select_related("project").filter(sha256=sha256).first()
+            if existing:
+                raise DuplicatePdfSha256Error(sha256, existing)
+        raise
 
     return revision, True
 
@@ -294,10 +288,6 @@ def delete_project_revision(*, revision_id: int) -> None:
         newest.save(update_fields=["is_latest"])
 
 
-# =========================================================
-# FULL_CODE CHANGE (rename/merge) + RENAME FILES
-# =========================================================
-
 def _make_revisions_temp_unique(project: Project) -> None:
     revs = list(
         ProjectRevision.objects
@@ -306,8 +296,9 @@ def _make_revisions_temp_unique(project: Project) -> None:
         .order_by("created_at", "id")
     )
     for i, rev in enumerate(revs, start=1):
-        rev.revision = f"M{i:09d}"   # 10 символов
+        rev.revision = f"M{i:09d}"
         rev.save(update_fields=["revision"])
+
 
 @transaction.atomic
 def change_project_full_code(project: Project, new_full_code_input: str) -> Project:
@@ -322,36 +313,24 @@ def change_project_full_code(project: Project, new_full_code_input: str) -> Proj
 
     target = Project.objects.select_for_update().filter(full_code=new_full_code).first()
 
-    # MERGE: переносим ревизии на существующий проект
     if target and target.pk != project.pk:
-        # ✅ ШАГ 1: снять конфликт по (project, revision) ещё ДО смены project_id
         _make_revisions_temp_unique(project)
-
-        # ✅ ШАГ 2: теперь можно переносить ревизии в target без IntegrityError
         ProjectRevision.objects.select_for_update().filter(project=project).update(project=target)
-
         project.delete()
 
         sync_needs_review(target, save=True)
 
-        # ✅ ШАГ 3: нормальная нумерация 01..NN и переименование файлов
         renumber_project_revisions(target)
         ensure_project_files_named(target)
-
         return target
 
-    # RENAME
     project.full_code = new_full_code
     project.save(update_fields=["full_code"])
 
     sync_needs_review(project, save=True)
-    ensure_project_files_named(project)  # ✅ переименовать все ревизии
+    ensure_project_files_named(project)
     return project
 
-
-# =========================================================
-# ASSIGN FULL_CODE TO DRAFT + RENAME FILES
-# =========================================================
 
 @transaction.atomic
 def assign_full_code_to_draft(*, draft_project_id: int, full_code_input: str) -> Project:
@@ -360,7 +339,6 @@ def assign_full_code_to_draft(*, draft_project_id: int, full_code_input: str) ->
 
     existing = Project.objects.filter(full_code=full_code).exclude(id=draft.id).first()
     if existing:
-        # ✅ снять конфликт по ревизиям у draft
         _make_revisions_temp_unique(draft)
 
         ProjectRevision.objects.select_for_update().filter(project=draft).update(project=existing)
@@ -380,10 +358,6 @@ def assign_full_code_to_draft(*, draft_project_id: int, full_code_input: str) ->
     ensure_project_files_named(draft)
     return draft
 
-
-# =========================================================
-# ZIP: обработка одного PDF (корень + именование)
-# =========================================================
 
 @transaction.atomic
 def process_single_pdf(*, pdf_path: Path, original_name: str, user) -> dict:
@@ -411,7 +385,6 @@ def process_single_pdf(*, pdf_path: Path, original_name: str, user) -> dict:
     )
 
     sync_needs_review(project, save=True)
-    # на всякий случай (если full_code поправили) — привести имена
     ensure_project_files_named(project)
 
     return {"status": "created", "project": project.full_code, "revision": rev.revision, "file": original_name}

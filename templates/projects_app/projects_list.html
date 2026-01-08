@@ -77,38 +77,35 @@
 
                                                 <!-- СТАТУСЫ -->
                                                 <td class="text-center text-nowrap">
-
                                                     <!-- РЕВИЗИЯ -->
                                                     <span class="me-3"
-                                                          title="Ревизия 
-                                                                  {{ rev.revision }}{% if rev.is_latest %} (актуальная){% endif %}">
-                                                    {% if rev.is_latest %}
-                                                        <i class="bi bi-check-circle-fill text-success"></i>
-                                                    {% else %}
-                                                        <i class="bi bi-circle text-muted"></i>
-                                                    {% endif %}
+                                                          title="Ревизия {{ rev.revision }}{% if rev.is_latest %} (актуальная){% endif %}">
+                                                        {% if rev.is_latest %}
+                                                            <i class="bi bi-check-circle-fill text-success"></i>
+                                                        {% else %}
+                                                            <i class="bi bi-circle text-muted"></i>
+                                                        {% endif %}
                                                         <span class="fw-semibold ms-1">{{ rev.revision }}</span>
-                                                </span>
+                                                    </span>
 
                                                     <!-- В ПРОИЗВОДСТВЕ -->
                                                     <span class="me-3"
                                                           title="{% if rev.in_production %}В производстве{% else %}Не в производстве{% endif %}">
-                                                    {% if rev.in_production %}
-                                                        <i class="bi bi-gear-fill text-primary"></i>
-                                                    {% else %}
-                                                        <i class="bi bi-gear text-muted"></i>
-                                                    {% endif %}
-                                                </span>
+                                                        {% if rev.in_production %}
+                                                            <i class="bi bi-gear-fill text-primary"></i>
+                                                        {% else %}
+                                                            <i class="bi bi-gear text-muted"></i>
+                                                        {% endif %}
+                                                    </span>
 
                                                     <!-- ТРЕБУЕТ УТОЧНЕНИЯ -->
                                                     <span title="{% if rev.project.needs_review %}Требует уточнения{% else %}Данные заполнены{% endif %}">
-                                                    {% if rev.project.needs_review %}
-                                                        <i class="bi bi-exclamation-triangle-fill text-warning"></i>
-                                                    {% else %}
-                                                        <i class="bi bi-exclamation-triangle text-muted"></i>
-                                                    {% endif %}
-                                                </span>
-
+                                                        {% if rev.project.needs_review %}
+                                                            <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                                                        {% else %}
+                                                            <i class="bi bi-exclamation-triangle text-muted"></i>
+                                                        {% endif %}
+                                                    </span>
                                                 </td>
 
                                                 <!-- ДЕЙСТВИЯ -->
@@ -139,12 +136,6 @@
 
                                             </tr>
                                         {% endfor %}
-                                    {% else %}
-                                        <tr>
-                                            <td colspan="3" class="text-center text-muted py-4">
-                                                Проекты не найдены
-                                            </td>
-                                        </tr>
                                     {% endif %}
                                     </tbody>
 
@@ -158,7 +149,6 @@
             </div>
         </section>
 
-        <!-- СТИЛИ ДЛЯ КЛИКАБЕЛЬНОГО ШИФРА -->
         <style>
             a.project-code-link,
             a.project-code-link:visited,
@@ -180,7 +170,10 @@
         document.addEventListener('DOMContentLoaded', function () {
 
             $('#projectsTable').DataTable({
-                language: {url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json'},
+                language: {
+                    url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json',
+                    emptyTable: "Проекты не найдены"
+                },
                 scrollX: true,
             });
 

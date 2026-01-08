@@ -217,6 +217,15 @@
     dropEl.addEventListener('drop', () => dropEl.classList.remove('bg-light'));
   }
 
+  async function safeJson(resp) {
+    const ct = (resp.headers.get("content-type") || "");
+    if (!ct.includes("application/json")) {
+      return { ok: false, error: `Сервер вернул не JSON (status ${resp.status})` };
+    }
+    try { return await resp.json(); }
+    catch { return { ok:false, error:`Не удалось разобрать JSON (status ${resp.status})` }; }
+  }
+
   // =========================================================
   // TAB: ONE PDF
   // =========================================================
@@ -257,14 +266,6 @@
     frame.style.display = "block";
   }
 
-  async function safeJson(resp) {
-    const ct = (resp.headers.get("content-type") || "");
-    if (!ct.includes("application/json")) {
-      return { ok: false, error: `Сервер вернул не JSON (status ${resp.status})` };
-    }
-    try { return await resp.json(); } catch { return { ok:false, error:`Не удалось разобрать JSON (status ${resp.status})` }; }
-  }
-
   async function handlePdfFile(file) {
     if (!file) return;
     showPdfPreview(file);
@@ -272,10 +273,12 @@
     const isPdf = (file.type === "application/pdf") || (file.name || "").toLowerCase().endsWith(".pdf");
     if (!isPdf) {
       pdfSetStatus('<div class="alert alert-danger py-2">Разрешены только PDF</div>');
+      pdfFormBlock.classList.add('d-none');
       return;
     }
 
     pdfSetStatus('<div class="text-muted">Загрузка…</div>');
+    pdfFormBlock.classList.add('d-none');
 
     const fd = new FormData();
     fd.append('file', file);
@@ -288,14 +291,35 @@
 
     const data = await safeJson(resp);
 
-    if (!data || data.ok !== true) {
-      pdfSetStatus(`<div class="alert alert-danger py-2">${data.error || data.message || 'Ошибка загрузки'}</div>`);
+    // ✅ Понятное сообщение для пользователя при дубле sha256 (409)
+    if (resp.status === 409 || (data && data.status === "duplicate")) {
+      const sha = (data && data.sha256) ? data.sha256 : '';
+      const proj = (data && data.existing_project) ? data.existing_project : '';
+      const rev = (data && data.existing_revision) ? data.existing_revision : '';
+
+      // сбрасываем upload_id, чтобы случайно не отправить старое
+      const uploadIdInput = document.getElementById('id_upload_id');
+      if (uploadIdInput) uploadIdInput.value = "";
+
+      // сбрасываем input, чтобы пользователь мог сразу выбрать/перетащить другой файл
+      pdfInput.value = "";
+
+      pdfSetStatus(`
+        <div class="alert alert-warning py-2">
+          <div class="fw-semibold">Этот PDF уже есть в системе</div>
+          <div class="small text-muted">
+            Файл совпал по SHA256, поэтому мы не создаём новую ревизию и не добавляем его повторно.
+            ${proj ? `<br>Проект: <strong>${proj}</strong>${rev ? `, ревизия <strong>${rev}</strong>` : ""}` : ""}
+            ${sha ? `<br>SHA256: <code>${sha}</code>` : ""}
+          </div>
+          <div class="small mt-2">Можете сразу перетащить другой PDF.</div>
+        </div>
+      `);
       return;
     }
 
-    if (data.duplicate) {
-      pdfSetStatus(`<div class="alert alert-warning py-2">${data.message || 'Такой PDF уже есть в системе'}</div>`);
-      pdfFormBlock.classList.add('d-none');
+    if (!data || data.ok !== true) {
+      pdfSetStatus(`<div class="alert alert-danger py-2">${(data && (data.error || data.message)) || 'Ошибка загрузки'}</div>`);
       return;
     }
 

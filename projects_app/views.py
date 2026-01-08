@@ -6,7 +6,6 @@ import zipfile
 from pathlib import Path
 from urllib.parse import quote
 
-
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.db import IntegrityError, transaction
@@ -32,6 +31,7 @@ from .models import (
     TempUpload,
 )
 from .services import (
+    DuplicatePdfSha256Error,
     assign_full_code_to_draft,
     attach_revision_to_project,
     change_project_full_code,
@@ -104,6 +104,7 @@ class ProjectDetailView(PermissionRequiredMixin, DetailView):
         )
         return ctx
 
+
 @method_decorator(xframe_options_sameorigin, name="dispatch")
 class ProjectRevisionOpenView(PermissionRequiredMixin, View):
     permission_required = "projects_app.view_project_detail_page"
@@ -114,7 +115,6 @@ class ProjectRevisionOpenView(PermissionRequiredMixin, View):
         file_path = Path(revision.file_path)
 
         if not file_path.exists():
-            # мягкая самопочинка (переименования после изменения full_code)
             with transaction.atomic():
                 ensure_project_files_named(revision.project)
                 revision.refresh_from_db()
@@ -151,6 +151,27 @@ class TempUploadPdfView(JsonPermissionRequiredMixin, View):
         for chunk in f.chunks():
             h.update(chunk)
         sha256 = h.hexdigest()
+
+        # ✅ Ранняя проверка дубля для UX (без лишних действий)
+        existing = (
+            ProjectRevision.objects
+            .select_related("project")
+            .filter(sha256=sha256)
+            .first()
+        )
+        if existing:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "status": "duplicate",
+                    "sha256": sha256,
+                    "existing_project_id": existing.project_id,
+                    "existing_project": existing.project.full_code,
+                    "existing_revision_id": existing.id,
+                    "existing_revision": existing.revision,
+                },
+                status=409,
+            )
 
         tmp_dir = Path(tempfile.gettempdir()) / "doc_helper_uploads"
         ensure_dir(tmp_dir)
@@ -200,17 +221,31 @@ class ProjectCreateWithPdfView(PermissionRequiredMixin, View):
 
         sync_needs_review(project, save=True)
 
-        rev, _ = attach_revision_to_project(
-            project=project,
-            file_name=upload.original_name,
-            temp_file_path=upload.tmp_path,
-            sha256=upload.sha256,
-        )
+        try:
+            rev, _ = attach_revision_to_project(
+                project=project,
+                file_name=upload.original_name,
+                temp_file_path=upload.tmp_path,
+                sha256=upload.sha256,
+            )
+        except DuplicatePdfSha256Error as e:
+            # подчистим temp + покажем ошибку без создания дубля
+            upload.is_used = True
+            upload.save(update_fields=["is_used"])
+            try:
+                Path(upload.tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+            form.add_error(
+                None,
+                f"Этот PDF уже загружен: {e.existing.project.full_code} (ревизия {e.existing.revision})",
+            )
+            return render(request, "projects_app/project_create.html", {"form": form})
 
         upload.is_used = True
         upload.save(update_fields=["is_used"])
 
-        # на всякий случай привести имена под full_code
         ensure_project_files_named(project)
 
         messages.success(request, f"Проект сохранён, версия {rev.revision}")
@@ -266,8 +301,6 @@ class ProjectUpdateView(PermissionRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        # ✅ ВАЖНО: берём объект заново из БД под блокировкой,
-        # чтобы НЕ использовать instance, который ModelForm уже успела изменить.
         project = Project.objects.select_for_update().get(pk=self.object.pk)
 
         new_full_code = form.cleaned_data.get("full_code")
@@ -371,26 +404,4 @@ class ProjectUploadArchiveView(PermissionRequiredMixin, View):
 
 
 class ProjectRevisionDownloadView(PermissionRequiredMixin, View):
-    permission_required = "projects_app.open_project_revision_pdf"   # используй ту же пермишку
-    raise_exception = True
-
-    def get(self, request, pk: int):
-        rev = get_object_or_404(ProjectRevision.objects.select_related("project"), pk=pk)
-        file_path = Path(rev.file_path)
-
-        if not file_path.exists():
-            raise Http404("PDF файл не найден")
-
-        filename = file_path.name
-        # На всякий случай: если по какой-то причине без .pdf
-        if not filename.lower().endswith(".pdf"):
-            filename = f"{filename}.pdf"
-
-        resp = FileResponse(file_path.open("rb"), content_type="application/pdf", as_attachment=True)
-
-        # Чтобы кириллица в имени корректно скачивалась во всех браузерах:
-        resp["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
-        return resp
-
-
-# Fix Upload SHA256
+    permission_required = "projects_app.open_project_revision_pdf"

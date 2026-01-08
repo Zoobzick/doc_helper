@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 
 # =========================
@@ -116,7 +117,6 @@ class Project(models.Model):
     construction = models.TextField(blank=True, default="")
     needs_review = models.BooleanField(default=True)
 
-    # КЛАССИФИКАТОРЫ (важны для фильтрации и других приложений)
     designer = models.ForeignKey(Designer, on_delete=models.PROTECT, null=True, blank=True)
     line = models.ForeignKey(Line, on_delete=models.PROTECT, null=True, blank=True)
     design_stage = models.ForeignKey(DesignStage, on_delete=models.PROTECT, null=True, blank=True)
@@ -151,11 +151,11 @@ class ProjectRevision(models.Model):
     file_name = models.CharField(max_length=255)
     file_path = models.CharField(max_length=500)
 
+    # ВАЖНО: sha256 храним как NULL если неизвестно, а не пустую строку.
     sha256 = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     is_latest = models.BooleanField(default=False)
 
-    # 🔴 ВАЖНОЕ НОВОЕ ПОЛЕ
     in_production = models.BooleanField(
         default=False,
         help_text="Выдана ли данная ревизия в производство работ",
@@ -166,6 +166,14 @@ class ProjectRevision(models.Model):
     class Meta:
         ordering = ["project", "-created_at"]
         unique_together = ("project", "revision")
+        # ✅ Глобальная уникальность sha256 (только когда sha256 задан)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["sha256"],
+                condition=Q(sha256__isnull=False) & ~Q(sha256=""),
+                name="uniq_projectrevision_sha256_not_null",
+            ),
+        ]
         verbose_name = "Версия проекта"
         verbose_name_plural = "Версии проектов"
 
