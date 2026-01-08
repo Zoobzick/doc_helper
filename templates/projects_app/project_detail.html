@@ -69,12 +69,30 @@
               </div>
             {% endif %}
 
-            {% if project.construction %}
-              <div class="mb-3">
-                <strong>Конструкция:</strong>
-                <div class="mt-1">{{ project.construction }}</div>
+            <!-- ДАННЫЕ ПРОЕКТА (как в Project_update, но выводом) -->
+            <div class="row g-2 mb-3">
+              <div class="col-12">
+                <div><strong>Проектировщик:</strong> {{ project.designer.full_name|default:"—" }}</div>
               </div>
-            {% endif %}
+              <div class="col-12">
+                <div><strong>Линия:</strong> {{ project.line.full_name|default:"—" }}</div>
+              </div>
+              <div class="col-12">
+                <div><strong>Этап:</strong> {{ project.stage.full_name|default:"—" }}</div>
+              </div>
+              <div class="col-12">
+                <div><strong>Участок:</strong> {{ project.plot.full_name|default:"—" }}</div>
+              </div>
+              <div class="col-12">
+                <div><strong>Конструкция:</strong> {{ project.construction|default:"—" }}</div>
+              </div>
+            </div>
+
+            <div class="mt-2">
+              <a href="{% url 'projects:project_update' project.id %}" class="btn btn-outline-secondary btn-sm">
+                Редактировать
+              </a>
+            </div>
 
           </div>
         </div>
@@ -94,10 +112,9 @@
               <table class="table table-hover align-middle">
                 <thead>
                   <tr>
-                    <th class="text-nowrap">Версия</th>
-                    <th>Файл</th>
-                    <th class="text-center">Статус</th>
-                    <th class="text-center">В производство</th>
+                    <th class="text-center text-nowrap">Статус</th>
+                    <th class="text-center text-nowrap">Дата загрузки</th>
+                    <th class="text-center text-nowrap">В производство</th>
                     <th class="text-end text-nowrap">Действия</th>
                   </tr>
                 </thead>
@@ -105,23 +122,33 @@
                 <tbody>
                   {% for rev in project.revisions.all %}
                     <tr>
-                      <td class="fw-semibold text-nowrap">
-                        {{ rev.revision }}
-                        {% if rev.is_latest %}
-                          <span class="badge bg-success ms-1">Актуальная</span>
-                        {% endif %}
+                      <!-- 1) Статус: иконка актуальности + иконка производства (без needs_review) -->
+                      <td class="text-center text-nowrap">
+                        <span class="me-3"
+                              title="Ревизия {{ rev.revision }}{% if rev.is_latest %} (актуальная){% endif %}">
+                          {% if rev.is_latest %}
+                            <i class="bi bi-check-circle-fill text-success"></i>
+                          {% else %}
+                            <i class="bi bi-circle text-muted"></i>
+                          {% endif %}
+                          <span class="fw-semibold ms-1">{{ rev.revision }}</span>
+                        </span>
+
+                        <span title="{% if rev.in_production %}В производстве{% else %}Не в производстве{% endif %}">
+                          {% if rev.in_production %}
+                            <i class="bi bi-gear-fill text-primary"></i>
+                          {% else %}
+                            <i class="bi bi-gear text-muted"></i>
+                          {% endif %}
+                        </span>
                       </td>
 
-                      <td>{{ rev.file_name }}</td>
-
-                      <td class="text-center">
-                        {% if rev.in_production %}
-                          <span class="badge bg-primary">В производстве</span>
-                        {% else %}
-                          <span class="text-muted">—</span>
-                        {% endif %}
+                      <!-- 2) Дата загрузки DD.MM.YYYY -->
+                      <td class="text-center text-nowrap">
+                        {{ rev.created_at|date:"d.m.Y" }}
                       </td>
 
+                      <!-- 3) Ползунок оставить как есть -->
                       <td class="text-center">
                         {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
                           <div class="form-check form-switch d-inline-flex justify-content-center">
@@ -137,6 +164,7 @@
                         {% endif %}
                       </td>
 
+                      <!-- 4) Действия -->
                       <td class="text-end text-nowrap">
                         {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
                           <a href="{% url 'projects:project_revision_open' rev.id %}"
@@ -145,10 +173,12 @@
                              title="Открыть PDF">
                             <i class="bi bi-file-earmark-pdf-fill"></i>
                           </a>
+
                           <a href="{% url 'projects:project_update' project.id %}"
                              class="btn btn-outline-secondary btn-sm">
                             Редактировать
                           </a>
+
                           <form method="post"
                                 action="{% url 'projects:project_revision_delete' rev.id %}"
                                 class="d-inline"
@@ -165,7 +195,7 @@
                     </tr>
                   {% empty %}
                     <tr>
-                      <td colspan="5" class="text-center text-muted py-4">
+                      <td colspan="4" class="text-center text-muted py-4">
                         У проекта нет файлов
                       </td>
                     </tr>
