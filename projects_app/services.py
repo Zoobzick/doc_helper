@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import errno
 import hashlib
+import os
 import shutil
 from pathlib import Path
 from typing import Tuple
@@ -11,25 +13,143 @@ from django.db.models import Max
 
 from .models import Project, ProjectRevision
 
+from django.utils import timezone
+
+@transaction.atomic
+def renumber_project_revisions(project: Project) -> None:
+    revisions = list(
+        ProjectRevision.objects
+        .select_for_update()
+        .filter(project=project)
+        .order_by("created_at", "id")
+    )
+
+    # 1) временные уникальные ревизии (<=10)
+    for i, rev in enumerate(revisions, start=1):
+        rev.revision = f"T{i:09d}"   # например T000000001
+        rev.save(update_fields=["revision"])
+
+    # 2) финальные номера 01..NN
+    for i, rev in enumerate(revisions, start=1):
+        rev.revision = f"{i:02d}"
+        rev.save(update_fields=["revision"])
+
+    # 3) is_latest = последняя
+    ProjectRevision.objects.filter(project=project, is_latest=True).update(is_latest=False)
+    if revisions:
+        last = ProjectRevision.objects.filter(project=project).order_by("-created_at", "-id").first()
+        last.is_latest = True
+        last.save(update_fields=["is_latest"])
+
 
 # =========================================================
-# FULL_CODE
+# STORAGE: ROOT ONLY
 # =========================================================
+
+def projects_root() -> Path:
+    root = Path(settings.PROJECTS_DIR).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def safe_inside_projects_dir(p: Path) -> None:
+    root = projects_root()
+    p = p.resolve()
+    if p != root and root not in p.parents:
+        raise RuntimeError(f"Путь вне PROJECTS_DIR: {p}")
+
+
+def sanitize_filename(value: str) -> str:
+    """
+    (value) строка для имени файла (full_code)
+    Делаем безопасным для FS: убираем слэши, сжимаем пробелы.
+    """
+    v = (value or "").strip()
+    v = " ".join(v.split())
+    v = v.replace("/", "_").replace("\\", "_")
+    return v
+
 
 def normalize_full_code(value: str) -> str:
     """
     (value) ввод пользователя
-    Возвращает "нормализованный" шифр:
-    - обрезаем края
-    - сжимаем множественные пробелы
+    Нормализация шифра (для хранения в БД).
     """
     value = (value or "").strip()
     value = " ".join(value.split())
     return value
 
 
+def build_revision_filename(*, full_code: str, revision: str, suffix: str = ".pdf") -> str:
+    """
+    Итоговое имя файла ревизии в корне PROJECTS_DIR
+    """
+    suffix = suffix if suffix.startswith(".") else f".{suffix}"
+    return f"{sanitize_filename(full_code)}-{revision}{suffix}"
+
+
+def _safe_rename(src: Path, dst: Path) -> None:
+    """
+    (src) откуда
+    (dst) куда
+    Переименование/перемещение в пределах PROJECTS_DIR.
+    Используем os.replace (атомарно).
+    """
+    safe_inside_projects_dir(src)
+    safe_inside_projects_dir(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(src, dst)
+
+
+def ensure_project_files_named(project: Project) -> bool:
+    """
+    Приводит имена файлов ревизий к формату full_code-REV.pdf в PROJECTS_DIR.
+    Ничего никуда не переносим (всё в корне), только rename.
+
+    Возвращает True если что-то переименовали.
+    """
+    root = projects_root()
+
+    revisions = (
+        ProjectRevision.objects
+        .select_for_update()
+        .filter(project=project)
+        .order_by("created_at")
+    )
+
+    changed = False
+
+    for rev in revisions:
+        src = Path(rev.file_path).resolve()
+        safe_inside_projects_dir(src)
+
+        if not src.exists():
+            raise RuntimeError(f"Файл ревизии не найден: {src}")
+
+        suffix = src.suffix or ".pdf"
+        desired_name = build_revision_filename(full_code=project.full_code or "", revision=rev.revision, suffix=suffix)
+        dst = (root / desired_name).resolve()
+        safe_inside_projects_dir(dst)
+
+        if src == dst:
+            continue
+
+        # не затираем существующий файл
+        if dst.exists():
+            dst = (root / f"{dst.stem}__dup{suffix}").resolve()
+            safe_inside_projects_dir(dst)
+
+        _safe_rename(src, dst)
+
+        rev.file_path = str(dst)
+        rev.save(update_fields=["file_path"])
+        changed = True
+
+    return changed
+
+
 # =========================================================
-# NEEDS_REVIEW ЛОГИКА
+# NEEDS_REVIEW (оставляем как было, но оно больше не влияет на хранение)
 # =========================================================
 
 REQUIRED_PROJECT_FIELDS = (
@@ -44,11 +164,6 @@ REQUIRED_PROJECT_FIELDS = (
 
 
 def compute_needs_review(project: Project) -> bool:
-    """
-    Возвращает True, если проект "требует заполнения":
-    - нет полного шифра (full_code)
-    - или не заполнены обязательные классификаторы
-    """
     for field in REQUIRED_PROJECT_FIELDS:
         val = getattr(project, field)
         if val is None:
@@ -59,29 +174,19 @@ def compute_needs_review(project: Project) -> bool:
 
 
 def sync_needs_review(project: Project, *, save: bool = True) -> bool:
-    """
-    (project) проект
-    (save) нужно ли сохранять в БД
-
-    Пересчитывает project.needs_review и, если надо, сохраняет.
-    Возвращает итоговое значение.
-    """
-    new_value = compute_needs_review(project)
-    if project.needs_review != new_value:
-        project.needs_review = new_value
+    new_val = compute_needs_review(project)
+    if project.needs_review != new_val:
+        project.needs_review = new_val
         if save:
             project.save(update_fields=["needs_review"])
     return project.needs_review
 
 
 # =========================================================
-# РЕВИЗИИ
+# REVISIONS
 # =========================================================
 
 def _next_revision_code(project: Project) -> str:
-    """
-    Возвращает следующий код ревизии "01", "02", ...
-    """
     max_rev = (
         ProjectRevision.objects
         .filter(project=project)
@@ -95,60 +200,69 @@ def _next_revision_code(project: Project) -> str:
     try:
         n = int(max_rev)
     except ValueError:
-        # если по какой-то причине ревизия была нечисловой
         n = 0
+
     return f"{n + 1:02d}"
 
 
 @transaction.atomic
 def attach_revision_to_project(
-        *,
-        project: Project,
-        file_name: str,
-        file_path: str,
-        sha256: str | None,
+    *,
+    project: Project,
+    file_name: str,
+    temp_file_path: str,
+    sha256: str | None,
 ) -> Tuple[ProjectRevision, bool]:
     """
-    Добавляет ревизию к проекту:
-    - все старые is_latest=False
-    - новая rev становится is_latest=True
-    - дедуп по sha256 внутри проекта
-
-    Возвращает: (revision, created)
-      created=False если sha256 уже существует у проекта
+    (temp_file_path) путь на временный файл (из temp upload или из распакованного архива)
+    1) считаем номер ревизии
+    2) кладём файл в PROJECTS_DIR с именем full_code-REV.pdf
+    3) создаём ProjectRevision
     """
-    if sha256 and ProjectRevision.objects.filter(project=project, sha256=sha256).exists():
-        existing = (
-            ProjectRevision.objects
-            .filter(project=project, sha256=sha256)
-            .order_by("-created_at")
-            .first()
-        )
-        return existing, False
-
     ProjectRevision.objects.filter(project=project, is_latest=True).update(is_latest=False)
 
-    revision_code = _next_revision_code(project)
-    rev = ProjectRevision.objects.create(
+    revision_number = _next_revision_code(project)
+
+    src = Path(temp_file_path).resolve()
+    if not src.exists():
+        raise RuntimeError(f"Временный файл не найден: {src}")
+
+    root = projects_root()
+    suffix = src.suffix or ".pdf"
+    dst_name = build_revision_filename(full_code=project.full_code or "", revision=revision_number, suffix=suffix)
+    dst = (root / dst_name).resolve()
+    safe_inside_projects_dir(dst)
+
+    if dst.exists():
+        dst = (root / f"{dst.stem}__dup{suffix}").resolve()
+        safe_inside_projects_dir(dst)
+
+    # перемещение/rename в пределах диска (если tmp на другом FS, replace может упасть EXDEV)
+    try:
+        src.replace(dst)
+    except OSError as e:
+        if e.errno != errno.EXDEV:
+            raise
+        shutil.copy2(src, dst)
+        try:
+            src.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    revision = ProjectRevision.objects.create(
         project=project,
-        revision=revision_code,
+        revision=revision_number,
         file_name=file_name,
-        file_path=file_path,
-        sha256=sha256,
+        file_path=str(dst),
+        sha256=sha256 or "",
         is_latest=True,
     )
 
-    return rev, True
+    return revision, True
 
 
 @transaction.atomic
 def set_revision_in_production(*, revision_id: int, value: bool) -> ProjectRevision:
-    """
-    (revision_id) id ревизии
-    (value) True/False
-
-    Просто переключает поле in_production.
-    """
     rev = ProjectRevision.objects.select_for_update().get(id=revision_id)
     rev.in_production = value
     rev.save(update_fields=["in_production"])
@@ -157,18 +271,12 @@ def set_revision_in_production(*, revision_id: int, value: bool) -> ProjectRevis
 
 @transaction.atomic
 def delete_project_revision(*, revision_id: int) -> None:
-    """
-    Удаляет ревизию + файл.
-    Если удалили актуальную — назначаем актуальной последнюю по created_at.
-    Если ревизий не осталось — удаляем проект.
-    """
     rev = ProjectRevision.objects.select_related("project").select_for_update().get(id=revision_id)
     project = rev.project
-
     file_path = Path(rev.file_path)
+
     rev.delete()
 
-    # удаляем файл (если есть)
     try:
         file_path.unlink(missing_ok=True)
     except Exception:
@@ -179,7 +287,6 @@ def delete_project_revision(*, revision_id: int) -> None:
         project.delete()
         return
 
-    # если актуальной больше нет — назначим
     if not remaining.filter(is_latest=True).exists():
         newest = remaining.first()
         ProjectRevision.objects.filter(project=project, is_latest=True).update(is_latest=False)
@@ -187,50 +294,99 @@ def delete_project_revision(*, revision_id: int) -> None:
         newest.save(update_fields=["is_latest"])
 
 
+# =========================================================
+# FULL_CODE CHANGE (rename/merge) + RENAME FILES
+# =========================================================
+
+def _make_revisions_temp_unique(project: Project) -> None:
+    revs = list(
+        ProjectRevision.objects
+        .select_for_update()
+        .filter(project=project)
+        .order_by("created_at", "id")
+    )
+    for i, rev in enumerate(revs, start=1):
+        rev.revision = f"M{i:09d}"   # 10 символов
+        rev.save(update_fields=["revision"])
+
+@transaction.atomic
+def change_project_full_code(project: Project, new_full_code_input: str) -> Project:
+    new_full_code = normalize_full_code(new_full_code_input)
+    print(f"[change_project_full_code] project.id={project.id} old='{project.full_code}' new='{new_full_code}'")
+
+    if not new_full_code:
+        raise ValueError("new_full_code пустой")
+
+    if project.full_code == new_full_code:
+        return project
+
+    target = Project.objects.select_for_update().filter(full_code=new_full_code).first()
+
+    # MERGE: переносим ревизии на существующий проект
+    if target and target.pk != project.pk:
+        # ✅ ШАГ 1: снять конфликт по (project, revision) ещё ДО смены project_id
+        _make_revisions_temp_unique(project)
+
+        # ✅ ШАГ 2: теперь можно переносить ревизии в target без IntegrityError
+        ProjectRevision.objects.select_for_update().filter(project=project).update(project=target)
+
+        project.delete()
+
+        sync_needs_review(target, save=True)
+
+        # ✅ ШАГ 3: нормальная нумерация 01..NN и переименование файлов
+        renumber_project_revisions(target)
+        ensure_project_files_named(target)
+
+        return target
+
+    # RENAME
+    project.full_code = new_full_code
+    project.save(update_fields=["full_code"])
+
+    sync_needs_review(project, save=True)
+    ensure_project_files_named(project)  # ✅ переименовать все ревизии
+    return project
+
+
+# =========================================================
+# ASSIGN FULL_CODE TO DRAFT + RENAME FILES
+# =========================================================
+
 @transaction.atomic
 def assign_full_code_to_draft(*, draft_project_id: int, full_code_input: str) -> Project:
-    """
-    Назначает full_code "черновику" (или проекту без шифра).
-    Если проект с таким full_code уже существует:
-      - переносим ревизии на него
-      - удаляем черновик
-    """
     full_code = normalize_full_code(full_code_input)
-
     draft = Project.objects.select_for_update().get(id=draft_project_id)
 
     existing = Project.objects.filter(full_code=full_code).exclude(id=draft.id).first()
     if existing:
-        # переносим ревизии
-        ProjectRevision.objects.filter(project=draft).update(project=existing)
+        # ✅ снять конфликт по ревизиям у draft
+        _make_revisions_temp_unique(draft)
+
+        ProjectRevision.objects.select_for_update().filter(project=draft).update(project=existing)
         draft.delete()
 
-        # пересчёт needs_review на целевом проекте
         sync_needs_review(existing, save=True)
+
+        renumber_project_revisions(existing)
+        ensure_project_files_named(existing)
+
         return existing
 
     draft.full_code = full_code
     draft.save(update_fields=["full_code"])
 
-    # после назначения шифра пересчитаем needs_review (скорее всего останется True, пока не заполнены классификаторы)
     sync_needs_review(draft, save=True)
+    ensure_project_files_named(draft)
     return draft
 
 
-def process_single_pdf(
-        *,
-        pdf_path: Path,
-        original_name: str,
-        user,
-) -> dict:
-    """
-    Обрабатывает один PDF:
-    - sha256
-    - дедуп
-    - проект / ревизия
-    """
+# =========================================================
+# ZIP: обработка одного PDF (корень + именование)
+# =========================================================
 
-    # --- sha256 ---
+@transaction.atomic
+def process_single_pdf(*, pdf_path: Path, original_name: str, user) -> dict:
     h = hashlib.sha256()
     with pdf_path.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
@@ -238,138 +394,24 @@ def process_single_pdf(
     sha256 = h.hexdigest()
 
     if ProjectRevision.objects.filter(sha256=sha256).exists():
-        return {
-            "status": "duplicate",
-            "file": original_name,
-        }
+        return {"status": "duplicate", "file": original_name}
 
-    # --- временный full_code из имени файла ---
-    full_code = pdf_path.stem.strip()
+    full_code = normalize_full_code(pdf_path.stem)
 
-    project, created = Project.objects.get_or_create(
+    project, _ = Project.objects.get_or_create(
         full_code=full_code,
-        defaults={
-            "needs_review": True,
-        },
+        defaults={"needs_review": True},
     )
 
-    project_dir = Path(settings.PROJECTS_DIR) / project.full_code
-    project_dir.mkdir(parents=True, exist_ok=True)
-
-    target_path = project_dir / original_name
-    pdf_path.replace(target_path)
-
-    revision, created_rev = attach_revision_to_project(
+    rev, _ = attach_revision_to_project(
         project=project,
         file_name=original_name,
-        file_path=str(target_path),
+        temp_file_path=str(pdf_path),
         sha256=sha256,
     )
 
     sync_needs_review(project, save=True)
+    # на всякий случай (если full_code поправили) — привести имена
+    ensure_project_files_named(project)
 
-    return {
-        "status": "created" if created_rev else "exists",
-        "project": project.full_code,
-        "revision": revision.revision,
-        "file": original_name,
-    }
-
-
-@transaction.atomic
-def change_project_full_code(project: Project, new_full_code_input: str) -> Project:
-
-
-
-
-    new_full_code = " ".join((new_full_code_input or "").strip().split())
-    print(f"[change_project_full_code] project.id={project.id} old='{project.full_code}' new='{new_full_code}'")
-    if not new_full_code:
-        raise ValueError("new_full_code пустой")
-
-    if project.full_code == new_full_code:
-        return project
-
-    projects_root = Path(settings.PROJECTS_DIR).resolve()
-    print(f"[change_project_full_code] PROJECTS_DIR={projects_root}")
-    new_dir = (projects_root / new_full_code).resolve()
-    print(f"[change_project_full_code] new_dir={new_dir}")
-    new_dir.mkdir(parents=True, exist_ok=True)
-
-    # ✅ ВАЖНО: old_dir берём из фактического пути ревизии (как показала диагностика)
-    any_rev = (
-        ProjectRevision.objects
-        .select_for_update()
-        .filter(project=project)
-        .order_by("-created_at")
-        .first()
-    )
-    if not any_rev:
-        # нет файлов — можно просто переименовать full_code
-        project.full_code = new_full_code
-        project.save(update_fields=["full_code"])
-        return project
-
-    old_dir = Path(any_rev.file_path).parent.resolve()
-    print(f"[change_project_full_code] old_dir(from rev)={old_dir} exists={old_dir.exists()}")
-
-    # безопасность: old_dir должен быть внутри PROJECTS_DIR
-    if projects_root not in old_dir.parents:
-        raise RuntimeError(f"old_dir вне PROJECTS_DIR: {old_dir}")
-
-    target_project = Project.objects.select_for_update().filter(full_code=new_full_code).first()
-
-    # ---------------------------------------------------------
-    # MERGE: такой проект уже есть
-    # ---------------------------------------------------------
-    if target_project and target_project.pk != project.pk:
-        for rev in ProjectRevision.objects.select_for_update().filter(project=project):
-            src = Path(rev.file_path).resolve()
-            if not src.exists():
-                raise RuntimeError(f"Файл ревизии не найден: {src}")
-
-            dst = new_dir / src.name
-            if not dst.exists():
-                print(f"[change_project_full_code] MOVE src={src} exists={src.exists()} -> dst={dst}")
-
-                shutil.move(str(src), str(dst))
-
-            rev.file_path = str(dst)
-            rev.project = target_project
-            rev.save(update_fields=["file_path", "project"])
-
-        # удаляем старую папку, если пустая
-        try:
-            old_dir.rmdir()
-        except OSError:
-            pass
-
-        project.delete()
-        return target_project
-
-    # ---------------------------------------------------------
-    # RENAME: просто переименовать проект
-    # ---------------------------------------------------------
-    for rev in ProjectRevision.objects.select_for_update().filter(project=project):
-        src = Path(rev.file_path).resolve()
-        if not src.exists():
-            raise RuntimeError(f"Файл ревизии не найден: {src}")
-
-        dst = new_dir / src.name
-        if not dst.exists():
-            print(f"[change_project_full_code] MOVE src={src} exists={src.exists()} -> dst={dst}")
-
-            shutil.move(str(src), str(dst))
-
-        rev.file_path = str(dst)
-        rev.save(update_fields=["file_path"])
-
-    # удалить старую папку, если пустая
-    try:
-        old_dir.rmdir()
-    except OSError:
-        pass
-
-    project.full_code = new_full_code
-    project.save(update_fields=["full_code"])
-    return project
+    return {"status": "created", "project": project.full_code, "revision": rev.revision, "file": original_name}

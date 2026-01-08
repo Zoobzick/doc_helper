@@ -13,7 +13,7 @@ from .views import (
     ProjectUpdateView,
     ProjectRevisionDeleteView,
 
-    DictItemCreateView, ProjectUploadArchiveView,
+    DictItemCreateView, ProjectUploadArchiveView, ProjectRevisionDownloadView,
 )
 
 app_name = "projects"
@@ -41,4 +41,5 @@ urlpatterns = [
         ProjectUploadArchiveView.as_view(),
         name="project_upload_archive",
     ),
+    path("revision/<int:pk>/download/", ProjectRevisionDownloadView.as_view(), name="project_revision_download"),
 ]
