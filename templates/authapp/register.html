@@ -5,15 +5,13 @@
 <head>
   <meta charset="utf-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
-  <title>Вход - Doc Helper</title>
+  <title>Регистрация - Doc Helper</title>
 
   <link href="{% static 'assets/img/favicon.png' %}" rel="icon">
   <link href="{% static 'assets/img/apple-touch-icon.png' %}" rel="apple-touch-icon">
 
   <link href="{% static 'assets/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
   <link href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
-  <link href="{% static 'assets/vendor/boxicons/css/boxicons.min.css' %}" rel="stylesheet">
-  <link href="{% static 'assets/vendor/remixicon/remixicon.css' %}" rel="stylesheet">
   <link href="{% static 'assets/css/style.css' %}" rel="stylesheet">
 </head>
 
@@ -23,7 +21,7 @@
     <section class="section register min-vh-100 d-flex flex-column align-items-center justify-content-center py-4">
       <div class="container">
         <div class="row justify-content-center">
-          <div class="col-lg-4 col-md-6 d-flex flex-column align-items-center justify-content-center">
+          <div class="col-lg-5 col-md-7 d-flex flex-column align-items-center justify-content-center">
 
             <div class="d-flex justify-content-center py-4">
               <a href="#" class="logo d-flex align-items-center w-auto">
@@ -46,50 +44,52 @@
             <div class="card mb-3">
               <div class="card-body">
                 <div class="pt-4 pb-2">
-                  <h5 class="card-title text-center pb-0 fs-4">Вход в систему</h5>
-                  <p class="text-center small">Введите email и пароль</p>
+                  <h5 class="card-title text-center pb-0 fs-4">Регистрация</h5>
+                  <p class="text-center small">Создайте аккаунт, доступ выдаст администратор</p>
                 </div>
 
-                <form class="row g-3" method="post" action="{% url 'authapp:login' %}">
+                <form class="row g-3" method="post" action="{% url 'authapp:register' %}">
                   {% csrf_token %}
+
+                  <div class="col-12">
+                    <label class="form-label">Имя</label>
+                    {{ form.first_name }}
+                    {% if form.first_name.errors %}<div class="text-danger small mt-1">{{ form.first_name.errors }}</div>{% endif %}
+                  </div>
+
+                  <div class="col-12">
+                    <label class="form-label">Фамилия</label>
+                    {{ form.last_name }}
+                    {% if form.last_name.errors %}<div class="text-danger small mt-1">{{ form.last_name.errors }}</div>{% endif %}
+                  </div>
 
                   <div class="col-12">
                     <label class="form-label">Email</label>
                     {{ form.email }}
-                    {% if form.email.errors %}
-                      <div class="text-danger small mt-1">{{ form.email.errors }}</div>
-                    {% endif %}
+                    {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors }}</div>{% endif %}
                   </div>
 
                   <div class="col-12">
                     <label class="form-label">Пароль</label>
-                    {{ form.password }}
-                    {% if form.password.errors %}
-                      <div class="text-danger small mt-1">{{ form.password.errors }}</div>
-                    {% endif %}
+                    {{ form.password1 }}
+                    {% if form.password1.errors %}<div class="text-danger small mt-1">{{ form.password1.errors }}</div>{% endif %}
                   </div>
 
                   <div class="col-12">
-                    <div class="form-check">
-                      {{ form.remember }}
-                      <label class="form-check-label" for="{{ form.remember.id_for_label }}">Запомнить меня</label>
-                    </div>
+                    <label class="form-label">Повторите пароль</label>
+                    {{ form.password2 }}
+                    {% if form.password2.errors %}<div class="text-danger small mt-1">{{ form.password2.errors }}</div>{% endif %}
                   </div>
 
                   <div class="col-12">
-                    <button class="btn btn-primary w-100" type="submit">Войти</button>
+                    <button class="btn btn-primary w-100" type="submit">Создать аккаунт</button>
                   </div>
 
                   <div class="col-12">
-                    <p class="small mb-0">Нет аккаунта? <a href="{% url 'authapp:register' %}">Создать аккаунт</a></p>
+                    <p class="small mb-0">Уже есть аккаунт? <a href="{% url 'authapp:login' %}">Войти</a></p>
                   </div>
                 </form>
-
               </div>
-            </div>
-
-            <div class="credits">
-              Designed by <a href="https://bootstrapmade.com/">BootstrapMade</a>
             </div>
 
           </div>

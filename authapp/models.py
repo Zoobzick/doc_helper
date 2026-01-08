@@ -1,4 +1,26 @@
-from django.db import models
-from django.contrib.auth.models import User
+from __future__ import annotations
 
-# Create your models here.
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+
+class User(AbstractUser):
+    """
+    Кастомный пользователь проекта.
+
+    Аутентификация по email.
+    username оставляем, но как техническое поле.
+    """
+
+    # email делаем обязательным и уникальным
+    email = models.EmailField("Email", unique=True)
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username", "first_name", "last_name"]
+
+    class Meta:
+        verbose_name = "Пользователь"
+        verbose_name_plural = "Пользователи"
+
+    def __str__(self) -> str:
+        return f"{self.last_name} {self.first_name} <{self.email}>"

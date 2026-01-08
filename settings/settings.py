@@ -60,6 +60,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
+AUTH_USER_MODEL = "authapp.User"
+
 LOGIN_URL = "authapp:login"
 LOGIN_REDIRECT_URL = "authapp:home"
 LOGOUT_REDIRECT_URL = "authapp:login"

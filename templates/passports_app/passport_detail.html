@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+
+    <div class="pagetitle">
+        <h1>Паспорт</h1>
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'passports:passports_list' %}">Паспорта</a></li>
+                <li class="breadcrumb-item active">Детали</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section">
+        <div class="row">
+
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body">
+
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                            <div>
+                                <h5 class="card-title mb-1">{{ passport.document_name }}</h5>
+                                <div class="text-muted">
+                                    Материал: <span class="fw-semibold">{{ passport.material.name|default:"—" }}</span>
+                                </div>
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <a href="{% url 'passports:passport_open' passport.id %}"
+                                   target="_blank"
+                                   class="btn btn-sm btn-outline-danger"
+                                   title="Открыть файл">
+                                    <i class="bi bi-file-earmark-pdf"></i>
+                                    Открыть
+                                </a>
+
+                                <a href="{% url 'passports:passports_list' %}"
+                                   class="btn btn-sm btn-outline-secondary">
+                                    Назад
+                                </a>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        {% if passport.needs_review %}
+                            <div class="alert alert-warning">
+                                Требует проверки: данные могли не распознаться из имени файла.
+                            </div>
+                        {% endif %}
+
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Наименование документа</dt>
+                            <dd class="col-sm-8">{{ passport.document_name }}</dd>
+
+                            <dt class="col-sm-4">Номер</dt>
+                            <dd class="col-sm-8">{{ passport.document_number|default:"—" }}</dd>
+
+                            <dt class="col-sm-4">Дата</dt>
+                            <dd class="col-sm-8">
+                                {% if passport.document_date %}
+                                    {{ passport.document_date|date:"d.m.Y" }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </dd>
+
+                            <dt class="col-sm-4">Файл</dt>
+                            <dd class="col-sm-8">
+                                {{ passport.original_name|default:"—" }}
+                                {% if passport.file_ext %}
+                                    <span class="text-muted">(.{{ passport.file_ext }})</span>
+                                {% endif %}
+                            </dd>
+
+                            <dt class="col-sm-4">Загрузил</dt>
+                            <dd class="col-sm-8">
+                                {% if passport.uploaded_by %}
+                                    {{ passport.uploaded_by.email|default:passport.uploaded_by.get_username }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </dd>
+
+                            <dt class="col-sm-4">Создан</dt>
+                            <dd class="col-sm-8">{{ passport.created_at|date:"d.m.Y H:i" }}</dd>
+                        </dl>
+
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Сервис</h5>
+
+                        <div class="small text-muted mb-2">
+                            Здесь позже появятся:
+                            <ul class="mb-0">
+                                <li>Редактирование данных паспорта</li>
+                                <li>Перенос файла в папку материала</li>
+                                <li>Привязка к актам</li>
+                            </ul>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+{% endblock %}
