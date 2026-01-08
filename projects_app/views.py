@@ -405,3 +405,19 @@ class ProjectUploadArchiveView(PermissionRequiredMixin, View):
 
 class ProjectRevisionDownloadView(PermissionRequiredMixin, View):
     permission_required = "projects_app.open_project_revision_pdf"
+    raise_exception = True
+
+    def get(self, request, pk: int):
+        rev = get_object_or_404(ProjectRevision.objects.select_related("project"), pk=pk)
+        file_path = Path(rev.file_path)
+
+        if not file_path.exists():
+            raise Http404("PDF файл не найден")
+
+        filename = file_path.name
+        if not filename.lower().endswith(".pdf"):
+            filename = f"{filename}.pdf"
+
+        resp = FileResponse(file_path.open("rb"), content_type="application/pdf", as_attachment=True)
+        resp["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        return resp

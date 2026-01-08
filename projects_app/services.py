@@ -134,6 +134,7 @@ REQUIRED_PROJECT_FIELDS = (
     "stage",
     "plot",
     "section",
+    "construction",
 )
 
 
