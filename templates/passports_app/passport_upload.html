@@ -47,9 +47,10 @@
               <div class="card">
                 <div class="card-body">
 
-                  <h5 class="card-title">1) Загрузите файл паспорта</h5>
+                  <h5 class="card-title">Загрузите файл паспорта</h5>
 
-                  <div class="mt-3" id="passportDropZone"
+                  <!-- ✅ DnD зона: 1-в-1 как в project_create (классы + style + структура текста) -->
+                  <div id="passportDropZone"
                        class="border border-2 border-secondary rounded-3 p-5 text-center"
                        style="border-style:dashed; user-select:none; cursor:pointer;">
                     <div class="fw-semibold">Перетащите сюда файл</div>
@@ -147,7 +148,7 @@
                   <h5 class="card-title">Предпросмотр</h5>
 
                   <div id="previewEmpty" class="text-muted">
-                    Выберите файл — здесь появится предпросмотр (PDF) или информация о файле.
+                    Выберите файл — здесь появится предпросмотр (PDF).
                   </div>
 
                   <div id="previewNonPdf" class="d-none">
@@ -178,7 +179,8 @@
 
                   <h5 class="card-title">Загрузить ZIP архив</h5>
 
-                  <div class="mt-3" id="zipDropZone"
+                  <!-- ✅ DnD зона: 1-в-1 как в project_create -->
+                  <div id="zipDropZone"
                        class="border border-2 border-secondary rounded-3 p-5 text-center"
                        style="border-style:dashed; user-select:none; cursor:pointer;">
                     <div class="fw-semibold">Перетащите сюда ZIP</div>
