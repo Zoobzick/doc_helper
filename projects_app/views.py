@@ -391,3 +391,6 @@ class ProjectRevisionDownloadView(PermissionRequiredMixin, View):
         # Чтобы кириллица в имени корректно скачивалась во всех браузерах:
         resp["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
         return resp
+
+
+# Fix Upload SHA256
