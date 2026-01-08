@@ -2,10 +2,10 @@ from django.db import models
 from django.utils import timezone
 from django.core.files.storage import FileSystemStorage
 import os
-
+from django.conf import settings
 from projects_app.models import Project
 
-APPROVALS_ROOT = r"\\Marina\ид участок №5 (липовая роща)\Согласования"
+APPROVALS_ROOT = settings.APPROVALS_DIR
 approvals_storage = FileSystemStorage(location=APPROVALS_ROOT)
 
 

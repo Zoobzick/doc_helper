@@ -31,7 +31,7 @@ def debug_print(cmd, message: str):
     cmd.stdout.write(cmd.style.WARNING(f'[DEBUG] {message}'))
 
 
-PROJECTS_ROOT = settings.PROJECTS_ROOT
+PROJECTS_DIR = settings.PROJECTS_DIR
 PROJECTS_JSON = settings.PROJECTS_JSON
 
 with open(PROJECTS_JSON, 'r', encoding='utf-8') as f:
@@ -49,7 +49,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write(self.style.NOTICE('🔍 Сканирование проектов...'))
 
-        files = self._collect_files(PROJECTS_ROOT)
+        files = self._collect_files(PROJECTS_DIR)
 
         self.stdout.write(f'Найдено файлов: {len(files)}')
 

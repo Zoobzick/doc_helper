@@ -21,13 +21,18 @@ STATICFILES_DIRS = [
 ]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-BASE_ID_DIR = r"\\Marina\ид участок №5 (липовая роща)"
+# Директории для хранения файлов
 
-PASSPORTS_DIR = r"\\Marina\ид участок №5 (липовая роща)\Паспорта"
+BASE_ID_DIR = Path(r"C:\ид участок №5 (липовая роща)")
 
-PROJECTS_ROOT = r'\\Marina\ид участок №5 (липовая роща)\Проекты'
-PROJECTS_JSON = r'\\Marina\ид участок №5 (липовая роща)\Проекты\projects.json'
+PASSPORTS_DIR = BASE_ID_DIR / "Паспорта"
 
+DIRECTIVE_DIR = BASE_ID_DIR / "Приказы"
+
+APPROVALS_DIR = BASE_ID_DIR / "Согласования"
+
+PROJECTS_DIR = BASE_ID_DIR / "Проекты"
+PROJECTS_JSON = PROJECTS_DIR / "projects.json"
 
 # Templates Документов
 DOCUMENT_TEMPLATES_DIR = BASE_DIR / "document_templates"
@@ -115,18 +120,12 @@ WSGI_APPLICATION = 'settings.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'doc_helper',  # The name of your MySQL database
-        'USER': 'root',  # Your MySQL username
-        'PASSWORD': 'vlad72kbhjqrjJ!',  # Your MySQL password
-        'HOST': 'localhost',  # Or the IP address/hostname of your MySQL server
-        'PORT': '3306',  # The port MySQL is running on (default is 3306)
-        'OPTIONS': {
-            # Optional: Add any specific MySQL connection options here
-            # For example, to set character set:
-            # 'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            # 'charset': 'utf8mb4',
-        }
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'doc_helper',  # имя базы в Postgres
+        'USER': 'doc_helper_user',  # пользователь, которого создал
+        'PASSWORD': '2728571k',  # пароль пользователя
+        'HOST': '127.0.0.1',  # лучше так, чем localhost
+        'PORT': '5432',  # стандартный порт Postgres
     }
 }
 

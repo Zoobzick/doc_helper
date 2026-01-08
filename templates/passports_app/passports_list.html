@@ -134,10 +134,14 @@
 
                     </tr>
                   {% empty %}
+                    {# ВАЖНО: DataTables требует одинаковое число ячеек в каждой строке (6) #}
                     <tr>
-                      <td colspan="6" class="text-center text-muted">
-                        Нет данных. Загрузите паспорта через меню "Обновить паспорта".
-                      </td>
+                      <td class="text-muted text-center">—</td>
+                      <td class="text-muted text-center">—</td>
+                      <td class="text-muted text-center">Нет данных. Загрузите паспорта через кнопку “Импорт”.</td>
+                      <td class="text-muted text-center">—</td>
+                      <td class="text-muted text-center">—</td>
+                      <td class="text-muted text-center">—</td>
                     </tr>
                   {% endfor %}
                 </tbody>

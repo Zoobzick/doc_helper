@@ -3,7 +3,7 @@ from datetime import datetime
 import hashlib
 from django.conf import settings
 from django.db import transaction
-from ..models import Material, Category, Passport
+from ..models import Material, Passport
 
 
 class FileProcessor:

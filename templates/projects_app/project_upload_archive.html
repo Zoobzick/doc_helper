@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+
+    {% block breadcrumbs %}
+        <div class="pagetitle">
+            <h1>Загрузка проектов архивом</h1>
+            <nav>
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'projects:projects_list' %}">Проекты</a>
+                    </li>
+                    <li class="breadcrumb-item active">Загрузка архивом</li>
+                </ol>
+            </nav>
+        </div>
+    {% endblock breadcrumbs %}
+
+
+    <section class="section">
+        <div class="row">
+
+            <!-- Левая колонка: загрузка -->
+            <div class="col-12 col-lg-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">1) Выберите ZIP архив</h5>
+
+                        <div
+                                id="dropZone"
+                                class="border border-2 border-secondary rounded-3 p-5 text-center"
+                                style="border-style:dashed; user-select:none; cursor:pointer;"
+                        >
+                            <div class="fw-semibold">Перетащите сюда ZIP</div>
+                            <div class="text-muted small">или кликните, чтобы выбрать файл</div>
+                            <input id="zipInput" type="file" accept=".zip,application/zip" class="d-none">
+                        </div>
+
+                        <div class="mt-3">
+                            <div class="small text-muted">
+                                Правила:
+                                <ul class="mb-0">
+                                    <li>PDF могут лежать в папках внутри архива</li>
+                                    <li>full_code берём временно из имени PDF (без .pdf)</li>
+                                    <li>если sha256 уже есть в системе — файл пропускаем</li>
+                                    <li>если full_code уже есть — добавим как новую ревизию</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div id="uploadStatus" class="mt-3"></div>
+
+                        <div class="mt-3 d-flex gap-2">
+                            <button id="btnUpload" class="btn btn-success" disabled>
+                                <i class="bi bi-upload me-1"></i> Загрузить
+                            </button>
+                            <button id="btnReset" class="btn btn-outline-secondary" disabled>
+                                Сбросить
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка: результат -->
+            <div class="col-12 col-lg-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">2) Результат импорта</h5>
+
+                        <div id="resultSummary" class="text-muted">
+                            Здесь появится отчёт после обработки архива.
+                        </div>
+
+                        <div id="resultTableWrap" class="table-responsive mt-3 d-none">
+                            <table class="table table-bordered table-striped align-middle">
+                                <thead>
+                                <tr>
+                                    <th>Файл</th>
+                                    <th>Проект (full_code)</th>
+                                    <th class="text-center">Ревизия</th>
+                                    <th class="text-center">Статус</th>
+                                </tr>
+                                </thead>
+                                <tbody id="resultTbody"></tbody>
+                            </table>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+    
+{% endblock %}
+
+{% block extra_js %}
+    <script>
+        (function () {
+            const uploadUrl = "{% url 'projects:project_upload_archive' %}";
+
+            const dropZone = document.getElementById("dropZone");
+            const zipInput = document.getElementById("zipInput");
+            const btnUpload = document.getElementById("btnUpload");
+            const btnReset = document.getElementById("btnReset");
+            const uploadStatus = document.getElementById("uploadStatus");
+
+            const resultSummary = document.getElementById("resultSummary");
+            const resultTableWrap = document.getElementById("resultTableWrap");
+            const resultTbody = document.getElementById("resultTbody");
+
+            let selectedFile = null;
+
+            function getCookie(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(";").shift();
+                return "";
+            }
+
+            function setStatus(html) {
+                uploadStatus.innerHTML = html || "";
+            }
+
+            function setButtons(enabled) {
+                btnUpload.disabled = !enabled;
+                btnReset.disabled = !enabled;
+            }
+
+            function resetAll() {
+                selectedFile = null;
+                zipInput.value = "";
+                setStatus("");
+                setButtons(false);
+                resultSummary.textContent = "Здесь появится отчёт после обработки архива.";
+                resultTableWrap.classList.add("d-none");
+                resultTbody.innerHTML = "";
+            }
+
+            function validateZip(file) {
+                if (!file) return "Файл не выбран";
+                const name = (file.name || "").toLowerCase();
+                const ok = name.endsWith(".zip") || file.type === "application/zip";
+                if (!ok) return "Нужен ZIP архив (.zip)";
+                return null;
+            }
+
+            function pickFile(file) {
+                const err = validateZip(file);
+                if (err) {
+                    selectedFile = null;
+                    setButtons(false);
+                    setStatus(`<div class="alert alert-danger py-2">${err}</div>`);
+                    return;
+                }
+
+                selectedFile = file;
+                setButtons(true);
+                setStatus(`<div class="alert alert-info py-2">Выбран архив: <strong>${file.name}</strong></div>`);
+            }
+
+            // drag&drop cancel defaults
+            ["dragenter", "dragover", "dragleave", "drop"].forEach(evt => {
+                window.addEventListener(evt, e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+                document.addEventListener(evt, e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            dropZone.addEventListener("dragover", () => dropZone.classList.add("bg-light"));
+            dropZone.addEventListener("dragleave", () => dropZone.classList.remove("bg-light"));
+            dropZone.addEventListener("drop", (e) => {
+                dropZone.classList.remove("bg-light");
+                const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                pickFile(f);
+            });
+
+            dropZone.addEventListener("click", () => zipInput.click());
+            zipInput.addEventListener("change", (e) => pickFile(e.target.files[0]));
+
+            btnReset.addEventListener("click", resetAll);
+
+            function badge(status) {
+                if (status === "created") return `<span class="badge bg-success">Добавлено</span>`;
+                if (status === "duplicate") return `<span class="badge bg-secondary">Дубликат sha256</span>`;
+                if (status === "exists") return `<span class="badge bg-warning text-dark">Уже было</span>`;
+                if (status === "error") return `<span class="badge bg-danger">Ошибка</span>`;
+                return `<span class="badge bg-light text-dark">${status || "—"}</span>`;
+            }
+
+            function renderResults(results) {
+                let created = 0, duplicate = 0, error = 0, other = 0;
+
+                resultTbody.innerHTML = "";
+                results.forEach(r => {
+                    const st = r.status;
+                    if (st === "created") created++;
+                    else if (st === "duplicate") duplicate++;
+                    else if (st === "error") error++;
+                    else other++;
+
+                    const file = r.file || "—";
+                    const project = r.project || "—";
+                    const rev = r.revision || "—";
+
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
+        <td style="word-break:break-word;">${file}</td>
+        <td style="word-break:break-word;">${project}</td>
+        <td class="text-center">${rev}</td>
+        <td class="text-center">${badge(st)}</td>
+      `;
+                    resultTbody.appendChild(tr);
+                });
+
+                resultSummary.innerHTML = `
+      <div class="alert alert-primary py-2 mb-0">
+        Обработано: <strong>${results.length}</strong> |
+        Добавлено: <strong>${created}</strong> |
+        Дубликаты sha256: <strong>${duplicate}</strong> |
+        Ошибки: <strong>${error}</strong>
+      </div>
+    `;
+
+                resultTableWrap.classList.toggle("d-none", results.length === 0);
+            }
+
+            btnUpload.addEventListener("click", function () {
+                const err = validateZip(selectedFile);
+                if (err) {
+                    setStatus(`<div class="alert alert-danger py-2">${err}</div>`);
+                    return;
+                }
+
+                setStatus(`<div class="text-muted">Загрузка и обработка архива…</div>`);
+                btnUpload.disabled = true;
+
+                const fd = new FormData();
+                fd.append("archive", selectedFile);
+
+                fetch(uploadUrl, {
+                    method: "POST",
+                    headers: {"X-CSRFToken": getCookie("csrftoken")},
+                    body: fd
+                })
+                    .then(async (resp) => {
+                        const ct = resp.headers.get("content-type") || "";
+                        if (!ct.includes("application/json")) {
+                            const txt = await resp.text().catch(() => "");
+                            throw new Error(`Сервер вернул не JSON (status ${resp.status}). ${txt.slice(0, 120)}`);
+                        }
+                        return resp.json();
+                    })
+                    .then((data) => {
+                        if (!data || data.ok !== true) {
+                            throw new Error((data && (data.error || data.message)) || "Ошибка обработки архива");
+                        }
+
+                        setStatus(`<div class="alert alert-success py-2">Готово. Обработано файлов: <strong>${data.processed}</strong></div>`);
+                        renderResults(data.results || []);
+                        btnUpload.disabled = false;
+                    })
+                    .catch((e) => {
+                        setStatus(`<div class="alert alert-danger py-2">Ошибка: ${String(e.message || e)}</div>`);
+                        btnUpload.disabled = false;
+                    });
+            });
+
+            resetAll();
+        })();
+    </script>
+{% endblock %}

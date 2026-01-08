@@ -1,6 +1,7 @@
 # storage.py
 from django.core.files.storage import FileSystemStorage
 import os
+from django.conf import settings
 
 
 class DirectivesStorage(FileSystemStorage):
@@ -8,5 +9,5 @@ class DirectivesStorage(FileSystemStorage):
 
     def __init__(self):
         # Указываем конкретную папку для приказов
-        location = r'\\Marina\ид участок №5 (липовая роща)\Приказы'
+        location = settings.DIRECTIVE_DIR
         super().__init__(location=location, base_url=None)

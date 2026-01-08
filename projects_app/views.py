@@ -1,69 +1,63 @@
 from __future__ import annotations
 
 import hashlib
-import os
+import tempfile
+import zipfile
 from pathlib import Path
+from urllib.parse import quote
 
-from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.mixins import PermissionRequiredMixin, LoginRequiredMixin
-from django.core.management import call_command
-from django.db import transaction
+from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.db import IntegrityError, transaction
 from django.http import FileResponse, Http404, JsonResponse
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views import View
-from django.views.generic import CreateView, DetailView, ListView, TemplateView
+from django.views.generic import DetailView, ListView, TemplateView
+from django.views.generic.edit import UpdateView
+from django.utils.decorators import method_decorator
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 
-from .forms import ProjectCreateForm
+from .forms import ProjectCreateForm, ProjectUpdateForm
 from .models import (
-    Project, ProjectRevision, TempUpload,
-    Designer, Line, DesignStage, Stage, Plot, Section
+    DesignStage,
+    Designer,
+    Line,
+    Plot,
+    Project,
+    ProjectRevision,
+    Section,
+    Stage,
+    TempUpload,
+)
+from .services import (
+    DuplicatePdfSha256Error,
+    assign_full_code_to_draft,
+    attach_revision_to_project,
+    change_project_full_code,
+    delete_project_revision,
+    ensure_project_files_named,
+    normalize_full_code,
+    process_single_pdf,
+    set_revision_in_production,
+    sync_needs_review,
 )
 
 
-# ---------- helpers ----------
-
-def ensure_dir(p: Path) -> None:
-    p.mkdir(parents=True, exist_ok=True)
+def ensure_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
 
 
-def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def next_revision_code(project: Project) -> str:
-    last = (
-        ProjectRevision.objects
-        .filter(project=project)
-        .order_by("-revision")
-        .values_list("revision", flat=True)
-        .first()
-    )
-    if not last:
-        return "01"
-    try:
-        n = int(last)
-    except ValueError:
-        n = 1
-    return f"{n + 1:02d}"
+def str_to_bool(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.lower() in ("1", "true", "yes", "on")
 
 
 class JsonPermissionRequiredMixin(PermissionRequiredMixin):
-    """
-    ВАЖНО: чтобы fetch() не получал HTML-редирект/страницу, а всегда JSON.
-    """
-    raise_exception = True
-
     def handle_no_permission(self):
-        return JsonResponse({"ok": False, "error": "Нет прав или вы не авторизованы"}, status=403)
+        return JsonResponse({"ok": False, "error": "Нет доступа"}, status=403)
 
-
-# ---------- existing pages (минимально оставил) ----------
 
 class ProjectListView(PermissionRequiredMixin, ListView):
     permission_required = "projects_app.view_projects_page"
@@ -74,19 +68,22 @@ class ProjectListView(PermissionRequiredMixin, ListView):
     context_object_name = "revisions"
 
     def get_queryset(self):
-        return (
+        qs = (
             ProjectRevision.objects
-            .select_related(
-                "project",
-                "project__designer",
-                "project__line",
-                "project__design_stage",
-                "project__stage",
-                "project__plot",
-                "project__section",
-            )
-            .order_by("project_id", "revision")
+            .select_related("project")
+            .filter(is_latest=True)
+            .order_by("project_id")
         )
+        if str_to_bool(self.request.GET.get("needs_review")):
+            qs = qs.filter(project__needs_review=True)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["needs_review_filter_on"] = str_to_bool(self.request.GET.get("needs_review"))
+        ctx["needs_review_count"] = Project.objects.filter(needs_review=True).count()
+        ctx["title"] = "Проекты"
+        return ctx
 
 
 class ProjectDetailView(PermissionRequiredMixin, DetailView):
@@ -97,37 +94,41 @@ class ProjectDetailView(PermissionRequiredMixin, DetailView):
     template_name = "projects_app/project_detail.html"
     context_object_name = "project"
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        project = self.object
+        ctx["revisions"] = ProjectRevision.objects.filter(project=self.object).order_by("-created_at")
+        ctx["latest_revision"] = (
+            ProjectRevision.objects
+            .filter(project=self.object, is_latest=True)
+            .order_by("-created_at")
+            .first()
+        )
+        ctx["title"] = f"Данные проекта — {project.full_code}"
 
+        return ctx
+
+
+@method_decorator(xframe_options_sameorigin, name="dispatch")
 class ProjectRevisionOpenView(PermissionRequiredMixin, View):
-    permission_required = "projects_app.open_project_revision_pdf"
+    permission_required = "projects_app.view_project_detail_page"
     raise_exception = True
 
     def get(self, request, pk: int):
-        rev = ProjectRevision.objects.filter(pk=pk).first()
-        if not rev:
-            raise Http404("Версия проекта не найдена")
+        revision = get_object_or_404(ProjectRevision.objects.select_related("project"), pk=pk)
+        file_path = Path(revision.file_path)
 
-        p = Path(rev.file_path) if rev.file_path else None
-        if not p or not p.exists():
-            raise Http404("PDF файл не найден на диске")
+        if not file_path.exists():
+            with transaction.atomic():
+                ensure_project_files_named(revision.project)
+                revision.refresh_from_db()
+                file_path = Path(revision.file_path)
 
-        return FileResponse(open(p, "rb"), content_type="application/pdf", as_attachment=False)
+        if not file_path.exists():
+            raise Http404("Файл не найден")
 
+        return FileResponse(open(file_path, "rb"), content_type="application/pdf", as_attachment=False)
 
-class ScanProjectsView(PermissionRequiredMixin, View):
-    permission_required = "projects_app.scan_projects"
-    raise_exception = True
-
-    def post(self, request):
-        try:
-            call_command("scan_projects")
-            messages.success(request, "Проекты успешно обновлены")
-        except Exception as e:
-            messages.error(request, f"Ошибка при обновлении проектов: {e}")
-        return redirect("projects:projects_list")
-
-
-# ---------- manual add project with drag&drop ----------
 
 class ProjectCreateStartView(PermissionRequiredMixin, TemplateView):
     permission_required = "projects_app.add_project"
@@ -137,183 +138,293 @@ class ProjectCreateStartView(PermissionRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["form"] = ProjectCreateForm()
+        ctx["title"] = "Добавить проект"
         return ctx
 
 
 class TempUploadPdfView(JsonPermissionRequiredMixin, View):
-    """
-    POST: file=pdf -> кладём в PROJECTS_ROOT/_tmp_uploads, считаем sha256.
-    ВАЖНО: всегда отвечаем JSON, чтобы фронт не падал.
-    """
     permission_required = "projects_app.add_project"
 
     def post(self, request):
         f = request.FILES.get("file")
         if not f:
             return JsonResponse({"ok": False, "error": "Файл не получен"}, status=400)
+        if not f.name.lower().endswith(".pdf"):
+            return JsonResponse({"ok": False, "error": "Допустимы только PDF"}, status=400)
 
-        name = f.name or "upload.pdf"
-        if not name.lower().endswith(".pdf"):
-            return JsonResponse({"ok": False, "error": "Разрешены только PDF"}, status=400)
+        h = hashlib.sha256()
+        for chunk in f.chunks():
+            h.update(chunk)
+        sha256 = h.hexdigest()
 
-        projects_root = Path(settings.PROJECTS_ROOT)
-        tmp_dir = projects_root / "_tmp_uploads"
+        # ✅ Ранняя проверка дубля для UX (без лишних действий)
+        existing = (
+            ProjectRevision.objects
+            .select_related("project")
+            .filter(sha256=sha256)
+            .first()
+        )
+        if existing:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "status": "duplicate",
+                    "sha256": sha256,
+                    "existing_project_id": existing.project_id,
+                    "existing_project": existing.project.full_code,
+                    "existing_revision_id": existing.id,
+                    "existing_revision": existing.revision,
+                },
+                status=409,
+            )
+
+        tmp_dir = Path(tempfile.gettempdir()) / "doc_helper_uploads"
         ensure_dir(tmp_dir)
 
-        tmp_path = tmp_dir / f"{request.user.id}_{os.urandom(6).hex()}.pdf"
+        tmp_path = tmp_dir / f"{sha256}.pdf"
         with tmp_path.open("wb") as out:
             for chunk in f.chunks():
                 out.write(chunk)
 
-        file_hash = sha256_file(tmp_path)
-
-        # глобальный дедуп
-        if ProjectRevision.objects.filter(sha256=file_hash).exists():
-            tmp_path.unlink(missing_ok=True)
-            return JsonResponse({
-                "ok": True,
-                "duplicate": True,
-                "sha256": file_hash,
-                "message": "Такой PDF уже есть в системе (дубликат по sha256)."
-            })
-
-        existing = TempUpload.objects.filter(user=request.user, sha256=file_hash, is_used=False).first()
-        if existing:
-            tmp_path.unlink(missing_ok=True)
-            return JsonResponse({
-                "ok": True,
-                "duplicate": False,
-                "upload_id": str(existing.id),
-                "filename": existing.original_name,
-                "sha256": existing.sha256,
-            })
-
         upload = TempUpload.objects.create(
             user=request.user,
-            original_name=name,
+            original_name=f.name,
             tmp_path=str(tmp_path),
-            sha256=file_hash,
-            is_used=False,
+            sha256=sha256,
         )
 
-        return JsonResponse({
-            "ok": True,
-            "duplicate": False,
-            "upload_id": str(upload.id),
-            "filename": upload.original_name,
-            "sha256": upload.sha256,
-        })
+        return JsonResponse({"ok": True, "upload_id": str(upload.id), "sha256": sha256})
 
 
-class ProjectCreateWithPdfView(PermissionRequiredMixin, CreateView):
+class ProjectCreateWithPdfView(PermissionRequiredMixin, View):
     permission_required = "projects_app.add_project"
     raise_exception = True
-
-    model = Project
-    form_class = ProjectCreateForm
-    template_name = "projects_app/project_create.html"
     success_url = reverse_lazy("projects:projects_list")
 
     @transaction.atomic
-    def form_valid(self, form):
-        upload_id = form.cleaned_data["upload_id"]
+    def post(self, request):
+        form = ProjectCreateForm(request.POST)
+        if not form.is_valid():
+            return render(request, "projects_app/project_create.html", {"form": form})
 
-        upload = TempUpload.objects.select_for_update().filter(id=upload_id, user=self.request.user).first()
-        if not upload or upload.is_used:
-            form.add_error(None, "Загрузка PDF не найдена или уже использована. Перезагрузите файл.")
-            return self.form_invalid(form)
+        upload = get_object_or_404(
+            TempUpload.objects.select_for_update(),
+            id=form.cleaned_data["upload_id"],
+            user=request.user,
+            is_used=False,
+        )
 
-        if ProjectRevision.objects.filter(sha256=upload.sha256).exists():
-            Path(upload.tmp_path).unlink(missing_ok=True)
+        full_code = normalize_full_code(form.cleaned_data["full_code"])
+
+        project = Project.objects.filter(full_code=full_code).first()
+        if project is None:
+            project = Project.objects.create(
+                full_code=full_code,
+                construction=form.cleaned_data.get("construction") or "",
+                needs_review=True,
+            )
+
+        sync_needs_review(project, save=True)
+
+        try:
+            rev, _ = attach_revision_to_project(
+                project=project,
+                file_name=upload.original_name,
+                temp_file_path=upload.tmp_path,
+                sha256=upload.sha256,
+            )
+        except DuplicatePdfSha256Error as e:
+            # подчистим temp + покажем ошибку без создания дубля
             upload.is_used = True
             upload.save(update_fields=["is_used"])
-            messages.warning(self.request, "Этот PDF уже есть в системе (дубликат по sha256).")
-            return redirect("projects:projects_list")
+            try:
+                Path(upload.tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
-        project: Project = form.save(commit=False)
-
-        if not (project.construction or "").strip():
-            project.needs_review = True
-
-        project.save()
-        form.save_m2m()
-
-        rev_code = next_revision_code(project)
-        ProjectRevision.objects.filter(project=project, is_latest=True).update(is_latest=False)
-
-        projects_root = Path(settings.PROJECTS_ROOT)
-        target_dir = projects_root / project.full_code
-        ensure_dir(target_dir)
-
-        target_name = f"{project.full_code}-{rev_code}.pdf"
-        target_path = target_dir / target_name
-
-        tmp_path = Path(upload.tmp_path)
-        try:
-            tmp_path.replace(target_path)
-        except Exception:
-            target_path.write_bytes(tmp_path.read_bytes())
-            tmp_path.unlink(missing_ok=True)
-
-        ProjectRevision.objects.create(
-            project=project,
-            revision=rev_code,
-            file_name=upload.original_name,
-            file_path=str(target_path),
-            is_latest=True,
-            sha256=upload.sha256,
-        )
+            form.add_error(
+                None,
+                f"Этот PDF уже загружен: {e.existing.project.full_code} (ревизия {e.existing.revision})",
+            )
+            return render(request, "projects_app/project_create.html", {"form": form})
 
         upload.is_used = True
         upload.save(update_fields=["is_used"])
 
-        messages.success(self.request, f"Проект сохранён. Версия {rev_code}")
+        ensure_project_files_named(project)
+
+        messages.success(request, f"Проект сохранён, версия {rev.revision}")
         return redirect(self.success_url)
 
 
-class AddCatalogItemView(JsonPermissionRequiredMixin, View):
-    """
-    JSON endpoint для модалки +.
-    """
+class ProjectAssignFullCodeView(PermissionRequiredMixin, View):
+    permission_required = "projects_app.view_project_detail_page"
+    raise_exception = True
+
+    @transaction.atomic
+    def post(self, request, pk: int):
+        full_code = (request.POST.get("full_code") or "").strip()
+        if not full_code:
+            messages.error(request, "Введите полный шифр проекта")
+            return redirect("projects:project_detail", pk=pk)
+
+        project = assign_full_code_to_draft(draft_project_id=pk, full_code_input=full_code)
+        ensure_project_files_named(project)
+
+        messages.success(request, "Шифр назначен")
+        return redirect("projects:project_detail", pk=project.pk)
+
+
+class ProjectRevisionSetInProductionView(JsonPermissionRequiredMixin, View):
+    permission_required = "projects_app.view_project_detail_page"
+
+    @transaction.atomic
+    def post(self, request, pk: int):
+        value = str_to_bool(request.POST.get("value"))
+        rev = set_revision_in_production(revision_id=pk, value=value)
+        return JsonResponse({"ok": True, "value": rev.in_production})
+
+
+class ProjectUpdateView(PermissionRequiredMixin, UpdateView):
+    permission_required = "projects_app.view_project_detail_page"
+    raise_exception = True
+
+    model = Project
+    form_class = ProjectUpdateForm
+    template_name = "projects_app/project_update.html"
+    context_object_name = "project"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        project = self.object
+        ctx["latest_revision"] = (
+            ProjectRevision.objects
+            .filter(project=self.object, is_latest=True)
+            .order_by("-created_at")
+            .first()
+        )
+        ctx["title"] = f"Редактирование — {project.full_code}"
+        return ctx
+
+    @transaction.atomic
+    def form_valid(self, form):
+        project = Project.objects.select_for_update().get(pk=self.object.pk)
+
+        new_full_code = form.cleaned_data.get("full_code")
+        if new_full_code:
+            project = change_project_full_code(project, new_full_code)
+
+        for field in ("designer", "line", "design_stage", "stage", "plot", "section", "construction"):
+            setattr(project, field, form.cleaned_data.get(field))
+
+        project.save()
+
+        sync_needs_review(project, save=True)
+        ensure_project_files_named(project)
+
+        messages.success(self.request, "Данные проекта сохранены")
+        return redirect("projects:project_detail", pk=project.pk)
+
+
+class ProjectRevisionDeleteView(PermissionRequiredMixin, View):
+    permission_required = "projects_app.view_project_detail_page"
+    raise_exception = True
+
+    def post(self, request, pk: int):
+        revision = ProjectRevision.objects.select_related("project").get(pk=pk)
+        project_id = revision.project_id
+
+        delete_project_revision(revision_id=pk)
+
+        messages.success(request, "Версия проекта удалена")
+
+        if Project.objects.filter(id=project_id).exists():
+            return redirect("projects:project_detail", pk=project_id)
+
+        return redirect("projects:projects_list")
+
+
+class DictItemCreateView(JsonPermissionRequiredMixin, View):
     permission_required = "projects_app.add_project"
 
-    def post(self, request):
-        kind = (request.POST.get("kind") or "").strip()
+    MODEL_MAP = {
+        "designer": Designer,
+        "line": Line,
+        "design_stage": DesignStage,
+        "stage": Stage,
+        "plot": Plot,
+        "section": Section,
+    }
+
+    def post(self, request, dict_name: str):
+        model = self.MODEL_MAP.get(dict_name)
+        if model is None:
+            return JsonResponse({"ok": False, "error": "Неизвестный справочник"}, status=400)
+
         code = (request.POST.get("code") or "").strip()
         full_name = (request.POST.get("full_name") or "").strip()
+        is_active = str_to_bool(request.POST.get("is_active"))
 
-        if not kind or not code:
-            return JsonResponse({"ok": False, "error": "kind и code обязательны"}, status=400)
+        if not code or not full_name:
+            return JsonResponse({"ok": False, "error": "code и full_name обязательны"}, status=400)
 
-        model_map = {
-            "designer": (Designer, "projects_app.add_designer", True),
-            "line": (Line, "projects_app.add_line", True),
-            "design_stage": (DesignStage, "projects_app.add_designstage", True),
-            "stage": (Stage, "projects_app.add_stage", False),
-            "plot": (Plot, "projects_app.add_plot", True),
-            "section": (Section, "projects_app.add_section", False),
-        }
-        if kind not in model_map:
-            return JsonResponse({"ok": False, "error": "Неизвестный kind"}, status=400)
-
-        Model, perm, needs_full_name = model_map[kind]
-        if not (request.user.is_superuser or request.user.has_perm(perm)):
-            return JsonResponse({"ok": False, "error": "Нет прав на добавление справочника"}, status=403)
-
-        if needs_full_name and not full_name:
-            return JsonResponse({"ok": False, "error": "full_name обязателен"}, status=400)
-
-        if kind in ("stage", "section"):
-            obj, _ = Model.objects.get_or_create(code=code)
-            text = obj.code
-        else:
-            obj, created = Model.objects.get_or_create(code=code, defaults={"full_name": full_name, "is_active": True})
+        try:
+            obj, created = model.objects.get_or_create(
+                code=code,
+                defaults={"full_name": full_name, "is_active": is_active},
+            )
             if not created:
-                if obj.full_name != full_name:
-                    obj.full_name = full_name
-                if hasattr(obj, "is_active") and obj.is_active is False:
-                    obj.is_active = True
-                obj.save()
-            text = f"{obj.code} — {obj.full_name}"
+                obj.full_name = full_name
+                obj.is_active = is_active
+                obj.save(update_fields=["full_name", "is_active"])
+        except IntegrityError:
+            return JsonResponse({"ok": False, "error": "Конфликт уникальности"}, status=409)
 
-        return JsonResponse({"ok": True, "id": obj.id, "text": text})
+        return JsonResponse({"ok": True, "created": created, "id": obj.id, "text": str(obj)})
+
+
+class ProjectUploadArchiveView(PermissionRequiredMixin, View):
+    permission_required = "projects_app.add_project"
+    raise_exception = True
+
+    def post(self, request):
+        archive = request.FILES.get("archive")
+        if not archive or not archive.name.lower().endswith(".zip"):
+            return JsonResponse({"ok": False, "error": "Нужен ZIP архив"}, status=400)
+
+        results = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            zip_path = tmpdir / archive.name
+
+            with zip_path.open("wb") as f:
+                for chunk in archive.chunks():
+                    f.write(chunk)
+
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(tmpdir)
+
+            for pdf in tmpdir.rglob("*.pdf"):
+                results.append(process_single_pdf(pdf_path=pdf, original_name=pdf.name, user=request.user))
+
+        return JsonResponse({"ok": True, "processed": len(results), "results": results})
+
+
+class ProjectRevisionDownloadView(PermissionRequiredMixin, View):
+    permission_required = "projects_app.open_project_revision_pdf"
+    raise_exception = True
+
+    def get(self, request, pk: int):
+        rev = get_object_or_404(ProjectRevision.objects.select_related("project"), pk=pk)
+        file_path = Path(rev.file_path)
+
+        if not file_path.exists():
+            raise Http404("PDF файл не найден")
+
+        filename = file_path.name
+        if not filename.lower().endswith(".pdf"):
+            filename = f"{filename}.pdf"
+
+        resp = FileResponse(file_path.open("rb"), content_type="application/pdf", as_attachment=True)
+        resp["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        return resp

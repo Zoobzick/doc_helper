@@ -2,18 +2,22 @@
 {% load static %}
 
 {% block main %}
-  {% include 'header.html' %}
+    {% include 'header.html' %}
 
-  {% include 'sidebar.html' %}
+    {% include 'sidebar.html' %}
 
-    {% block content %}
-    {% endblock content %}
+    <main id="main" class="main">
+        {% block content %}
+            {% block breadcrumbs %}
 
+            {% endblock breadcrumbs %}
+        {% endblock content %}
+    </main>
 
-  {% include 'footer.html' %}
+    {% include 'footer.html' %}
 
-  <a href="#"
-     class="back-to-top d-flex align-items-center justify-content-center"><i
-      class="bi bi-arrow-up-short"></i>
-  </a>
+    <a href="#"
+       class="back-to-top d-flex align-items-center justify-content-center"><i
+            class="bi bi-arrow-up-short"></i>
+    </a>
 {% endblock main %}
