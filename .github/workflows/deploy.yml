@@ -20,7 +20,6 @@ jobs:
           printf "%s" "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
-          test -s ~/.ssh/known_hosts
 
       - name: Deploy via SSH
         env:
@@ -41,45 +40,63 @@ jobs:
         run: |
           set -e
 
-          # Сформируем env-файл локально на runner'е (из secrets)
+          # 1. Собираем env-файл НА RUNNER-е (тут secrets точно есть)
           cat > /tmp/doc_helper.env <<EOF
-          DJANGO_DEBUG=0
-          DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-          DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
-          DOC_HELPER_BASE_ID_DIR=${DOC_HELPER_BASE_ID_DIR}
-          DB_NAME=${DB_NAME}
-          DB_USER=${DB_USER}
-          DB_PASSWORD=${DB_PASSWORD}
-          DB_HOST=${DB_HOST}
-          DB_PORT=${DB_PORT}
-          EOF
+DJANGO_DEBUG=0
+DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
+DOC_HELPER_BASE_ID_DIR=${DOC_HELPER_BASE_ID_DIR}
+DB_NAME=${DB_NAME}
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASSWORD}
+DB_HOST=${DB_HOST}
+DB_PORT=${DB_PORT}
+EOF
 
-          # Зальём env-файл на сервер
-          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes /tmp/doc_helper.env ${SSH_USER}@${SSH_HOST}:/tmp/doc_helper.env
+          # 2. Копируем env-файл на сервер
+          scp -i ~/.ssh/id_ed25519 /tmp/doc_helper.env ${SSH_USER}@${SSH_HOST}:/tmp/doc_helper.env
 
-          # Дальше обычный деплой
-          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} "bash -se" <<'REMOTE'
+          # 3. Деплой на сервере
+          ssh -i ~/.ssh/id_ed25519 ${SSH_USER}@${SSH_HOST} \
+            "PROJECT_DIR='${PROJECT_DIR}' bash -se" <<'REMOTE'
           set -e
 
           PROJECT_DIR="$(printf "%s" "$PROJECT_DIR" | tr -d '\r\n')"
 
-          # код
+          echo "== PROJECT_DIR =="
+          echo "$PROJECT_DIR"
+          ls -la "$PROJECT_DIR" | head -n 5
+
+          # Проверка, что это git-репозиторий
+          test -d "$PROJECT_DIR/.git"
+
+          # Код
           sudo -u webapp git -C "$PROJECT_DIR" pull
 
-          # env-файл на место (требует sudo tee/chmod в sudoers)
+          # env-файл
+          sudo mkdir -p /etc/doc_helper
           sudo tee /etc/doc_helper/doc_helper.env > /dev/null < /tmp/doc_helper.env
           sudo chmod 600 /etc/doc_helper/doc_helper.env
           rm -f /tmp/doc_helper.env
 
-          # зависимости
-          sudo -u webapp bash -lc "cd '$PROJECT_DIR' && source venv/bin/activate && pip install -r requirements.txt"
+          # Зависимости
+          sudo -u webapp bash -lc "
+            cd '$PROJECT_DIR'
+            source venv/bin/activate
+            pip install -r requirements.txt
+          "
 
-          # миграции+статика (важно: чтобы Django видел env, systemd уже читает этот файл; а manage.py в CI — нет)
-          # Поэтому для миграций подхватим env явно:
-          sudo -u webapp bash -lc "set -a; source /etc/doc_helper/doc_helper.env; set +a; cd '$PROJECT_DIR' && source venv/bin/activate && python manage.py migrate --noinput"
-          sudo -u webapp bash -lc "set -a; source /etc/doc_helper/doc_helper.env; set +a; cd '$PROJECT_DIR' && source venv/bin/activate && python manage.py collectstatic --noinput"
+          # Миграции и статика (явно подгружаем env)
+          sudo -u webapp bash -lc "
+            set -a
+            source /etc/doc_helper/doc_helper.env
+            set +a
+            cd '$PROJECT_DIR'
+            source venv/bin/activate
+            python manage.py migrate --noinput
+            python manage.py collectstatic --noinput
+          "
 
           sudo systemctl restart gunicorn-doc_helper
           sudo systemctl reload nginx
           REMOTE
-
