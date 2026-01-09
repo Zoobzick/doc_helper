@@ -27,55 +27,59 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           PROJECT_DIR: ${{ secrets.PROJECT_DIR }}
+
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
           DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
+
           DB_NAME: ${{ secrets.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
+
           DOC_HELPER_BASE_ID_DIR: ${{ secrets.DOC_HELPER_BASE_ID_DIR }}
         run: |
           set -e
 
-          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} \
-            "PROJECT_DIR='${PROJECT_DIR}' \
-             DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' \
-             DJANGO_ALLOWED_HOSTS='${DJANGO_ALLOWED_HOSTS}' \
-             DOC_HELPER_BASE_ID_DIR='${DOC_HELPER_BASE_ID_DIR}' \
-             DB_NAME='${DB_NAME}' \
-             DB_USER='${DB_USER}' \
-             DB_PASSWORD='${DB_PASSWORD}' \
-             DB_HOST='${DB_HOST}' \
-             DB_PORT='${DB_PORT}' \
-             bash -se" <<'REMOTE'
+          # Сформируем env-файл локально на runner'е (из secrets)
+          cat > /tmp/doc_helper.env <<EOF
+          DJANGO_DEBUG=0
+          DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+          DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
+          DOC_HELPER_BASE_ID_DIR=${DOC_HELPER_BASE_ID_DIR}
+          DB_NAME=${DB_NAME}
+          DB_USER=${DB_USER}
+          DB_PASSWORD=${DB_PASSWORD}
+          DB_HOST=${DB_HOST}
+          DB_PORT=${DB_PORT}
+          EOF
+
+          # Зальём env-файл на сервер
+          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes /tmp/doc_helper.env ${SSH_USER}@${SSH_HOST}:/tmp/doc_helper.env
+
+          # Дальше обычный деплой
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} "bash -se" <<'REMOTE'
           set -e
 
-          # 1) код (НЕ зависит от текущей директории)
+          PROJECT_DIR="$(printf "%s" "$PROJECT_DIR" | tr -d '\r\n')"
+
+          # код
           sudo -u webapp git -C "$PROJECT_DIR" pull
 
-          # 2) зависимости
+          # env-файл на место (требует sudo tee/chmod в sudoers)
+          sudo tee /etc/doc_helper/doc_helper.env > /dev/null < /tmp/doc_helper.env
+          sudo chmod 600 /etc/doc_helper/doc_helper.env
+          rm -f /tmp/doc_helper.env
+
+          # зависимости
           sudo -u webapp bash -lc "cd '$PROJECT_DIR' && source venv/bin/activate && pip install -r requirements.txt"
 
-          # 3) env-файл
-          {
-            echo "DJANGO_DEBUG=0"
-            echo "DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY"
-            echo "DJANGO_ALLOWED_HOSTS=$DJANGO_ALLOWED_HOSTS"
-            echo "DOC_HELPER_BASE_ID_DIR=$DOC_HELPER_BASE_ID_DIR"
-            echo "DB_NAME=$DB_NAME"
-            echo "DB_USER=$DB_USER"
-            echo "DB_PASSWORD=$DB_PASSWORD"
-            echo "DB_HOST=$DB_HOST"
-            echo "DB_PORT=$DB_PORT"
-          } | sudo tee /etc/doc_helper/doc_helper.env > /dev/null
-          sudo chmod 600 /etc/doc_helper/doc_helper.env
+          # миграции+статика (важно: чтобы Django видел env, systemd уже читает этот файл; а manage.py в CI — нет)
+          # Поэтому для миграций подхватим env явно:
+          sudo -u webapp bash -lc "set -a; source /etc/doc_helper/doc_helper.env; set +a; cd '$PROJECT_DIR' && source venv/bin/activate && python manage.py migrate --noinput"
+          sudo -u webapp bash -lc "set -a; source /etc/doc_helper/doc_helper.env; set +a; cd '$PROJECT_DIR' && source venv/bin/activate && python manage.py collectstatic --noinput"
 
-          # 4) миграции+статика
-          sudo -u webapp bash -lc "cd '$PROJECT_DIR' && source venv/bin/activate && python manage.py migrate --noinput"
-          sudo -u webapp bash -lc "cd '$PROJECT_DIR' && source venv/bin/activate && python manage.py collectstatic --noinput"
-
-          # 5) рестарт
           sudo systemctl restart gunicorn-doc_helper
           sudo systemctl reload nginx
           REMOTE
+
