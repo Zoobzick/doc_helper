@@ -31,6 +31,19 @@
                             </div>
 
                             <div class="d-flex align-items-center gap-3 flex-wrap">
+                                {% if request.user.is_superuser %}
+                                    <form method="post"
+                                          action="{% url 'passports:delete_all_passports' %}"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Вы уверены? ВСЕ паспорта будут удалены!');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger">
+                                            <i class="bi bi-trash"></i>
+                                            Удалить все паспорта
+                                        </button>
+                                    </form>
+                                {% endif %}
+
 
                                 <div class="form-check form-switch mb-0">
                                     <input class="form-check-input"
