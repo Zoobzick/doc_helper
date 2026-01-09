@@ -11,24 +11,15 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
 from pathlib import Path
-from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # dotenv — только helper для DEV, на prod переменные приходят из окружения процесса
 try:
-    from dotenv import load_dotenv  # python-dotenv
-except Exception:
-    load_dotenv = None
-
-if load_dotenv:
-    # 1) локальный .env рядом с manage.py (в репо НЕ коммитится)
+    from dotenv import load_dotenv
     load_dotenv(BASE_DIR / ".env", override=False)
-
-    # 2) продовый env (если доступен для чтения) — НЕ обязателен
-    prod_env = Path("/etc/doc_helper/doc_helper.env")
-    if prod_env.exists() and os.access(prod_env, os.R_OK):
-        load_dotenv(prod_env, override=False)
+except Exception:
+    pass
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
