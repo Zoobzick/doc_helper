@@ -15,9 +15,20 @@ from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(BASE_DIR / ".env")
+# dotenv — только helper для DEV, на prod переменные приходят из окружения процесса
+try:
+    from dotenv import load_dotenv  # python-dotenv
+except Exception:
+    load_dotenv = None
 
-load_dotenv("/etc/doc_helper/doc_helper.env", override=False)
+if load_dotenv:
+    # 1) локальный .env рядом с manage.py (в репо НЕ коммитится)
+    load_dotenv(BASE_DIR / ".env", override=False)
+
+    # 2) продовый env (если доступен для чтения) — НЕ обязателен
+    prod_env = Path("/etc/doc_helper/doc_helper.env")
+    if prod_env.exists() and os.access(prod_env, os.R_OK):
+        load_dotenv(prod_env, override=False)
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
