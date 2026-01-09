@@ -101,6 +101,20 @@
                                                     <i class="bi bi-box-arrow-up-right"></i>
                                                 </a>
                                             {% endif %}
+
+                                            {% if user.is_superuser or perms.passports_app.delete_passport %}
+                                                <form method="post"
+                                                      action="{% url 'passports:passport_delete' p.id %}"
+                                                      class="d-inline ms-1"
+                                                      onsubmit="return confirm('Удалить паспорт? Это действие необратимо.');">
+                                                    {% csrf_token %}
+                                                    <button type="submit"
+                                                            class="btn btn-sm btn-outline-danger"
+                                                            title="Удалить паспорт">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            {% endif %}
                                         </td>
 
                                     </tr>
@@ -157,7 +171,6 @@
 
             window.setTimeout(adjustTable, 50);
 
-            // фильтр needs_review
             const sw = document.getElementById("needsReviewOnly");
             if (sw) {
                 sw.addEventListener("change", function () {

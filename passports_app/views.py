@@ -202,3 +202,36 @@ class PassportOpenView(PermissionRequiredMixin, View):
         resp = FileResponse(open(file_path, "rb"), content_type=content_type)
         resp["Content-Disposition"] = f'inline; filename="{filename}"'
         return resp
+
+class PassportDeleteView(PermissionRequiredMixin, View):
+    """
+    Удаление паспорта по POST (из списка).
+    кнопка -> form POST -> delete -> redirect на список.
+    """
+    permission_required = "passports_app.delete_passport"
+    raise_exception = True
+
+    def post(self, request, pk: int):
+        passport = get_object_or_404(Passport, pk=pk)
+
+        # (file_path) удалим файл вручную, чтобы не оставлять мусор на диске
+        file_path = None
+        try:
+            if passport.file:
+                file_path = Path(passport.file.path)
+        except Exception:
+            file_path = None
+
+        name = passport.original_name or (passport.file.name if passport.file else f"паспорт #{passport.pk}")
+
+        passport.delete()
+
+        if file_path and file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception:
+                # не критично: запись удалена, файл мог быть занят/без прав
+                pass
+
+        messages.success(request, f"Паспорт удалён: {name}")
+        return redirect(reverse("passports:passports_list"))
