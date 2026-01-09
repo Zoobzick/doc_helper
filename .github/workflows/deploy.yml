@@ -76,7 +76,8 @@ jobs:
           # env-файл
           sudo mkdir -p /etc/doc_helper
           sudo tee /etc/doc_helper/doc_helper.env > /dev/null < /tmp/doc_helper.env
-          sudo chmod 600 /etc/doc_helper/doc_helper.env
+          sudo chown root:webapp /etc/doc_helper/doc_helper.env
+          sudo chmod 640 /etc/doc_helper/doc_helper.env
           rm -f /tmp/doc_helper.env
 
           # Зависимости
