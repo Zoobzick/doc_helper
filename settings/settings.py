@@ -59,7 +59,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760
 
 # Путь для медиа файлов
 MEDIA_URL = '/media/'
-MEDIA_ROOT = MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = BASE_ID_DIR / "media"
 
 
 # Разрешенные типы файлов (опционально в валидаторе формы)

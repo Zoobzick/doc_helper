@@ -1,15 +1,17 @@
+from __future__ import annotations
+
+import os
 from django.db import models
 from django.utils import timezone
-from django.core.files.storage import FileSystemStorage
-import os
-from django.conf import settings
 from projects_app.models import Project
-
-APPROVALS_ROOT = settings.APPROVALS_DIR
-approvals_storage = FileSystemStorage(location=APPROVALS_ROOT)
 
 
 def approval_upload_to(instance: "Approval", filename: str) -> str:
+    """
+    Возвращает ОТНОСИТЕЛЬНЫЙ путь внутри MEDIA_ROOT.
+    ВАЖНО: никаких абсолютных путей и FileSystemStorage(location=...) в модели,
+    иначе миграции будут зависеть от ОС (Windows/Linux) и окружения.
+    """
     # (status_dir) — папка для "на согласовании"
     status_dir = "На согласовании" if instance.status == Approval.Status.PENDING else ""
 
@@ -40,13 +42,13 @@ class Approval(models.Model):
     file = models.FileField(
         "PDF файл",
         upload_to=approval_upload_to,
-        storage=approvals_storage,
+        # storage НЕ указываем — используется DEFAULT_FILE_STORAGE / MEDIA_ROOT
     )
 
     status = models.CharField(
         max_length=10,
         choices=Status.choices,
-        default=Status.PENDING,  # логично: новое — обычно "на согласовании"
+        default=Status.PENDING,
         db_index=True,
     )
 
@@ -64,5 +66,5 @@ class Approval(models.Model):
             ("delete_approvals", "Can delete approvals"),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.project.full_code if self.project else "Общее согласование"
