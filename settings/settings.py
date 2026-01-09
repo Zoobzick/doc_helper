@@ -40,7 +40,6 @@ else:
 PASSPORTS_DIR = BASE_ID_DIR / "Паспорта"
 DIRECTIVE_DIR = BASE_ID_DIR / "Приказы"
 APPROVALS_DIR = BASE_ID_DIR / "Согласования"
-
 PROJECTS_DIR = BASE_ID_DIR / "Проекты"
 PROJECTS_JSON = PROJECTS_DIR / "projects.json"
 
@@ -135,14 +134,21 @@ WSGI_APPLICATION = 'settings.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+# ===== Database (PostgreSQL) =====
+DB_NAME = os.environ.get("DB_NAME", "doc_helper")
+DB_USER = os.environ.get("DB_USER", "doc_helper_user")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+DB_HOST = os.environ.get("DB_HOST", "127.0.0.1")
+DB_PORT = os.environ.get("DB_PORT", "5432")
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'doc_helper',  # имя базы в Postgres
-        'USER': 'doc_helper_user',  # пользователь, которого создал
-        'PASSWORD': '2728571k',  # пароль пользователя
-        'HOST': '127.0.0.1',  # лучше так, чем localhost
-        'PORT': '5432',  # стандартный порт Postgres
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": DB_NAME,
+        "USER": DB_USER,
+        "PASSWORD": DB_PASSWORD,
+        "HOST": DB_HOST,
+        "PORT": DB_PORT,
     }
 }
 

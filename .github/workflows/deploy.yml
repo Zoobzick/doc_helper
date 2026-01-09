@@ -29,6 +29,12 @@ jobs:
           PROJECT_DIR: ${{ secrets.PROJECT_DIR }}
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
           DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DOC_HELPER_BASE_ID_DIR: ${{ secrets.DOC_HELPER_BASE_ID_DIR }}
         run: |
           set -e
 
@@ -47,6 +53,12 @@ jobs:
             echo "DJANGO_DEBUG=0"
             echo "DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY"
             echo "DJANGO_ALLOWED_HOSTS=$DJANGO_ALLOWED_HOSTS"
+            echo "DOC_HELPER_BASE_ID_DIR=$DOC_HELPER_BASE_ID_DIR"
+            echo "DB_NAME=$DB_NAME"
+            echo "DB_USER=$DB_USER"
+            echo "DB_PASSWORD=$DB_PASSWORD"
+            echo "DB_HOST=$DB_HOST"
+            echo "DB_PORT=$DB_PORT"
           } | sudo tee /etc/doc_helper/doc_helper.env > /dev/null
           sudo chmod 600 /etc/doc_helper/doc_helper.env
 
