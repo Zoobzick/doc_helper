@@ -17,15 +17,9 @@ jobs:
           set -e
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-
-          # приватный ключ из Secrets
           printf "%s" "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-
-          # добавляем host key сервера в known_hosts (чтобы не было Host key verification failed)
           ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
-
-          # на всякий случай покажем, что файл не пустой (секретов тут нет)
           test -s ~/.ssh/known_hosts
 
       - name: Deploy via SSH
@@ -33,35 +27,38 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           PROJECT_DIR: ${{ secrets.PROJECT_DIR }}
+
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
           DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
-          DJANGO_CSRF_TRUSTED_ORIGINS: ${{ secrets.DJANGO_CSRF_TRUSTED_ORIGINS }}
         run: |
           set -e
 
-          ssh -i ~/.ssh/id_ed25519 \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            ${SSH_USER}@${SSH_HOST} \
-            bash -lc "
-              set -e
-              cd ${PROJECT_DIR}
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} 'bash -se' <<'REMOTE'
+          set -e
 
-              sudo -u webapp git pull
+          PROJECT_DIR="${PROJECT_DIR}"
 
-              sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && pip install -r requirements.txt'
+          cd "$PROJECT_DIR"
 
-              printf '%s\n' \
-                'DJANGO_DEBUG=0' \
-                'DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}' \
-                'DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}' \
-                'DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS}' \
-                | sudo tee /etc/doc_helper/doc_helper.env > /dev/null
-              sudo chmod 600 /etc/doc_helper/doc_helper.env
+          # 1) код
+          sudo -u webapp git pull
 
-              sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && python manage.py migrate --noinput'
-              sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && python manage.py collectstatic --noinput'
+          # 2) зависимости
+          sudo -u webapp bash -lc "cd '$PROJECT_DIR' && source venv/bin/activate && pip install -r requirements.txt"
 
-              sudo systemctl restart gunicorn-doc_helper
-              sudo systemctl reload nginx
-            "
+          # 3) env-файл (без пустых полей!)
+          {
+            echo "DJANGO_DEBUG=0"
+            echo "DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}"
+            echo "DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}"
+          } | sudo tee /etc/doc_helper/doc_helper.env > /dev/null
+          sudo chmod 600 /etc/doc_helper/doc_helper.env
+
+          # 4) миграции+статика
+          sudo -u webapp bash -lc "cd '$PROJECT_DIR' && source venv/bin/activate && python manage.py migrate --noinput"
+          sudo -u webapp bash -lc "cd '$PROJECT_DIR' && source venv/bin/activate && python manage.py collectstatic --noinput"
+
+          # 5) рестарт
+          sudo systemctl restart gunicorn-doc_helper
+          sudo systemctl reload nginx
+          REMOTE
