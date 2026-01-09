@@ -78,11 +78,16 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
+def env_list(name: str, default: str = ""):
+    raw = os.getenv(name, default)
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 if DEBUG:
     ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
     CSRF_TRUSTED_ORIGINS = []
 else:
-    ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split()
+    ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
     if not ALLOWED_HOSTS:
         raise RuntimeError("DJANGO_ALLOWED_HOSTS is empty in production")
 
