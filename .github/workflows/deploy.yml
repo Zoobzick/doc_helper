@@ -27,30 +27,26 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           PROJECT_DIR: ${{ secrets.PROJECT_DIR }}
-
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
           DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
         run: |
           set -e
 
-          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} 'bash -se' <<'REMOTE'
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} \
+            "PROJECT_DIR='${PROJECT_DIR}' DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' DJANGO_ALLOWED_HOSTS='${DJANGO_ALLOWED_HOSTS}' bash -se" <<'REMOTE'
           set -e
 
-          PROJECT_DIR="${PROJECT_DIR}"
-
-          cd "$PROJECT_DIR"
-
-          # 1) код
-          sudo -u webapp git pull
+          # 1) код (НЕ зависит от текущей директории)
+          sudo -u webapp git -C "$PROJECT_DIR" pull
 
           # 2) зависимости
           sudo -u webapp bash -lc "cd '$PROJECT_DIR' && source venv/bin/activate && pip install -r requirements.txt"
 
-          # 3) env-файл (без пустых полей!)
+          # 3) env-файл
           {
             echo "DJANGO_DEBUG=0"
-            echo "DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}"
-            echo "DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}"
+            echo "DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY"
+            echo "DJANGO_ALLOWED_HOSTS=$DJANGO_ALLOWED_HOSTS"
           } | sudo tee /etc/doc_helper/doc_helper.env > /dev/null
           sudo chmod 600 /etc/doc_helper/doc_helper.env
 
