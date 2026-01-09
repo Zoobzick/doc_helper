@@ -5,13 +5,16 @@ import os
 from pathlib import Path
 
 from django.contrib import messages
+from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.db import transaction
 from django.http import FileResponse, Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.clickjacking import xframe_options_sameorigin
+from django.views.decorators.http import require_POST
 
 from .forms import PassportUploadForm, PassportUpdateForm
 from .models import Passport, Material
@@ -235,3 +238,22 @@ class PassportDeleteView(PermissionRequiredMixin, View):
 
         messages.success(request, f"Паспорт удалён: {name}")
         return redirect(reverse("passports:passports_list"))
+
+
+
+
+
+def is_superuser(user):
+    return user.is_authenticated and user.is_superuser
+
+
+@require_POST
+@user_passes_test(is_superuser)
+@transaction.atomic
+def delete_all_passports(request):
+    """
+    Удаляет ВСЕ паспорта из БД.
+    transaction.atomic — чтобы либо удалилось всё, либо ничего.
+    """
+    Passport.objects.all().delete()
+    return redirect("passports:passports_list")

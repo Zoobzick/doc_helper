@@ -6,6 +6,7 @@ from .views import (
     PassportOpenView,
     PassportDetailView,
     PassportDeleteView,
+    delete_all_passports,
 )
 
 app_name = "passports"
@@ -17,4 +18,5 @@ urlpatterns = [
     path("<int:pk>/open/", PassportOpenView.as_view(), name="passport_open"),
     path("<int:pk>/delete/", PassportDeleteView.as_view(), name="passport_delete"),
     path("<int:pk>/", PassportDetailView.as_view(), name="passport_detail"),
+    path("delete-all/", delete_all_passports, name="delete_all_passports"),
 ]
