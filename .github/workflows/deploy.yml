@@ -41,16 +41,18 @@ jobs:
           set -e
 
           # 1. Собираем env-файл НА RUNNER-е (тут secrets точно есть)
+          escape() { printf "%s" "$1" | sed "s/'/'\"'\"'/g"; }
+          
           cat > /tmp/doc_helper.env <<EOF
-          DJANGO_DEBUG=0
-          DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-          DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
-          DOC_HELPER_BASE_ID_DIR=${DOC_HELPER_BASE_ID_DIR}
-          DB_NAME=${DB_NAME}
-          DB_USER=${DB_USER}
-          DB_PASSWORD=${DB_PASSWORD}
-          DB_HOST=${DB_HOST}
-          DB_PORT=${DB_PORT}
+          DJANGO_DEBUG='0'
+          DJANGO_SECRET_KEY='$(escape "$DJANGO_SECRET_KEY")'
+          DJANGO_ALLOWED_HOSTS='$(escape "$DJANGO_ALLOWED_HOSTS")'
+          DOC_HELPER_BASE_ID_DIR='$(escape "$DOC_HELPER_BASE_ID_DIR")'
+          DB_NAME='$(escape "$DB_NAME")'
+          DB_USER='$(escape "$DB_USER")'
+          DB_PASSWORD='$(escape "$DB_PASSWORD")'
+          DB_HOST='$(escape "$DB_HOST")'
+          DB_PORT='$(escape "$DB_PORT")'
           EOF
 
           # 2. Копируем env-файл на сервер
