@@ -224,7 +224,7 @@ USE_TZ = True
 # ===== Security (prod) =====
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SECURE_SSL_REDIRECT = False  # ВКЛЮЧАТЬ ТОЛЬКО ПРИ HTTPS
+    SECURE_SSL_REDIRECT = True  # ВКЛЮЧАТЬ ТОЛЬКО ПРИ HTTPS
 
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
