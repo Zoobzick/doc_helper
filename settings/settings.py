@@ -11,9 +11,13 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
 from pathlib import Path
-
+from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(BASE_DIR / ".env")
+
+load_dotenv("/etc/doc_helper/doc_helper.env", override=False)
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
@@ -28,7 +32,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # 2) если Windows -> твой текущий путь C:\
 # 3) иначе (Linux) -> /var/www/doc_helper/storage
 DEFAULT_WINDOWS_BASE = Path(r"C:\ид участок №5 (липовая роща)")
-DEFAULT_LINUX_BASE = Path("/var/www/doc_helper/storage")
+DEFAULT_LINUX_BASE = Path("/var/lib/doc_helper/storage")
 
 raw_base = os.environ.get("DOC_HELPER_BASE_ID_DIR", "").strip()
 
@@ -55,7 +59,8 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760
 
 # Путь для медиа файлов
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
+MEDIA_ROOT = MEDIA_ROOT = BASE_DIR / "media"
+
 
 # Разрешенные типы файлов (опционально в валидаторе формы)
 ALLOWED_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
@@ -64,15 +69,23 @@ ALLOWED_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-change-me")
-
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("DJANGO_SECRET_KEY is not set")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
+DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
+if DEBUG:
+    ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+    CSRF_TRUSTED_ORIGINS = []
+else:
+    ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split()
+    if not ALLOWED_HOSTS:
+        raise RuntimeError("DJANGO_ALLOWED_HOSTS is empty in production")
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split()
-CSRF_TRUSTED_ORIGINS = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split()
+    CSRF_TRUSTED_ORIGINS = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split()
+
 
 AUTH_USER_MODEL = "authapp.User"
 
@@ -141,6 +154,9 @@ DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
 DB_HOST = os.environ.get("DB_HOST", "127.0.0.1")
 DB_PORT = os.environ.get("DB_PORT", "5432")
 
+if not DEBUG and not DB_PASSWORD:
+    raise RuntimeError("DB_PASSWORD is empty in production")
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -180,6 +196,18 @@ TIME_ZONE = "Europe/Moscow"
 USE_I18N = True
 
 USE_TZ = True
+
+# ===== Security (prod) =====
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = False # ВКЛЮЧАТЬ ТОЛЬКО ПРИ HTTPS
+
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30  # 30 days
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
