@@ -1,9 +1,20 @@
 from django.urls import path
-from . import views
+
+from .views import (
+    PassportsListView,
+    PassportUploadView,
+    PassportOpenView,
+    PassportDetailView,
+    PassportDeleteView,
+)
+
+app_name = "passports"
 
 urlpatterns = [
-    path("", views.PassportsListView.as_view(), name="passports_list"),
-    path("import-passports/", views.import_passports_view, name="import_passports"),
-    path("open/<int:pk>/", views.view_pdf, name="view_pdf"),
-    path("<int:pk>/update-consumption/", views.update_consumption, name="update_consumption"),
+    path("", PassportsListView.as_view(), name="passports_list"),
+    path("add/", PassportUploadView.as_view(), name="passports_add"),
+
+    path("<int:pk>/open/", PassportOpenView.as_view(), name="passport_open"),
+    path("<int:pk>/delete/", PassportDeleteView.as_view(), name="passport_delete"),
+    path("<int:pk>/", PassportDetailView.as_view(), name="passport_detail"),
 ]

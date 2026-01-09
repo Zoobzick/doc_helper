@@ -1,238 +1,186 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% load static %}
 
 {% block content %}
 
-  <main id="main" class="main">
-
-    <div class="pagetitle">
-      <h1>Fast Pass</h1>
-    </div><!-- End Page Title -->
+    {% block breadcrumbs %}
+        <div class="pagetitle">
+            <h1>Паспорта</h1>
+            <nav>
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'authapp:home' %}">Главная</a>
+                    </li>
+                    <li class="breadcrumb-item active">Паспорта</li>
+                </ol>
+            </nav>
+        </div>
+    {% endblock breadcrumbs %}
 
     <section class="section">
-      <div class="row">
-        <div class="col-lg-12">
+        <div class="row">
+            <div class="col-lg-12">
 
-          <div class="card">
-            <div class="card-body">
+                <div class="card">
+                    <div class="card-body">
 
-              <div class="d-flex justify-content-between align-items-center">
-                <div>
-                  <h5 class="card-title mb-0">Поиск паспортов</h5>
-                  <p class="mb-0">Файлы кроме PDF, находятся в разработке.</p>
+                        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                            <div>
+                                <h5 class="card-title mb-0">Реестр паспортов</h5>
+                                <p class="text-muted mb-0">Паспорта материалов и изделий</p>
+                            </div>
+
+                            <div class="d-flex align-items-center gap-3 flex-wrap">
+
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="needsReviewOnly"
+                                           {% if needs_review_filter_on %}checked{% endif %}>
+                                    <label class="form-check-label" for="needsReviewOnly">
+                                        Требуют уточнения ({{ needs_review_count }})
+                                    </label>
+                                </div>
+
+                                {% if user.is_superuser or perms.passports_app.add_passport %}
+                                    <a href="{% url 'passports:passports_add' %}"
+                                       class="btn btn-sm btn-success">
+                                        <i class="bi bi-plus-circle me-1"></i>
+                                        Добавить паспорта
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table id="passportsTable"
+                                   class="table table-striped table-bordered align-middle w-100">
+
+                                <thead>
+                                <tr>
+                                    <th>Материал</th>
+                                    <th>Наименование документа</th>
+                                    <th>Номер</th>
+                                    <th>Дата</th>
+                                    <th class="text-center">Действия</th>
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                {% for p in passports %}
+                                    <tr {% if p.needs_review %}class="table-warning"{% endif %}>
+
+                                        <td>{{ p.material.name|default:"—" }}</td>
+
+                                        <td style="word-break: break-word;">
+                                            {{ p.document_name }}
+                                        </td>
+
+                                        <td>{{ p.document_number|default:"—" }}</td>
+
+                                        <td {% if p.document_date %}data-order="{{ p.document_date|date:'Y-m-d' }}"{% endif %}>
+                                            {% if p.document_date %}
+                                                {{ p.document_date|date:"d.m.Y" }}
+                                            {% else %}
+                                                <span class="text-muted">—</span>
+                                            {% endif %}
+                                        </td>
+
+                                        <td class="text-center text-nowrap">
+                                            {% if user.is_superuser or perms.passports_app.view_passport %}
+                                                <a href="{% url 'passports:passport_open' p.id %}"
+                                                   target="_blank"
+                                                   class="btn btn-sm btn-outline-danger"
+                                                   title="Открыть файл">
+                                                    <i class="bi bi-file-earmark-pdf"></i>
+                                                </a>
+
+                                                <a href="{% url 'passports:passport_detail' p.id %}"
+                                                   class="btn btn-sm btn-outline-primary ms-1"
+                                                   title="Открыть паспорт">
+                                                    <i class="bi bi-box-arrow-up-right"></i>
+                                                </a>
+                                            {% endif %}
+
+                                            {% if user.is_superuser or perms.passports_app.delete_passport %}
+                                                <form method="post"
+                                                      action="{% url 'passports:passport_delete' p.id %}"
+                                                      class="d-inline ms-1"
+                                                      onsubmit="return confirm('Удалить паспорт? Это действие необратимо.');">
+                                                    {% csrf_token %}
+                                                    <button type="submit"
+                                                            class="btn btn-sm btn-outline-danger"
+                                                            title="Удалить паспорт">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            {% endif %}
+                                        </td>
+
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+
+                            </table>
+                        </div>
+
+                    </div>
                 </div>
 
-                {% if user.is_superuser or perms.passports_app.import_passports %}
-                <form action="{% url 'import_passports' %}" method="POST" class="ms-3">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-sm btn-primary">
-                      <i class="bi bi-upload me-1"></i> Импорт
-                  </button>
-                </form>
-                {% endif %}
-              </div>
-
-              <table id="myTable" class="table table-striped table-hover">
-                <thead>
-                  <tr>
-                    <th scope="col">#</th>
-                    <th scope="col">Материал</th>
-                    <th scope="col">Документ</th>
-                    <th scope="col">Дата</th>
-                    <th scope="col">Расход, %</th>
-                    <th scope="col">Файл</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {% for passport in passports %}
-                    <tr>
-                      <th scope="row">{{ forloop.counter }}</th>
-
-                      <td>{{ passport.material.name }}</td>
-
-                      <td>
-                        {{ passport.document_name }}
-                        {% if passport.document_number %}
-                          №{{ passport.document_number }}
-                        {% endif %}
-                      </td>
-
-                      <td {% if passport.document_date %}data-order="{{ passport.document_date|date:'Y-m-d' }}"{% endif %}>
-                        {% if passport.document_date %}
-                          {{ passport.document_date|date:"d.m.Y" }}
-                        {% else %}
-                          <span class="text-muted">—</span>
-                        {% endif %}
-                      </td>
-
-                      {# Расход #}
-                      {% if user.is_superuser or perms.passports_app.change_passport_consumption %}
-                        <td class="consumption-cell" ondblclick="enableEdit(this, {{ passport.id }})">
-                          <span class="consumption-value" id="value-{{ passport.id }}">
-                            {{ passport.consumption }}
-                          </span>
-
-                          <form method="post"
-                                action="{% url 'update_consumption' passport.id %}"
-                                class="consumption-form d-none"
-                                id="form-{{ passport.id }}"
-                                onsubmit="return validateConsumption(this)">
-                            {% csrf_token %}
-
-                            <div class="input-group input-group-sm">
-                              <input type="number"
-                                     name="consumption"
-                                     value="{{ passport.consumption }}"
-                                     min="0"
-                                     max="100"
-                                     step="0.01"
-                                     class="form-control form-control-sm"
-                                     style="width: 80px;"
-                                     required
-                                     onkeypress="if(event.key === 'Enter') { this.form.submit(); return false; }">
-
-                              <button type="submit"
-                                      class="btn btn-success btn-sm py-0 px-2"
-                                      title="Сохранить (Enter)">
-                                <i class="bi bi-check"></i>
-                              </button>
-
-                              <button type="button"
-                                      class="btn btn-secondary btn-sm py-0 px-2"
-                                      onclick="cancelEdit({{ passport.id }})"
-                                      title="Отмена (Esc)">
-                                <i class="bi bi-x"></i>
-                              </button>
-                            </div>
-                          </form>
-                        </td>
-                      {% else %}
-                        <td class="text-muted">{{ passport.consumption }}</td>
-                      {% endif %}
-
-                      <td>
-                        {% if passport.file_name|lower|slice:"-4:" == ".pdf" %}
-                          {% if user.is_superuser or perms.passports_app.open_passport_file %}
-                            <a href="{% url 'view_pdf' passport.id %}"
-                               target="_blank"
-                               class="btn btn-sm btn-outline-danger"
-                               title="Открыть PDF в браузере">
-                              <i class="bi bi-file-earmark-pdf-fill"></i> PDF
-                            </a>
-                          {% else %}
-                            <span class="text-muted">Нет прав</span>
-                          {% endif %}
-                        {% else %}
-                          <a href="{{ passport.file_path|safe }}"
-                             class="btn btn-sm btn-outline-secondary text-decoration-none"
-                             title="Путь к файлу: {{ passport.file_path }} (ПКМ → Копировать ссылку)">
-                            <i class="bi bi-file-earmark"></i> {{ passport.file_name|slice:"-4:"|upper }}
-                          </a>
-                        {% endif %}
-                      </td>
-
-                    </tr>
-                  {% empty %}
-                    {# ВАЖНО: DataTables требует одинаковое число ячеек в каждой строке (6) #}
-                    <tr>
-                      <td class="text-muted text-center">—</td>
-                      <td class="text-muted text-center">—</td>
-                      <td class="text-muted text-center">Нет данных. Загрузите паспорта через кнопку “Импорт”.</td>
-                      <td class="text-muted text-center">—</td>
-                      <td class="text-muted text-center">—</td>
-                      <td class="text-muted text-center">—</td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-
             </div>
-          </div>
-
         </div>
-      </div>
     </section>
 
-  </main><!-- End #main -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
 
-{% endblock content %}
+            const dt = $('#passportsTable').DataTable({
+                language: {
+                    url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json',
+                    emptyTable: "Паспорта не найдены"
+                },
+                search: {smart: false},
+                stateSave: true,
+                stateDuration: -1,
+                scrollX: true,
+                autoWidth: false,
+            });
 
-{% block extra_js %}
-<script>
-$(document).ready(function() {
-  $('#myTable').DataTable({
-    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json' },
-    order: [[3, 'desc']],
-    search: { smart: false },
-    stateSave: true,
-    stateDuration: -1,
-    columnDefs: [
-      {
-        targets: [3, 4],
-        className: 'dt-head-nowrap text-center'
-      }
-    ]
-  });
-});
-</script>
+            function adjustTable() {
+                dt.columns.adjust().draw(false);
+            }
 
-<script>
-// Включить редактирование
-function enableEdit(cell, passportId) {
-  // Если формы нет (права нет) — просто выходим
-  const form = document.getElementById(`form-${passportId}`);
-  const valueSpan = document.getElementById(`value-${passportId}`);
-  if (!form || !valueSpan) return;
+            window.addEventListener('resize', function () {
+                window.setTimeout(adjustTable, 50);
+            });
 
-  valueSpan.classList.add('d-none');
-  form.classList.remove('d-none');
+            const toggleBtn = document.querySelector('.toggle-sidebar-btn');
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', function () {
+                    window.setTimeout(adjustTable, 50);
+                    window.setTimeout(adjustTable, 250);
+                    window.setTimeout(adjustTable, 450);
+                });
+            }
 
-  const input = form.querySelector('input[name="consumption"]');
-  if (input) {
-    input.focus();
-    input.select();
-  }
-}
+            document.body.addEventListener('transitionend', function (e) {
+                if (e.propertyName === 'width' || e.propertyName === 'margin-left' || e.propertyName === 'left') {
+                    adjustTable();
+                }
+            });
 
-// Отменить редактирование
-function cancelEdit(passportId) {
-  const form = document.getElementById(`form-${passportId}`);
-  const valueSpan = document.getElementById(`value-${passportId}`);
-  if (!form || !valueSpan) return;
+            window.setTimeout(adjustTable, 50);
 
-  valueSpan.classList.remove('d-none');
-  form.classList.add('d-none');
-}
+            const sw = document.getElementById("needsReviewOnly");
+            if (sw) {
+                sw.addEventListener("change", function () {
+                    const url = new URL(window.location.href);
+                    if (sw.checked) url.searchParams.set("needs_review", "1");
+                    else url.searchParams.delete("needs_review");
+                    window.location.href = url.toString();
+                });
+            }
+        });
+    </script>
 
-// Валидация
-function validateConsumption(form) {
-  const input = form.querySelector('input[name="consumption"]');
-  const value = parseFloat(input.value);
-
-  if (isNaN(value)) {
-    alert('Введите число');
-    input.focus();
-    return false;
-  }
-
-  if (value < 0 || value > 100) {
-    alert('Значение должно быть от 0 до 100');
-    input.focus();
-    return false;
-  }
-
-  return true;
-}
-
-// Esc закрывает форму
-document.addEventListener('keydown', function(event) {
-  if (event.key === 'Escape') {
-    document.querySelectorAll('.consumption-form:not(.d-none)').forEach(form => {
-      const passportId = form.id.replace('form-', '');
-      cancelEdit(passportId);
-    });
-  }
-});
-</script>
-{% endblock extra_js %}
+{% endblock %}

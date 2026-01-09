@@ -1,27 +1,81 @@
+from __future__ import annotations
+
 from django.contrib import admin
-from django.contrib.auth.models import Permission
-from django.contrib.contenttypes.models import ContentType
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
-@admin.register(Permission)
-class PermissionAdmin(admin.ModelAdmin):
+@admin.register(User)
+class UserAdmin(DjangoUserAdmin):
     """
-    Даёт доступ к системным правам (auth.Permission) через админку,
-    чтобы можно было удалять дубли и быстро искать permissions.
+    Админка кастомного пользователя.
     """
-    list_display = ("name", "codename", "content_type")
-    search_fields = ("name", "codename", "content_type__app_label", "content_type__model")
-    list_filter = ("content_type__app_label", "content_type__model")
-    ordering = ("content_type__app_label", "content_type__model", "codename")
 
+    model = User
 
-@admin.register(ContentType)
-class ContentTypeAdmin(admin.ModelAdmin):
-    """
-    Обычно не нужно трогать, но полезно для диагностики.
-    Если не хочешь — можно удалить этот класс.
-    """
-    list_display = ("app_label", "model")
-    search_fields = ("app_label", "model")
-    list_filter = ("app_label",)
-    ordering = ("app_label", "model")
+    # --- Список пользователей ---
+    list_display = (
+        "email",
+        "first_name",
+        "last_name",
+        "is_active",
+        "is_staff",
+        "is_superuser",
+        "last_login",
+    )
+    list_filter = (
+        "is_active",
+        "is_staff",
+        "is_superuser",
+        "groups",
+    )
+    search_fields = (
+        "email",
+        "first_name",
+        "last_name",
+    )
+    ordering = ("email",)
+
+    # --- Форма редактирования ---
+    fieldsets = (
+        (None, {"fields": ("email", "password")}),
+        ("Персональные данные", {"fields": ("first_name", "last_name")}),
+        (
+            "Доступ",
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                )
+            },
+        ),
+        ("Важные даты", {"fields": ("last_login", "date_joined")}),
+    )
+
+    # --- Форма создания ---
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": (
+                    "email",
+                    "first_name",
+                    "last_name",
+                    "password1",
+                    "password2",
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                ),
+            },
+        ),
+    )
+
+    # --- Только чтение ---
+    readonly_fields = ("last_login", "date_joined")
