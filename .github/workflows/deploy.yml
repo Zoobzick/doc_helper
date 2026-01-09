@@ -39,7 +39,16 @@ jobs:
           set -e
 
           ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} \
-            "PROJECT_DIR='${PROJECT_DIR}' DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' DJANGO_ALLOWED_HOSTS='${DJANGO_ALLOWED_HOSTS}' bash -se" <<'REMOTE'
+            "PROJECT_DIR='${PROJECT_DIR}' \
+             DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' \
+             DJANGO_ALLOWED_HOSTS='${DJANGO_ALLOWED_HOSTS}' \
+             DOC_HELPER_BASE_ID_DIR='${DOC_HELPER_BASE_ID_DIR}' \
+             DB_NAME='${DB_NAME}' \
+             DB_USER='${DB_USER}' \
+             DB_PASSWORD='${DB_PASSWORD}' \
+             DB_HOST='${DB_HOST}' \
+             DB_PORT='${DB_PORT}' \
+             bash -se" <<'REMOTE'
           set -e
 
           # 1) код (НЕ зависит от текущей директории)
