@@ -29,24 +29,31 @@ jobs:
         run: |
           set -e
 
-          ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} bash -lc "
+          ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} bash -lc '
             set -e
+
             cd ${PROJECT_DIR}
 
+            # 1) Обновляем код
             sudo -u webapp git pull
 
-            sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && pip install -r requirements.txt'
+            # 2) Зависимости
+            sudo -u webapp bash -lc "cd ${PROJECT_DIR} && source venv/bin/activate && pip install -r requirements.txt"
 
-            sudo bash -lc 'printf %s\\n \
-              \"DJANGO_DEBUG=0\" \
-              \"DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}\" \
-              \"DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}\" \
-              \"DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS}\" \
-              > /etc/doc_helper/doc_helper.env && chmod 600 /etc/doc_helper/doc_helper.env'
+            # 3) Env-файл (секреты)
+            printf "%s\n" \
+              "DJANGO_DEBUG=0" \
+              "DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}" \
+              "DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}" \
+              "DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS}" \
+              | sudo tee /etc/doc_helper/doc_helper.env > /dev/null
+            sudo chmod 600 /etc/doc_helper/doc_helper.env
 
-            sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && python manage.py migrate --noinput'
-            sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && python manage.py collectstatic --noinput'
+            # 4) Миграции + статика
+            sudo -u webapp bash -lc "cd ${PROJECT_DIR} && source venv/bin/activate && python manage.py migrate --noinput"
+            sudo -u webapp bash -lc "cd ${PROJECT_DIR} && source venv/bin/activate && python manage.py collectstatic --noinput"
 
+            # 5) Рестарт сервисов
             sudo systemctl restart gunicorn-doc_helper
             sudo systemctl reload nginx
-          "
+          '
