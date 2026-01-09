@@ -11,12 +11,14 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
 from pathlib import Path
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # dotenv — только helper для DEV, на prod переменные приходят из окружения процесса
 try:
     from dotenv import load_dotenv
+
     load_dotenv(BASE_DIR / ".env", override=False)
 except Exception:
     pass
@@ -49,7 +51,6 @@ APPROVALS_DIR = BASE_ID_DIR / "Согласования"
 PROJECTS_DIR = BASE_ID_DIR / "Проекты"
 PROJECTS_JSON = PROJECTS_DIR / "projects.json"
 
-
 # Templates Документов
 DOCUMENT_TEMPLATES_DIR = BASE_DIR / "document_templates"
 DOCX_TEMPLATES_DIR = DOCUMENT_TEMPLATES_DIR / "docx"
@@ -62,7 +63,6 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760
 # Путь для медиа файлов
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_ID_DIR / "media"
-
 
 # Разрешенные типы файлов (опционально в валидаторе формы)
 ALLOWED_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
@@ -78,6 +78,7 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
+
 def env_list(name: str, default: str = ""):
     raw = os.getenv(name, default)
     return [item.strip() for item in raw.split(",") if item.strip()]
@@ -91,8 +92,24 @@ else:
     if not ALLOWED_HOSTS:
         raise RuntimeError("DJANGO_ALLOWED_HOSTS is empty in production")
 
-    CSRF_TRUSTED_ORIGINS = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split()
 
+def build_csrf_trusted_origins(hosts: list[str]) -> list[str]:
+    origins = []
+    for host in hosts:
+        # пропускаем localhost и IP
+        if host in {"localhost", "127.0.0.1"}:
+            continue
+        if host.replace(".", "").isdigit():
+            continue
+        origins.append(f"http://{host}")
+        origins.append(f"https://{host}")
+    return origins
+
+
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS = []
+else:
+    CSRF_TRUSTED_ORIGINS = build_csrf_trusted_origins(ALLOWED_HOSTS)
 
 AUTH_USER_MODEL = "authapp.User"
 
@@ -207,7 +224,7 @@ USE_TZ = True
 # ===== Security (prod) =====
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SECURE_SSL_REDIRECT = False # ВКЛЮЧАТЬ ТОЛЬКО ПРИ HTTPS
+    SECURE_SSL_REDIRECT = False  # ВКЛЮЧАТЬ ТОЛЬКО ПРИ HTTPS
 
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
