@@ -42,16 +42,16 @@ jobs:
 
           # 1. Собираем env-файл НА RUNNER-е (тут secrets точно есть)
           cat > /tmp/doc_helper.env <<EOF
-DJANGO_DEBUG=0
-DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
-DOC_HELPER_BASE_ID_DIR=${DOC_HELPER_BASE_ID_DIR}
-DB_NAME=${DB_NAME}
-DB_USER=${DB_USER}
-DB_PASSWORD=${DB_PASSWORD}
-DB_HOST=${DB_HOST}
-DB_PORT=${DB_PORT}
-EOF
+          DJANGO_DEBUG=0
+          DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+          DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
+          DOC_HELPER_BASE_ID_DIR=${DOC_HELPER_BASE_ID_DIR}
+          DB_NAME=${DB_NAME}
+          DB_USER=${DB_USER}
+          DB_PASSWORD=${DB_PASSWORD}
+          DB_HOST=${DB_HOST}
+          DB_PORT=${DB_PORT}
+          EOF
 
           # 2. Копируем env-файл на сервер
           scp -i ~/.ssh/id_ed25519 /tmp/doc_helper.env ${SSH_USER}@${SSH_HOST}:/tmp/doc_helper.env
