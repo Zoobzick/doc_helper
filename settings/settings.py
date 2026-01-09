@@ -22,17 +22,28 @@ STATICFILES_DIRS = [
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Директории для хранения файлов
+# Директории для хранения файлов (Windows локально / Linux прод)
+# Приоритет:
+# 1) переменная окружения DOC_HELPER_BASE_ID_DIR
+# 2) если Windows -> твой текущий путь C:\
+# 3) иначе (Linux) -> /var/www/doc_helper/storage
+DEFAULT_WINDOWS_BASE = Path(r"C:\ид участок №5 (липовая роща)")
+DEFAULT_LINUX_BASE = Path("/var/www/doc_helper/storage")
 
-BASE_ID_DIR = Path(r"C:\ид участок №5 (липовая роща)")
+raw_base = os.environ.get("DOC_HELPER_BASE_ID_DIR", "").strip()
+
+if raw_base:
+    BASE_ID_DIR = Path(raw_base)
+else:
+    BASE_ID_DIR = DEFAULT_WINDOWS_BASE if os.name == "nt" else DEFAULT_LINUX_BASE
 
 PASSPORTS_DIR = BASE_ID_DIR / "Паспорта"
-
 DIRECTIVE_DIR = BASE_ID_DIR / "Приказы"
-
 APPROVALS_DIR = BASE_ID_DIR / "Согласования"
 
 PROJECTS_DIR = BASE_ID_DIR / "Проекты"
 PROJECTS_JSON = PROJECTS_DIR / "projects.json"
+
 
 # Templates Документов
 DOCUMENT_TEMPLATES_DIR = BASE_DIR / "document_templates"
@@ -52,16 +63,17 @@ ALLOWED_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", SECRET_KEY)
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-change-me")
+
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 
 
-if not DEBUG:
-    ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split()
-    CSRF_TRUSTED_ORIGINS = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split()
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split()
+CSRF_TRUSTED_ORIGINS = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split()
 
 AUTH_USER_MODEL = "authapp.User"
 
