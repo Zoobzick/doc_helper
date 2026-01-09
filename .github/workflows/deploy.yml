@@ -1,0 +1,52 @@
+name: Deploy
+
+on:
+  push:
+    branches: ["main", "master"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Deploy via SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          PROJECT_DIR: ${{ secrets.PROJECT_DIR }}
+
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
+          DJANGO_CSRF_TRUSTED_ORIGINS: ${{ secrets.DJANGO_CSRF_TRUSTED_ORIGINS }}
+        run: |
+          set -e
+
+          ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST} bash -lc "
+            set -e
+            cd ${PROJECT_DIR}
+
+            sudo -u webapp git pull
+
+            sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && pip install -r requirements.txt'
+
+            sudo bash -lc 'printf %s\\n \
+              \"DJANGO_DEBUG=0\" \
+              \"DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}\" \
+              \"DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}\" \
+              \"DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS}\" \
+              > /etc/doc_helper/doc_helper.env && chmod 600 /etc/doc_helper/doc_helper.env'
+
+            sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && python manage.py migrate --noinput'
+            sudo -u webapp bash -lc 'cd ${PROJECT_DIR} && source venv/bin/activate && python manage.py collectstatic --noinput'
+
+            sudo systemctl restart gunicorn-doc_helper
+            sudo systemctl reload nginx
+          "

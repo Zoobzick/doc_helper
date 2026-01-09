@@ -53,12 +53,15 @@ ALLOWED_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-s*53l#i%($g&)!i99e(^e6l)ubfi4^mch3i$_@+#cz@@cxx=(i'
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 
-ALLOWED_HOSTS = ["*"]
+
+if not DEBUG:
+    ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split()
+    CSRF_TRUSTED_ORIGINS = os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split()
 
 AUTH_USER_MODEL = "authapp.User"
 
