@@ -275,6 +275,7 @@
                 const body = new URLSearchParams();
                 body.set('code', code);
                 body.set('full_name', full_name);
+                body.set('is_active', '1')
 
                 fetch(url, {
                     method: 'POST',

@@ -363,7 +363,8 @@ class DictItemCreateView(JsonPermissionRequiredMixin, View):
 
         code = (request.POST.get("code") or "").strip()
         full_name = (request.POST.get("full_name") or "").strip()
-        is_active = str_to_bool(request.POST.get("is_active"))
+        raw_is_active = request.POST.get("is_active", None)
+        is_active = True if raw_is_active is None else str_to_bool(raw_is_active)
 
         if not code or not full_name:
             return JsonResponse({"ok": False, "error": "code и full_name обязательны"}, status=400)
