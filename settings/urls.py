@@ -25,5 +25,6 @@ urlpatterns = [
     path('directives/', include('directive_app.urls')),
     path("projects/", include(("projects_app.urls", "projects"), namespace="projects")),
     path("approvals/", include(("approvals_app.urls", "approvals"), namespace="approvals")),
-    path("documents/", include(('documents_app.urls', 'documents'), namespace='documents'))
+    path("documents/", include(('documents_app.urls', 'documents'), namespace='documents')),
+    path("", include("health_app.urls")),
 ]
