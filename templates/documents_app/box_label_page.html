@@ -5,7 +5,6 @@
 {% block title %}Наклейка на коробку{% endblock %}
 
 {% block content %}
-    
 
   <div class="pagetitle">
     <h1>Наклейка на коробку</h1>
@@ -44,7 +43,7 @@
                          placeholder="Поиск по шифру / участку / конструкции...">
                 </div>
                 <small class="text-muted d-block mt-1">
-                  Подсказка: можно искать по кускам вроде “МРАЛ1”, “СТ06”, “КЖ”, “СМ12”.
+                  Подсказка: можно искать по кускам вроде “МРАЛ1”, “СТ06”, “КЖ8”, “СМ12”.
                 </small>
               </div>
             </div>
@@ -67,6 +66,18 @@
                 <h5 class="card-title mb-0">Параметры наклейки</h5>
                 <p class="mb-0 text-muted">DSM / MIP / SMU можно править двойным кликом.</p>
               </div>
+            </div>
+
+            <!-- ✅ ЭТАП -->
+            <div class="mb-3">
+              <label class="form-label mb-1">Этап (попадает в {{stage}})</label>
+              <select id="stageSelect" class="form-select">
+                <option value="">— не выбран (возьмём из первого проекта) —</option>
+                {% for st in stages %}
+                  <option value="{{ st.id }}">{{ st.code }} — {{ st.full_name }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Если выбрать — в docx уйдёт full_name выбранного этапа.</div>
             </div>
 
             <div class="mb-3">
@@ -110,6 +121,7 @@
 
             <form id="genForm" method="post" action="{% url 'documents:box_label_generate' %}">
               {% csrf_token %}
+
               <input type="hidden" name="DSM" id="DSM_input">
               <input type="hidden" name="MIP" id="MIP_input">
               <input type="hidden" name="SMU" id="SMU_input">
@@ -117,6 +129,9 @@
               <!-- CSV id -->
               <input type="hidden" name="exec_ids" id="exec_ids_input">
               <input type="hidden" name="work_ids" id="work_ids_input">
+
+              <!-- ✅ stage_id -->
+              <input type="hidden" name="stage_id" id="stage_id_input">
 
               <button type="submit" class="btn btn-primary w-100">
                 <i class="bi bi-file-earmark-word me-1"></i>
@@ -130,7 +145,7 @@
 
     </div>
   </section>
-    
+
 {% endblock %}
 
 {% block extra_js %}
@@ -144,6 +159,7 @@
   const searchInput   = document.getElementById("searchInput");     // (searchInput) поле поиска
   const searchResults = document.getElementById("searchResults");   // (searchResults) контейнер результатов
   const selectedBox   = document.getElementById("selectedBox");     // (selectedBox) контейнер выбранных
+  const stageSelect   = document.getElementById("stageSelect");     // (stageSelect) select этапа
 
   // --- editables
   function makeEditable(el) { el.contentEditable = "true"; el.focus(); }
@@ -250,11 +266,14 @@
     return String(s).replaceAll("\\", "\\\\").replaceAll("'", "\\'");
   }
 
-  // --- submit: pack DSM/MIP/SMU + validate at least one project
+  // --- submit: pack DSM/MIP/SMU + stage_id + validate at least one project
   document.getElementById("genForm").addEventListener("submit", (e) => {
     document.getElementById("DSM_input").value = document.getElementById("DSM").innerText.trim();
     document.getElementById("MIP_input").value = document.getElementById("MIP").innerText.trim();
     document.getElementById("SMU_input").value = document.getElementById("SMU").innerText.trim();
+
+    // ✅ stage_id уходит в POST
+    document.getElementById("stage_id_input").value = (stageSelect.value || "").trim();
 
     const execCsv = document.getElementById("exec_ids_input").value.trim();
     const workCsv = document.getElementById("work_ids_input").value.trim();

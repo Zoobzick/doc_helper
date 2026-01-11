@@ -12,6 +12,9 @@ class BoxLabelForm(forms.Form):
     exec_ids = forms.CharField(required=False)
     work_ids = forms.CharField(required=False)
 
+    # (stage_id) — выбранный этап из dropdown (может быть пустым)
+    stage_id = forms.IntegerField(required=False)
+
     def clean_exec_ids(self) -> list[int]:
         return _parse_csv_ids(self.cleaned_data.get("exec_ids", ""))
 
