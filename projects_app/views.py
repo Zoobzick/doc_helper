@@ -7,12 +7,14 @@ from pathlib import Path
 from urllib.parse import quote
 
 from django.contrib import messages
+from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.db import IntegrityError, transaction
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views import View
+from django.views.decorators.http import require_POST
 from django.views.generic import DetailView, ListView, TemplateView
 from django.views.generic.edit import UpdateView
 from django.utils.decorators import method_decorator
@@ -429,3 +431,18 @@ class ProjectRevisionDownloadView(PermissionRequiredMixin, View):
         resp = FileResponse(file_path.open("rb"), content_type="application/pdf", as_attachment=True)
         resp["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
         return resp
+
+
+def is_superuser(user):
+    return user.is_authenticated and user.is_superuser
+
+@require_POST
+@user_passes_test(is_superuser)
+@transaction.atomic
+def delete_all_projects(request):
+    """
+    Удаляет ВСЕ проекты и их ревизии.
+    """
+    ProjectRevision.objects.all().delete()
+    Project.objects.all().delete()
+    return redirect("projects:projects_list")

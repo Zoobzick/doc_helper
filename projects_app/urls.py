@@ -14,6 +14,7 @@ from .views import (
     ProjectRevisionDeleteView,
 
     DictItemCreateView, ProjectUploadArchiveView, ProjectRevisionDownloadView,
+    delete_all_projects
 )
 
 app_name = "projects"
@@ -42,4 +43,8 @@ urlpatterns = [
         name="project_upload_archive",
     ),
     path("revision/<int:pk>/download/", ProjectRevisionDownloadView.as_view(), name="project_revision_download"),
+    path(
+        "delete-all/",
+        delete_all_projects,
+        name="delete_all_projects"),
 ]

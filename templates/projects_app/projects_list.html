@@ -2,110 +2,123 @@
 {% load static %}
 
 {% block content %}
-    
-    
-        {% block breadcrumbs %}
-            <div class="pagetitle">
-                <h1>Проекты</h1>
-                <nav>
-                    <ol class="breadcrumb">
-                        <li class="breadcrumb-item">
-                            <a href="{% url 'authapp:home' %}">Главная</a>
-                        </li>
-                        <li class="breadcrumb-item active">Проекты</li>
-                    </ol>
-                </nav>
 
 
-            </div>
-        {% endblock breadcrumbs %}
+    {% block breadcrumbs %}
+        <div class="pagetitle">
+            <h1>Проекты</h1>
+            <nav>
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'authapp:home' %}">Главная</a>
+                    </li>
+                    <li class="breadcrumb-item active">Проекты</li>
+                </ol>
+            </nav>
 
 
-        <section class="section">
-            <div class="row">
-                <div class="col-lg-12">
+        </div>
+    {% endblock breadcrumbs %}
 
-                    <div class="card">
-                        <div class="card-body">
 
-                            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                                <div>
-                                    <h5 class="card-title mb-0">Реестр проектов</h5>
-                                    <p class="text-muted mb-0">
-                                        Отображаются актуальные версии проектов
-                                    </p>
-                                </div>
+    <section class="section">
+        <div class="row">
+            <div class="col-lg-12">
 
-                                <div class="d-flex align-items-center gap-3 flex-wrap">
-                                    <div class="form-check form-switch mb-0">
-                                        <input class="form-check-input"
-                                               type="checkbox"
-                                               id="needsReviewOnly"
-                                               {% if needs_review_filter_on %}checked{% endif %}>
-                                        <label class="form-check-label" for="needsReviewOnly">
-                                            Требуют уточнения ({{ needs_review_count }})
-                                        </label>
-                                    </div>
+                <div class="card">
+                    <div class="card-body">
 
-                                    {% if user.is_superuser or perms.projects_app.add_project %}
-                                        <a href="{% url 'projects:project_create' %}"
-                                           class="btn btn-sm btn-success">
-                                            <i class="bi bi-plus-circle me-1"></i>
-                                            Добавить проекты
-                                        </a>
-                                    {% endif %}
-                                </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                            <div>
+                                <h5 class="card-title mb-0">Реестр проектов</h5>
+                                <p class="text-muted mb-0">
+                                    Отображаются актуальные версии проектов
+                                </p>
                             </div>
 
-                            <div class="table-responsive">
-                                <table id="projectsTable"
-                                       class="table table-striped table-bordered align-middle w-100">
+                            <div class="d-flex align-items-center gap-3 flex-wrap">
+                                {% if request.user.is_superuser %}
+                                    <form method="post"
+                                          action="{% url 'projects:delete_all_projects' %}"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Вы уверены? ВСЕ проекты будут удалены!');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger">
+                                            <i class="bi bi-trash"></i>
+                                            Удалить все проекты
+                                        </button>
+                                    </form>
+                                {% endif %}
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="needsReviewOnly"
+                                           {% if needs_review_filter_on %}checked{% endif %}>
+                                    <label class="form-check-label" for="needsReviewOnly">
+                                        Требуют уточнения ({{ needs_review_count }})
+                                    </label>
+                                </div>
 
-                                    <thead>
-                                    <tr>
-                                        <th>Шифр проекта</th>
-                                        <th class="text-center">Статус</th>
-                                        <th class="text-center">Действия</th>
-                                    </tr>
-                                    </thead>
+                                {% if user.is_superuser or perms.projects_app.add_project %}
+                                    <a href="{% url 'projects:project_create' %}"
+                                       class="btn btn-sm btn-success">
+                                        <i class="bi bi-plus-circle me-1"></i>
+                                        Добавить проекты
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
 
-                                    <tbody>
-                                    {% if revisions %}
-                                        {% for rev in revisions %}
-                                            <tr {% if rev.project.needs_review %}class="table-warning"{% endif %}>
+                        <div class="table-responsive">
+                            <table id="projectsTable"
+                                   class="table table-striped table-bordered align-middle w-100">
 
-                                                <!-- ШИФР ПРОЕКТА (КЛИК = ОТКРЫТЬ PDF) -->
-                                                <td style="word-break: break-word;">
-                                                    {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
-                                                        <a href="{% url 'projects:project_revision_open' rev.id %}"
-                                                           target="_blank"
-                                                           class="project-code-link"
-                                                           title="Открыть PDF">
-                                                            {{ rev.project.full_code|default:"—" }}
-                                                        </a>
-                                                    {% else %}
+                                <thead>
+                                <tr>
+                                    <th>Шифр проекта</th>
+                                    <th class="text-center">Статус</th>
+                                    <th class="text-center">Действия</th>
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                {% if revisions %}
+                                    {% for rev in revisions %}
+                                        <tr {% if rev.project.needs_review %}class="table-warning"{% endif %}>
+
+                                            <!-- ШИФР ПРОЕКТА (КЛИК = ОТКРЫТЬ PDF) -->
+                                            <td style="word-break: break-word;">
+                                                {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
+                                                    <a href="{% url 'projects:project_revision_open' rev.id %}"
+                                                       target="_blank"
+                                                       class="project-code-link"
+                                                       title="Открыть PDF">
                                                         {{ rev.project.full_code|default:"—" }}
-                                                    {% endif %}
-                                                </td>
+                                                    </a>
+                                                {% else %}
+                                                    {{ rev.project.full_code|default:"—" }}
+                                                {% endif %}
+                                            </td>
 
-                                                <!-- СТАТУСЫ -->
-                                                <td class="text-center text-nowrap">
-                                                    <!-- РЕВИЗИЯ -->
-                                                    <span class="me-3"
-                                                          title="Ревизия 
+                                            <!-- СТАТУСЫ -->
+                                            <td class="text-center text-nowrap">
+                                                <!-- РЕВИЗИЯ -->
+                                                <span class="me-3"
+                                                      title="Ревизия 
                                                                   
-                                                                  {{ rev.revision }}{% if rev.is_latest %} (актуальная){% endif %}">
+                                                                  
+                                                              {{ rev.revision }}{% if rev.is_latest %} (актуальная){% endif %}">
                                                         {% if rev.is_latest %}
                                                             <i class="bi bi-check-circle-fill text-success"></i>
                                                         {% else %}
                                                             <i class="bi bi-circle text-muted"></i>
                                                         {% endif %}
-                                                        <span class="fw-semibold ms-1">{{ rev.revision }}</span>
+                                                    <span class="fw-semibold ms-1">{{ rev.revision }}</span>
                                                     </span>
 
-                                                    <!-- В ПРОИЗВОДСТВЕ -->
-                                                    <span class="me-3"
-                                                          title="{% if rev.in_production %}В производстве{% else %}Не в производстве{% endif %}">
+                                                <!-- В ПРОИЗВОДСТВЕ -->
+                                                <span class="me-3"
+                                                      title="{% if rev.in_production %}В производстве{% else %}Не в производстве{% endif %}">
                                                         {% if rev.in_production %}
                                                             <i class="bi bi-gear-fill text-primary"></i>
                                                         {% else %}
@@ -113,71 +126,71 @@
                                                         {% endif %}
                                                     </span>
 
-                                                    <!-- ТРЕБУЕТ УТОЧНЕНИЯ -->
-                                                    <span title="{% if rev.project.needs_review %}Требует уточнения{% else %}Данные заполнены{% endif %}">
+                                                <!-- ТРЕБУЕТ УТОЧНЕНИЯ -->
+                                                <span title="{% if rev.project.needs_review %}Требует уточнения{% else %}Данные заполнены{% endif %}">
                                                         {% if rev.project.needs_review %}
                                                             <i class="bi bi-exclamation-triangle-fill text-warning"></i>
                                                         {% else %}
                                                             <i class="bi bi-exclamation-triangle text-muted"></i>
                                                         {% endif %}
                                                     </span>
-                                                </td>
+                                            </td>
 
-                                                <!-- ДЕЙСТВИЯ -->
-                                                <td class="text-center text-nowrap">
-                                                    {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
-                                                        <a href="{% url 'projects:project_detail' rev.project.id %}"
-                                                           class="btn btn-sm btn-outline-primary"
-                                                           title="Открыть проект">
-                                                            <i class="bi bi-box-arrow-up-right"></i>
-                                                        </a>
-                                                    {% endif %}
+                                            <!-- ДЕЙСТВИЯ -->
+                                            <td class="text-center text-nowrap">
+                                                {% if user.is_superuser or perms.projects_app.view_project_detail_page %}
+                                                    <a href="{% url 'projects:project_detail' rev.project.id %}"
+                                                       class="btn btn-sm btn-outline-primary"
+                                                       title="Открыть проект">
+                                                        <i class="bi bi-box-arrow-up-right"></i>
+                                                    </a>
+                                                {% endif %}
 
-                                                    {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
-                                                        <a href="{% url 'projects:project_revision_open' rev.id %}"
-                                                           target="_blank"
-                                                           class="btn btn-sm btn-outline-danger ms-1"
-                                                           title="Открыть PDF">
-                                                            <i class="bi bi-file-earmark-pdf"></i>
-                                                        </a>
+                                                {% if user.is_superuser or perms.projects_app.open_project_revision_pdf %}
+                                                    <a href="{% url 'projects:project_revision_open' rev.id %}"
+                                                       target="_blank"
+                                                       class="btn btn-sm btn-outline-danger ms-1"
+                                                       title="Открыть PDF">
+                                                        <i class="bi bi-file-earmark-pdf"></i>
+                                                    </a>
 
-                                                        <a href="{% url 'projects:project_revision_download' rev.id %}"
-                                                           class="btn btn-sm btn-outline-success ms-1"
-                                                           title="Скачать PDF">
-                                                            <i class="bi bi-download"></i>
-                                                        </a>
-                                                    {% endif %}
-                                                </td>
+                                                    <a href="{% url 'projects:project_revision_download' rev.id %}"
+                                                       class="btn btn-sm btn-outline-success ms-1"
+                                                       title="Скачать PDF">
+                                                        <i class="bi bi-download"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </td>
 
-                                            </tr>
-                                        {% endfor %}
-                                    {% endif %}
-                                    </tbody>
+                                        </tr>
+                                    {% endfor %}
+                                {% endif %}
+                                </tbody>
 
-                                </table>
-                            </div>
-
+                            </table>
                         </div>
+
                     </div>
-
                 </div>
+
             </div>
-        </section>
+        </div>
+    </section>
 
-        <style>
-            a.project-code-link,
-            a.project-code-link:visited,
-            a.project-code-link:hover,
-            a.project-code-link:active,
-            a.project-code-link:focus {
-                color: inherit;
-                text-decoration: none;
-            }
+    <style>
+        a.project-code-link,
+        a.project-code-link:visited,
+        a.project-code-link:hover,
+        a.project-code-link:active,
+        a.project-code-link:focus {
+            color: inherit;
+            text-decoration: none;
+        }
 
-            a.project-code-link:hover {
-                text-decoration: underline;
-            }
-        </style>
+        a.project-code-link:hover {
+            text-decoration: underline;
+        }
+    </style>
 
 
 
