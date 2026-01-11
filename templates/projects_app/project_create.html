@@ -158,6 +158,19 @@
 
                                         <div id="zipUploadStatus" class="mt-3"></div>
 
+                                        <!-- ✅ ZIP upload progress (как в passport_upload) -->
+                                        <div id="zipProgressWrap" class="mt-3 d-none">
+                                            <div class="d-flex justify-content-between small text-muted mb-1">
+                                                <span>Загрузка архива…</span>
+                                                <span id="zipProgressPct">0%</span>
+                                            </div>
+                                            <div class="progress">
+                                                <div id="zipProgressBar"
+                                                     class="progress-bar progress-bar-striped progress-bar-animated"
+                                                     style="width:0%"></div>
+                                            </div>
+                                        </div>
+
                                         <div class="mt-3 d-flex gap-2">
                                             <button id="zipBtnUpload" class="btn btn-success" disabled>
                                                 <i class="bi bi-upload me-1"></i> Загрузить архив
@@ -218,16 +231,16 @@
             // =========================================================
             // helpers
             // =========================================================
-            function getCookie(name) {
-                const value = `; ${document.cookie}`;
-                const parts = value.split(`; ${name}=`);
-                if (parts.length === 2) return parts.pop().split(';').shift();
+            function getCookie(name) { // (name) имя cookie
+                const value = `; ${document.cookie}`; // (value) вся строка cookie
+                const parts = value.split(`; ${name}=`); // (parts) разбиение по ключу
+                if (parts.length === 2) return parts.pop().split(';').shift(); // (return) значение
                 return '';
             }
 
-            const csrftoken = getCookie('csrftoken');
+            const csrftoken = getCookie('csrftoken'); // (csrftoken) CSRF-токен для POST
 
-            function bindDnD(dropEl) {
+            function bindDnD(dropEl) { // (dropEl) DOM-элемент dropzone
                 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
                     dropEl.addEventListener(evt, e => {
                         e.preventDefault();
@@ -239,8 +252,8 @@
                 dropEl.addEventListener('drop', () => dropEl.classList.remove('bg-light'));
             }
 
-            async function safeJson(resp) {
-                const ct = (resp.headers.get("content-type") || "");
+            async function safeJson(resp) { // (resp) Response
+                const ct = (resp.headers.get("content-type") || ""); // (ct) content-type
                 if (!ct.includes("application/json")) {
                     return {ok: false, error: `Сервер вернул не JSON (status ${resp.status})`};
                 }
@@ -251,25 +264,34 @@
                 }
             }
 
+            function safeJsonText(text) { // (text) строка ответа xhr.responseText
+                try {
+                    const obj = JSON.parse(text);
+                    return {ok: true, data: obj};
+                } catch {
+                    return {ok: false, error: "Сервер вернул невалидный JSON"};
+                }
+            }
+
             // =========================================================
             // TAB: ONE PDF
             // =========================================================
-            const pdfUploadUrl = "{% url 'projects:project_upload_temp' %}";
+            const pdfUploadUrl = "{% url 'projects:project_upload_temp' %}"; // (pdfUploadUrl) endpoint временной загрузки PDF
 
-            const pdfDropZone = document.getElementById('pdfDropZone');
-            const pdfInput = document.getElementById('pdfInput');
-            const pdfUploadStatus = document.getElementById('pdfUploadStatus');
-            const pdfFormBlock = document.getElementById('pdfFormBlock');
+            const pdfDropZone = document.getElementById('pdfDropZone'); // (pdfDropZone) зона DnD PDF
+            const pdfInput = document.getElementById('pdfInput'); // (pdfInput) input файла PDF
+            const pdfUploadStatus = document.getElementById('pdfUploadStatus'); // (pdfUploadStatus) блок статуса PDF
+            const pdfFormBlock = document.getElementById('pdfFormBlock'); // (pdfFormBlock) блок формы после загрузки
 
-            const frame = document.getElementById("pdfPreviewFrame");
-            const empty = document.getElementById("pdfPreviewEmpty");
-            let currentObjectUrl = null;
+            const frame = document.getElementById("pdfPreviewFrame"); // (frame) iframe превью
+            const empty = document.getElementById("pdfPreviewEmpty"); // (empty) заглушка превью
+            let currentObjectUrl = null; // (currentObjectUrl) blob-url текущего файла
 
-            function pdfSetStatus(html) {
+            function pdfSetStatus(html) { // (html) html статуса
                 pdfUploadStatus.innerHTML = html || '';
             }
 
-            function showPdfPreview(file) {
+            function showPdfPreview(file) { // (file) выбранный File
                 if (currentObjectUrl) {
                     URL.revokeObjectURL(currentObjectUrl);
                     currentObjectUrl = null;
@@ -280,7 +302,7 @@
                     empty.textContent = "Выберите один PDF — здесь появится предпросмотр.";
                     return;
                 }
-                const isPdf = (file.type === "application/pdf") || (file.name || "").toLowerCase().endsWith(".pdf");
+                const isPdf = (file.type === "application/pdf") || (file.name || "").toLowerCase().endsWith(".pdf"); // (isPdf) проверка pdf
                 if (!isPdf) {
                     frame.style.display = "none";
                     empty.style.display = "block";
@@ -293,7 +315,7 @@
                 frame.style.display = "block";
             }
 
-            async function handlePdfFile(file) {
+            async function handlePdfFile(file) { // (file) выбранный PDF
                 if (!file) return;
                 showPdfPreview(file);
 
@@ -307,8 +329,8 @@
                 pdfSetStatus('<div class="text-muted">Загрузка…</div>');
                 pdfFormBlock.classList.add('d-none');
 
-                const fd = new FormData();
-                fd.append('file', file);
+                const fd = new FormData(); // (fd) multipart-данные
+                fd.append('file', file); // ('file') поле для backend
 
                 const resp = await fetch(pdfUploadUrl, {
                     method: 'POST',
@@ -316,19 +338,17 @@
                     body: fd
                 });
 
-                const data = await safeJson(resp);
+                const data = await safeJson(resp); // (data) JSON-ответ
 
-                // ✅ Понятное сообщение для пользователя при дубле sha256 (409)
+                // ✅ сообщение при дубле sha256 (409)
                 if (resp.status === 409 || (data && data.status === "duplicate")) {
                     const sha = (data && data.sha256) ? data.sha256 : '';
                     const proj = (data && data.existing_project) ? data.existing_project : '';
                     const rev = (data && data.existing_revision) ? data.existing_revision : '';
 
-                    // сбрасываем upload_id, чтобы случайно не отправить старое
-                    const uploadIdInput = document.getElementById('id_upload_id');
+                    const uploadIdInput = document.getElementById('id_upload_id'); // (uploadIdInput) скрытое поле upload_id
                     if (uploadIdInput) uploadIdInput.value = "";
 
-                    // сбрасываем input, чтобы пользователь мог сразу выбрать/перетащить другой файл
                     pdfInput.value = "";
 
                     pdfSetStatus(`
@@ -359,7 +379,7 @@
 
             bindDnD(pdfDropZone);
             pdfDropZone.addEventListener('drop', (e) => {
-                const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                const f = e.dataTransfer.files && e.dataTransfer.files[0]; // (f) файл из dnd
                 handlePdfFile(f);
             });
             pdfDropZone.addEventListener('click', () => pdfInput.click());
@@ -368,27 +388,49 @@
             // =========================================================
             // TAB: ZIP
             // =========================================================
-            const zipUploadUrl = "{% url 'projects:project_upload_archive' %}";
+            const zipUploadUrl = "{% url 'projects:project_upload_archive' %}"; // (zipUploadUrl) endpoint загрузки архива
 
-            const zipDropZone = document.getElementById("zipDropZone");
-            const zipInput = document.getElementById("zipInput");
-            const zipBtnUpload = document.getElementById("zipBtnUpload");
-            const zipBtnReset = document.getElementById("zipBtnReset");
-            const zipUploadStatus = document.getElementById("zipUploadStatus");
+            const zipDropZone = document.getElementById("zipDropZone"); // (zipDropZone) зона DnD ZIP
+            const zipInput = document.getElementById("zipInput"); // (zipInput) input ZIP
+            const zipBtnUpload = document.getElementById("zipBtnUpload"); // (zipBtnUpload) кнопка "Загрузить"
+            const zipBtnReset = document.getElementById("zipBtnReset"); // (zipBtnReset) кнопка "Сбросить"
+            const zipUploadStatus = document.getElementById("zipUploadStatus"); // (zipUploadStatus) блок статуса
 
-            const zipResultSummary = document.getElementById("zipResultSummary");
-            const zipResultTableWrap = document.getElementById("zipResultTableWrap");
-            const zipResultTbody = document.getElementById("zipResultTbody");
+            const zipProgressWrap = document.getElementById("zipProgressWrap"); // (zipProgressWrap) обёртка прогресса
+            const zipProgressBar = document.getElementById("zipProgressBar"); // (zipProgressBar) полоса прогресса
+            const zipProgressPct = document.getElementById("zipProgressPct"); // (zipProgressPct) текст процентов
 
-            let zipSelected = null;
+            const zipResultSummary = document.getElementById("zipResultSummary"); // (zipResultSummary) итоговый блок
+            const zipResultTableWrap = document.getElementById("zipResultTableWrap"); // (zipResultTableWrap) обёртка таблицы
+            const zipResultTbody = document.getElementById("zipResultTbody"); // (zipResultTbody) тело таблицы
 
-            function zipSetStatus(html) {
+            let zipSelected = null; // (zipSelected) выбранный ZIP файл
+
+            function zipSetStatus(html) { // (html) html статуса
                 zipUploadStatus.innerHTML = html || "";
             }
 
-            function zipSetButtons(enabled) {
+            function zipSetButtons(enabled) { // (enabled) можно ли нажимать кнопки
                 zipBtnUpload.disabled = !enabled;
                 zipBtnReset.disabled = !enabled;
+            }
+
+            function setZipProgress(loaded, total) { // (loaded) загружено байт, (total) всего байт
+                const pct = total ? Math.round((loaded / total) * 100) : 0; // (pct) проценты
+                if (zipProgressBar) zipProgressBar.style.width = pct + "%";
+                if (zipProgressPct) zipProgressPct.textContent = pct + "%";
+            }
+
+            function zipShowProgress(label) { // (label) текст слева над прогрессом
+                if (zipProgressWrap) zipProgressWrap.classList.remove("d-none");
+                const left = zipProgressWrap?.querySelector(".d-flex span"); // (left) левый текст
+                if (left && label) left.textContent = label;
+            }
+
+            function zipHideProgress() {
+                if (zipProgressWrap) zipProgressWrap.classList.add("d-none");
+                setZipProgress(0, 0);
+                if (zipProgressPct) zipProgressPct.textContent = "0%";
             }
 
             function zipReset() {
@@ -396,21 +438,25 @@
                 zipInput.value = "";
                 zipSetStatus("");
                 zipSetButtons(false);
+
+                if (zipProgressWrap) zipProgressWrap.classList.add("d-none");
+                setZipProgress(0, 0);
+
                 zipResultSummary.textContent = "Здесь появится отчёт после обработки архива.";
                 zipResultTableWrap.classList.add("d-none");
                 zipResultTbody.innerHTML = "";
             }
 
-            function zipValidate(file) {
+            function zipValidate(file) { // (file) File
                 if (!file) return "Файл не выбран";
-                const name = (file.name || "").toLowerCase();
-                const ok = name.endsWith(".zip") || file.type === "application/zip";
+                const name = (file.name || "").toLowerCase(); // (name) имя файла
+                const ok = name.endsWith(".zip") || file.type === "application/zip"; // (ok) признак zip
                 if (!ok) return "Нужен ZIP архив (.zip)";
                 return null;
             }
 
             function zipPick(file) {
-                const err = zipValidate(file);
+                const err = zipValidate(file); // (err) текст ошибки или null
                 if (err) {
                     zipSelected = null;
                     zipSetButtons(false);
@@ -422,24 +468,24 @@
                 zipSetStatus(`<div class="alert alert-info py-2">Выбран архив: <strong>${file.name}</strong></div>`);
             }
 
-            function zipBadge(status) {
+            function zipBadge(status) { // (status) статус файла от backend
                 if (status === "created") return `<span class="badge bg-success">Добавлено</span>`;
                 if (status === "duplicate") return `<span class="badge bg-secondary">Дубликат sha256</span>`;
                 if (status === "error") return `<span class="badge bg-danger">Ошибка</span>`;
                 return `<span class="badge bg-light text-dark">${status || "—"}</span>`;
             }
 
-            function zipRender(results) {
-                let created = 0, duplicate = 0, error = 0;
+            function zipRender(results) { // (results) массив результатов
+                let created = 0, duplicate = 0, error = 0; // (created/duplicate/error) счётчики
 
                 zipResultTbody.innerHTML = "";
                 (results || []).forEach(r => {
-                    const st = r.status;
+                    const st = r.status; // (st) статус элемента
                     if (st === "created") created++;
                     else if (st === "duplicate") duplicate++;
                     else if (st === "error") error++;
 
-                    const tr = document.createElement("tr");
+                    const tr = document.createElement("tr"); // (tr) строка таблицы
                     tr.innerHTML = `
         <td style="word-break:break-word;">${r.file || "—"}</td>
         <td style="word-break:break-word;">${r.project || "—"}</td>
@@ -463,40 +509,92 @@
 
             bindDnD(zipDropZone);
             zipDropZone.addEventListener("drop", (e) => {
-                const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                const f = e.dataTransfer.files && e.dataTransfer.files[0]; // (f) файл из dnd
                 zipPick(f);
             });
             zipDropZone.addEventListener("click", () => zipInput.click());
             zipInput.addEventListener("change", (e) => zipPick(e.target.files[0]));
             zipBtnReset.addEventListener("click", zipReset);
 
-            zipBtnUpload.addEventListener("click", async function () {
-                const err = zipValidate(zipSelected);
-                if (err) return zipSetStatus(`<div class="alert alert-danger py-2">${err}</div>`);
+            // ✅ ВАЖНО: для прогресса заменили fetch -> XMLHttpRequest
+            zipBtnUpload.addEventListener("click", function (e) {
+                e.preventDefault();
 
-                zipSetStatus(`<div class="text-muted">Загрузка и обработка архива…</div>`);
-                zipBtnUpload.disabled = true;
-
-                const fd = new FormData();
-                fd.append("archive", zipSelected);
-
-                try {
-                    const resp = await fetch(zipUploadUrl, {
-                        method: "POST",
-                        headers: {"X-CSRFToken": csrftoken},
-                        body: fd
-                    });
-
-                    const data = await safeJson(resp);
-                    if (!data || data.ok !== true) throw new Error(data.error || data.message || "Ошибка обработки архива");
-
-                    zipSetStatus(`<div class="alert alert-success py-2">Готово. Обработано файлов: <strong>${data.processed}</strong></div>`);
-                    zipRender(data.results || []);
-                } catch (e) {
-                    zipSetStatus(`<div class="alert alert-danger py-2">Ошибка: ${String(e.message || e)}</div>`);
-                } finally {
-                    zipBtnUpload.disabled = false;
+                const err = zipValidate(zipSelected); // (err) ошибка валидации
+                if (err) {
+                    zipSetStatus(`<div class="alert alert-danger py-2">${err}</div>`);
+                    return;
                 }
+
+                // UI блокировка
+                zipBtnUpload.disabled = true;
+                zipBtnReset.disabled = true;
+
+                // показываем прогресс
+                if (zipProgressWrap) zipProgressWrap.classList.remove("d-none");
+                setZipProgress(0, zipSelected.size);
+
+                zipSetStatus(`<div class="alert alert-secondary py-2 mb-0">Загрузка архива…</div>`);
+
+                const fd = new FormData(); // (fd) multipart-данные
+                fd.append("archive", zipSelected); // ('archive') поле как ожидает backend
+
+                const xhr = new XMLHttpRequest(); // (xhr) запрос с прогрессом upload
+                xhr.open("POST", zipUploadUrl, true);
+                xhr.setRequestHeader("X-CSRFToken", csrftoken);
+                xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+
+                xhr.upload.onprogress = function (evt) { // (evt) ProgressEvent
+                    if (!evt.lengthComputable) return;
+
+                    zipShowProgress("Загрузка архива…");
+                    setZipProgress(evt.loaded, evt.total);
+
+                    // Когда байты уже ушли — дальше НЕ загрузка, а ожидание/обработка на сервере
+                    if (evt.loaded >= evt.total) {
+                        zipShowProgress("Архив загружен. Идёт обработка…");
+                        zipSetStatus(`<div class="alert alert-info py-2 mb-0">Архив загружен. Идёт обработка…</div>`);
+                    }
+                };
+
+                xhr.onload = function () {
+                    zipHideProgress();
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const parsed = safeJsonText(xhr.responseText); // (parsed) {ok, data|error}
+                        if (!parsed.ok) {
+                            zipSetStatus(`<div class="alert alert-danger py-2">${parsed.error}</div>`);
+                            zipBtnUpload.disabled = false;
+                            zipBtnReset.disabled = false;
+                            return;
+                        }
+
+                        const data = parsed.data; // (data) JSON от backend
+                        if (!data || data.ok !== true) {
+                            zipSetStatus(`<div class="alert alert-danger py-2">Ошибка: ${(data && (data.error || data.message)) || "Ошибка обработки архива"}</div>`);
+                            zipBtnUpload.disabled = false;
+                            zipBtnReset.disabled = false;
+                            return;
+                        }
+
+                        zipSetStatus(`<div class="alert alert-success py-2">Готово. Обработано файлов: <strong>${data.processed}</strong></div>`);
+                        zipRender(data.results || []);
+                        zipBtnUpload.disabled = false;
+                        zipBtnReset.disabled = false;
+                        return;
+                    }
+
+                    zipSetStatus(`<div class="alert alert-danger py-2">Ошибка загрузки архива (status ${xhr.status})</div>`);
+                    zipBtnUpload.disabled = false;
+                    zipBtnReset.disabled = false;
+                };
+
+                xhr.onerror = function () {
+                    zipSetStatus(`<div class="alert alert-danger py-2">Ошибка сети</div>`);
+                    zipBtnUpload.disabled = false;
+                    zipBtnReset.disabled = false;
+                };
+
+                xhr.send(fd);
             });
 
             zipReset();
