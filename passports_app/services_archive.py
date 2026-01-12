@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import os
-import zipfile
+import shutil
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from django.core.files import File
 from django.core.files.uploadedfile import UploadedFile
 
-from .services import import_single_passport_file, ALLOWED_EXTS
+from .services import ALLOWED_EXTS, import_single_passport_file
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,33 @@ class ArchiveItemResult:
     status: str  # "imported" | "needs_review" | "skipped" | "error"
     message: str
     passport_id: int | None = None
+
+
+def _normalize_zip_filename(info: zipfile.ZipInfo) -> str:
+    """
+    Нормализация имени файла из ZIP:
+    - Если UTF-8 flag установлен (бит 11) -> имя уже корректное, НЕ трогаем
+    - Если флага нет -> zipfile мог декодировать имя как cp437, а реально там cp866/cp1251
+    """
+    name = info.filename
+    UTF8_FLAG = 0x800
+
+    if info.flag_bits & UTF8_FLAG:
+        return name
+
+    # zipfile в таких архивах интерпретирует байты имени как cp437 -> получаем "кракозябры".
+    # Возьмём исходные байты и попробуем декодировать типичными виндовыми кодировками.
+    raw = name.encode("cp437", errors="replace")
+
+    for enc in ("cp866", "cp1251", "utf-8"):
+        try:
+            fixed = raw.decode(enc)
+            if "�" not in fixed:
+                return fixed
+        except UnicodeDecodeError:
+            pass
+
+    return raw.decode("cp1251", errors="replace")
 
 
 def _safe_relpath(name: str) -> str | None:
@@ -53,7 +81,6 @@ def import_passports_from_zip(*, archive_file: UploadedFile, user) -> tuple[dict
     results: list[ArchiveItemResult] = []
     stats = {"total": 0, "imported": 0, "needs_review": 0, "skipped": 0, "errors": 0}
 
-    # Временная папка для файлов, извлечённых из архива
     with tempfile.TemporaryDirectory(prefix="passports_zip_") as tmpdir:
         tmpdir_path = Path(tmpdir)
 
@@ -64,9 +91,12 @@ def import_passports_from_zip(*, archive_file: UploadedFile, user) -> tuple[dict
 
         with zf:
             for info in zf.infolist():
-                safe_name = _safe_relpath(info.filename)
+                # 1) сначала нормализуем имя из ZIP (иначе кракозябры уже тут)
+                normalized_name = _normalize_zip_filename(info)
+
+                # 2) затем применяем ZipSlip-защиту
+                safe_name = _safe_relpath(normalized_name)
                 if safe_name is None:
-                    # директория или небезопасный путь
                     continue
 
                 stats["total"] += 1
@@ -83,13 +113,12 @@ def import_passports_from_zip(*, archive_file: UploadedFile, user) -> tuple[dict
                     )
                     continue
 
-                # Извлекаем файл во временную папку
                 out_path = tmpdir_path / safe_name
                 out_path.parent.mkdir(parents=True, exist_ok=True)
 
                 try:
-                    with zf.open(info, "r") as src, open(out_path, "wb") as dst:
-                        dst.write(src.read())
+                    with zf.open(info, "r") as src, out_path.open("wb") as dst:
+                        shutil.copyfileobj(src, dst)
                 except Exception as e:
                     stats["errors"] += 1
                     results.append(
@@ -101,9 +130,9 @@ def import_passports_from_zip(*, archive_file: UploadedFile, user) -> tuple[dict
                     )
                     continue
 
-                # Импортируем как обычный файл
                 try:
-                    with open(out_path, "rb") as fp:
+                    with out_path.open("rb") as fp:
+                        # ВАЖНО: имя передаём уже нормальное (basename от safe_name)
                         django_file = File(fp, name=os.path.basename(safe_name))
                         passport = import_single_passport_file(uploaded_file=django_file, user=user)
 
