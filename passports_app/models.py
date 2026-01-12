@@ -119,6 +119,7 @@ class Passport(models.Model):
             ("upload_passport_zip", "Может загружать паспорта ZIP архивом"),
             ("open_passport_file", "Может открывать файл паспорта"),
             ("delete_all_passports", "Может удалять ВСЕ паспорта"),
+            ("view_passports_page", "Может просматривать страницу паспортов"),
         ]
 
     def save(self, *args, **kwargs):
