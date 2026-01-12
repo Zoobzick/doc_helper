@@ -115,6 +115,12 @@ class Passport(models.Model):
             models.Index(fields=["material", "document_number"]),
         ]
 
+        permissions = [
+            ("upload_passport_zip", "Может загружать паспорта ZIP архивом"),
+            ("open_passport_file", "Может открывать файл паспорта"),
+            ("delete_all_passports", "Может удалять ВСЕ паспорта"),
+        ]
+
     def save(self, *args, **kwargs):
         if self.file and not self.original_name:
             self.original_name = os.path.basename(self.file.name)

@@ -131,6 +131,15 @@ class Project(models.Model):
         verbose_name = "Проект"
         verbose_name_plural = "Проекты"
 
+        permissions = [
+            ("view_projects_page", "Может просматривать список проектов"),
+            ("view_project_detail_page", "Может просматривать проект"),
+            ("open_project_revision_pdf", "Может скачивать PDF проекта"),
+            ("add_project_revision", "Может добавлять версии проекта"),
+            ("delete_project_revision", "Может удалять версии проекта"),
+            ("set_revision_in_production", "Может выдавать ревизию в производство"),
+        ]
+
     def __str__(self) -> str:
         return self.full_code or f"Черновик проекта #{self.pk}"
 
