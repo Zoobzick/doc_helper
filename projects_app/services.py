@@ -178,11 +178,11 @@ def _next_revision_code(project: Project) -> str:
 
 @transaction.atomic
 def attach_revision_to_project(
-    *,
-    project: Project,
-    file_name: str,
-    temp_file_path: str,
-    sha256: str | None,
+        *,
+        project: Project,
+        file_name: str,
+        temp_file_path: str,
+        sha256: str | None,
 ) -> Tuple[ProjectRevision, bool]:
     """
     ГЛАВНАЯ точка защиты от дублей.
@@ -389,3 +389,28 @@ def process_single_pdf(*, pdf_path: Path, original_name: str, user) -> dict:
     ensure_project_files_named(project)
 
     return {"status": "created", "project": project.full_code, "revision": rev.revision, "file": original_name}
+
+
+def normalize_zip_filename(info) -> str:
+    """
+    Корректно обрабатывает имена файлов в ZIP:
+    - если UTF-8 flag есть → имя уже правильное
+    - если нет → лечим cp437 → cp866/cp1251
+    """
+    name = info.filename
+    UTF8_FLAG = 0x800
+
+    if info.flag_bits & UTF8_FLAG:
+        return name
+
+    raw = name.encode("cp437", errors="replace")
+
+    for enc in ("cp866", "cp1251", "utf-8"):
+        try:
+            fixed = raw.decode(enc)
+            if "�" not in fixed:
+                return fixed
+        except UnicodeDecodeError:
+            pass
+
+    return raw.decode("cp1251", errors="replace")

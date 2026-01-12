@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -42,7 +43,7 @@ from .services import (
     normalize_full_code,
     process_single_pdf,
     set_revision_in_production,
-    sync_needs_review,
+    sync_needs_review, normalize_zip_filename,
 )
 
 
@@ -396,6 +397,7 @@ class ProjectUploadArchiveView(PermissionRequiredMixin, View):
             return JsonResponse({"ok": False, "error": "Нужен ZIP архив"}, status=400)
 
         results = []
+
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
             zip_path = tmpdir / archive.name
@@ -405,12 +407,33 @@ class ProjectUploadArchiveView(PermissionRequiredMixin, View):
                     f.write(chunk)
 
             with zipfile.ZipFile(zip_path) as zf:
-                zf.extractall(tmpdir)
+                for info in zf.infolist():
+                    if info.is_dir():
+                        continue
+
+                    fixed_name = normalize_zip_filename(info)
+                    target_path = tmpdir / fixed_name
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    with zf.open(info) as src, target_path.open("wb") as dst:
+                        shutil.copyfileobj(src, dst)
 
             for pdf in tmpdir.rglob("*.pdf"):
-                results.append(process_single_pdf(pdf_path=pdf, original_name=pdf.name, user=request.user))
+                results.append(
+                    process_single_pdf(
+                        pdf_path=pdf,
+                        original_name=pdf.name,
+                        user=request.user,
+                    )
+                )
 
-        return JsonResponse({"ok": True, "processed": len(results), "results": results})
+        return JsonResponse(
+            {
+                "ok": True,
+                "processed": len(results),
+                "results": results,
+            }
+        )
 
 
 class ProjectRevisionDownloadView(PermissionRequiredMixin, View):
@@ -435,6 +458,7 @@ class ProjectRevisionDownloadView(PermissionRequiredMixin, View):
 
 def is_superuser(user):
     return user.is_authenticated and user.is_superuser
+
 
 @require_POST
 @user_passes_test(is_superuser)
