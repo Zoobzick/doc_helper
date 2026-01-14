@@ -88,6 +88,8 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
           "
+          
+          sudo chown -R webapp:webapp "$PROJECT_DIR/staticfiles"
 
           # Миграции и статика (явно подгружаем env)
           sudo -u webapp bash -lc "
