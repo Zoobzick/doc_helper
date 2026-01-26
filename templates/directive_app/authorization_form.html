@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="pagetitle">
+  <h1>
+    {% if object %}
+      Редактирование полномочия
+    {% else %}
+      Добавление полномочия
+    {% endif %}
+  </h1>
+
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url 'authapp:home' %}">Главная</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url 'directive_app:directive_list' %}">Приказы</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url 'directive_app:directive_detail' uuid=directive.uuid %}">
+          {{ directive }}
+        </a>
+      </li>
+      <li class="breadcrumb-item active">
+        {% if object %}Редактирование{% else %}Добавление полномочия{% endif %}
+      </li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="card">
+    <div class="card-body pt-3">
+
+      <!-- Контекст приказа -->
+      <div class="alert alert-light border mb-4">
+        <div><strong>Приказ:</strong> {{ directive }}</div>
+        <div><strong>Кем выдан:</strong> {{ directive.issuer_organization.short_name }}</div>
+        <div><strong>Дата:</strong> {{ directive.date|date:"d.m.Y" }}</div>
+      </div>
+
+      <form method="post" class="row g-3">
+        {% csrf_token %}
+
+        <!-- Организация -->
+        <div class="col-12">
+          <div class="row align-items-center">
+            <div class="col-md-3">
+              <label class="form-label mb-0">Организация</label>
+            </div>
+            <div class="col-md-9">
+              {{ form.organization }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Человек -->
+        <div class="col-12">
+          <div class="row align-items-center">
+            <div class="col-md-3">
+              <label class="form-label mb-0">Человек</label>
+            </div>
+            <div class="col-md-9">
+              {{ form.person }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Роль -->
+        <div class="col-12">
+          <div class="row align-items-center">
+            <div class="col-md-3">
+              <label class="form-label mb-0">Роль</label>
+            </div>
+            <div class="col-md-9">
+              {{ form.role }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Должность -->
+        <div class="col-12">
+          <div class="row align-items-center">
+            <div class="col-md-3">
+              <label class="form-label mb-0">Должность</label>
+            </div>
+            <div class="col-md-9">
+              {{ form.position_text }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Период -->
+        <div class="col-12">
+          <div class="row align-items-center">
+            <div class="col-md-3">
+              <label class="form-label mb-0">Действует с</label>
+            </div>
+            <div class="col-md-3">
+              {{ form.valid_from }}
+            </div>
+
+            <div class="col-md-2 text-end">
+              <label class="form-label mb-0">по</label>
+            </div>
+            <div class="col-md-4">
+              {{ form.valid_to }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Активность -->
+        <div class="col-12">
+          <div class="row align-items-center">
+            <div class="col-md-3">
+              <label class="form-label mb-0">Статус</label>
+            </div>
+            <div class="col-md-9">
+              <div class="form-check">
+                {{ form.is_active }}
+                <label class="form-check-label">Активно</label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Кнопки -->
+        <div class="col-12 d-flex gap-2 mt-3">
+          <button class="btn btn-success" type="submit">
+            <i class="bi bi-check2-circle me-1"></i> Сохранить
+          </button>
+
+          <a class="btn btn-outline-secondary"
+             href="{% url 'directive_app:directive_detail' uuid=directive.uuid %}">
+            Отмена
+          </a>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</section>
+
+{% endblock %}

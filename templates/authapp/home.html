@@ -59,7 +59,7 @@
                             {% endif %}
 
                             {% if user.is_superuser or perms.directive_app.view_directives_page %}
-                                <a href="{% url 'list_directive' %}" class="list-group-item list-group-item-action">
+                                <a href="{% url 'directive_app:directive_list' %}" class="list-group-item list-group-item-action">
                                     <i class="bi bi-person-square me-2"></i> Приказы
                                 </a>
                             {% endif %}

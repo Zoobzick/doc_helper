@@ -34,6 +34,7 @@
                 </li>
             {% endif %}
             <!-- end Documents -->
+
             <!-- Паспорта -->
             {% if user.is_superuser or perms.passports_app.view_passports_page %}
                 <li class="nav-item">
@@ -69,8 +70,9 @@
             {% endif %}
             <!-- End Passports -->
 
+            <!-- Реестры -->
             {% if user.is_superuser %}
-                <!-- Реестры -->
+
                 <li class="nav-item">
                     <a class="nav-link collapsed" data-bs-target="#registry-nav" data-bs-toggle="collapse" href="#">
                         <i class="bi bi-card-list"></i>
@@ -118,37 +120,46 @@
             {% endif %}
 
             <!-- Приказы -->
-            {% if user.is_superuser or perms.directive_app.view_directives_page or perms.directive_app.create_directive_page %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#directive-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-person-square"></i>
-                        <span>Приказы</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
+            {# --- Приказы (Directive) --- #}
+                    {% if user.is_superuser or perms.directive_app.view_directives_page or perms.directive_app.create_directive_page %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if directives_open %}{% else %}collapsed{% endif %}"
+                               data-bs-target="#directive-nav"
+                               data-bs-toggle="collapse"
+                               href="#">
+                                <i class="bi bi-person-square"></i>
+                                <span>Приказы</span>
+                                <i class="bi bi-chevron-down ms-auto"></i>
+                            </a>
 
-                    <ul id="directive-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+                            <ul id="directive-nav"
+                                class="nav-content collapse {% if directives_open %}show{% endif %}"
+                                data-bs-parent="#sidebar-nav">
 
-                        {% if user.is_superuser or perms.directive_app.view_directives_page %}
-                            <li>
-                                <a href="{% url 'list_directive' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Все приказы</span>
-                                </a>
-                            </li>
-                        {% endif %}
+                                {% if user.is_superuser or perms.directive_app.view_directives_page %}
+                                    <li>
+                                        <a href="{% url 'directive_app:directive_list' %}"
+                                           class="{% if rn == 'directive_list' %}active{% endif %}">
+                                            <i class="bi bi-circle"></i>
+                                            <span>Все приказы</span>
+                                        </a>
+                                    </li>
+                                {% endif %}
 
-                        {% if user.is_superuser or perms.directive_app.create_directive_page %}
-                            <li>
-                                <a href="{% url 'add_directive' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Добавить приказ</span>
-                                </a>
-                            </li>
-                        {% endif %}
+                                {% if user.is_superuser or perms.directive_app.create_directive_page %}
+                                    <li>
+                                        <a href="{% url 'directive_app:directive_create' %}"
+                                           class="{% if rn == 'directive_create' %}active{% endif %}">
+                                            <i class="bi bi-circle"></i>
+                                            <span>Добавить приказ</span>
+                                        </a>
+                                    </li>
+                                {% endif %}
 
-                    </ul>
-                </li>
-            {% endif %}
+                            </ul>
+                        </li>
+                    {% endif %}
+            {# --- end Приказы --- #}
             <!-- End Directives -->
 
             <!-- Согласования -->
@@ -215,14 +226,6 @@
                                 <a href="{% url 'act_structure_page' %}">
                                     <i class="bi bi-circle"></i>
                                     <span>Структура документа</span>
-                                </a>
-                            </li>
-                        {% endif %}
-                        {% if user.is_superuser or perms.checker_app.check_directive_checker_page %}
-                            <li>
-                                <a href="{% url 'directive_checker' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Проверка приказов</span>
                                 </a>
                             </li>
                         {% endif %}
