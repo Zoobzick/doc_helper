@@ -23,6 +23,20 @@ try:
 except Exception:
     pass
 
+# ===== Debug (важно определить ДО проверок секретов) =====
+DEBUG = os.environ.get("DJANGO_DEBUG", "1" if os.name == "nt" else "0") == "1"
+
+# ===== Secret key =====
+# PROD: обязателен DJANGO_SECRET_KEY
+# DEV: если не задан — используем fallback, чтобы проект запускался локально
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        # Важно: это только для локальной разработки.
+        SECRET_KEY = "dev-insecure-secret-key-change-me"
+    else:
+        raise RuntimeError("DJANGO_SECRET_KEY is not set")
+
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
@@ -66,17 +80,10 @@ MEDIA_ROOT = BASE_ID_DIR / "media"
 
 # Разрешенные типы файлов (опционально в валидаторе формы)
 ALLOWED_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
-
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
-if not SECRET_KEY:
-    raise RuntimeError("DJANGO_SECRET_KEY is not set")
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
 
 def env_list(name: str, default: str = ""):
