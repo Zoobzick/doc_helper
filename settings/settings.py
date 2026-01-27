@@ -140,6 +140,7 @@ INSTALLED_APPS = [
     'approvals_app',
     'documents_app',
     'health_app',
+    'orgs_app',
 ]
 
 MIDDLEWARE = [

@@ -22,7 +22,8 @@ urlpatterns = [
     path('', include(("authapp.urls", "authapp"), namespace="authapp")),
     path('passports/', include('passports_app.urls')),
     path('checker/', include('checker_app.urls')),
-    path('directives/', include('directive_app.urls')),
+    path("directives/", include("directive_app.urls")),
+
     path("projects/", include(("projects_app.urls", "projects"), namespace="projects")),
     path("approvals/", include(("approvals_app.urls", "approvals"), namespace="approvals")),
     path("documents/", include(('documents_app.urls', 'documents'), namespace='documents')),

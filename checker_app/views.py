@@ -4,7 +4,6 @@ from datetime import datetime
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.views import View
 
-from directive_app.models import SignerRoleConfig
 from .services.checker_service import CheckService
 from pathlib import Path
 
@@ -15,7 +14,7 @@ from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
 
 from .forms import DocumentStructureUploadForm
-from .services.directive_checker_service import check_directives_for_month
+
 from .utils.docx_structure import extract_docx_structure
 from .utils.xlsx_structure import extract_xlsx_structure
 
@@ -265,85 +264,3 @@ MONTHS_DIG = {
 }
 
 
-@login_required
-@permission_required("checker_app.check_directive_checker_page", raise_exception=True)
-def directive_checker(request):
-    month = (request.GET.get("month") or "").strip()
-    year = (request.GET.get("year") or "").strip()
-    only_problems = (request.GET.get("only_problems") or "").strip()  # "1" или ""
-    selected_roles = request.GET.getlist("roles")  # список role-кодов
-
-    now = datetime.now()
-    if not month:
-        month = f"{now.month:02d}"
-    if not year:
-        year = str(now.year)
-
-    # роли для селекта (только включённые + с параграфом, как и проверка)
-    available_roles = list(
-        SignerRoleConfig.objects
-        .filter(is_enabled=True)
-        .exclude(source_paragraph__isnull=True)
-        .only("role", "source_paragraph", "is_enabled")
-        .order_by("role")
-    )
-
-    # если пользователь ничего не выбрал — проверяем все доступные
-    if not selected_roles:
-        selected_roles = [r.role for r in available_roles]
-
-    error = None
-    month_path = None
-    acts_folder = None
-    act_results = []
-
-    total_acts_checked = 0
-    total_problem_acts = 0
-
-    try:
-        y = int(year)
-        m = int(month)
-
-        month_path, acts_folder, act_results = check_directives_for_month(
-            y, m, selected_roles=selected_roles
-        )
-
-        total_acts_checked = len(act_results)
-
-        filtered = []
-        for act in act_results:
-            checks = getattr(act, "checks", []) or []
-            act_has_problem = any(c.status not in ("OK", "NO_IN_DB") for c in checks)
-
-            if act_has_problem:
-                total_problem_acts += 1
-
-            if only_problems == "1":
-                if act_has_problem:
-                    filtered.append(act)
-            else:
-                filtered.append(act)
-
-        act_results = filtered
-
-    except Exception as e:
-        error = str(e)
-
-    context = {
-        "months": MONTHS_DIG,
-        "month": month,
-        "year": year,
-        "only_problems": only_problems,
-
-        "available_roles": available_roles,
-        "selected_roles": selected_roles,
-
-        "error": error,
-        "month_path": str(month_path) if month_path else None,
-        "acts_folder": str(acts_folder) if acts_folder else None,
-        "act_results": act_results,
-
-        "total_acts_checked": total_acts_checked,
-        "total_problem_acts": total_problem_acts,
-    }
-    return render(request, "checker_app/directive_checker.html", context)

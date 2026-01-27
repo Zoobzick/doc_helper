@@ -1,204 +1,200 @@
-import os
-import re
+from __future__ import annotations
 
-from django.core.exceptions import ValidationError
+import uuid
 from django.db import models
-from django.core.validators import MinLengthValidator
-from django.utils import timezone
-from .storage import DirectivesStorage
-
-directives_storage = DirectivesStorage()
+from orgs_app.models import Organization, Person
 
 
-class SignerRole(models.TextChoices):
-    DSM_SK = "DSM_SK", "ДСМ СК"
-    MIP_RS = "MIP_RS", "МИП РС"
-    MIP_SK = "MIP_SK", "МИП СК"
-    AN = "AN", "АН"
-    SMU = "SMU", "СМУ"
-    MMS_SK = "MMS_SK", "ММС СК"
-    OTHER = "OTHER", "ИНЫЕ"
+class ActRole(models.TextChoices):
+    """
+    Роли подписантов для АОСР.
+    """
+    TECH_CUSTOMER_CONTROL = "TECH_CUSTOMER_CONTROL", "Стройконтроль застройщика/техзаказчика"
+    BUILDER_REP = "BUILDER_REP", "Представитель лица, осуществляющего строительство"
+    BUILDER_CONTROL = "BUILDER_CONTROL", "Стройконтроль лица, осуществляющего строительство"
+    DESIGN_REP = "DESIGN_REP", "Представитель проектировщика / авторский надзор"
+    CONTRACTOR_REP = "CONTRACTOR_REP", "Лицо, выполнившее работы"
+    OTHER_REP = "OTHER_REP", "Иные лица"
 
 
-def _sanitize_component(value: str) -> str:
-    value = (value or "").strip()
-    value = re.sub(r'[<>:"/\\|?*]+', "_", value)
-    value = value.rstrip(" .")
-    return value or "Без_имени"
+class DirectiveType(models.TextChoices):
+    ORDER = "ORDER", "Приказ"
+    POA = "POA", "Доверенность"
+    OTHER = "OTHER", "Иной документ"
 
 
-def directive_upload_to(instance, filename: str) -> str:
-    ext = os.path.splitext(filename)[1] or ".pdf"
-    date = instance.date or timezone.now().date()
-
-    org = _sanitize_component(instance.organization)
-    position = _sanitize_component(instance.employee_position)
-    num = _sanitize_component(instance.number)
-    fio = _sanitize_component(instance.employee_full_name)
-
-    new_filename = f"{num}_от_{date:%d.%m.%Y}_{fio}{ext}"
-    return os.path.join(org, position, new_filename)
+def directive_upload_to(instance: "Directive", filename: str) -> str:
+    # (instance.uuid) гарантирует уникальную директорию для каждого документа
+    return f"directives/{instance.uuid}/{filename}"
 
 
 class Directive(models.Model):
-    number = models.CharField(
-        verbose_name='Номер приказа',
-        max_length=50,
+    """
+    Документ-основание полномочий (приказ/доверенность/иное).
+    Важно: Directive НЕ хранит "кому выдано" — это хранит Authorization.
+    """
+
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
         unique=True,
-        validators=[MinLengthValidator(1)],
-        help_text='Пример: 125-к, 2024-09-01, ПР-125'
+        verbose_name="Публичный идентификатор",
     )
 
+    # (doc_type) тип документа
+    doc_type = models.CharField(
+        max_length=16,
+        choices=DirectiveType.choices,
+        default=DirectiveType.ORDER,
+        verbose_name="Тип документа",
+    )
+
+    # (number) номер документа
+    number = models.CharField(
+        max_length=64,
+        verbose_name="Номер",
+    )
+
+    # (date) дата документа (когда подписан/издан)
     date = models.DateField(
-        verbose_name='Дата приказа',
-        default=timezone.now,
-        help_text='Дата подписания приказа'
+        verbose_name="Дата документа",
     )
 
-    effective_date = models.DateField(
-        verbose_name='Дата вступления в силу',
-        null=True,
-        blank=True,
-        help_text='Если отличается от даты подписания'
+    # (issuer_organization) кем выдан документ
+    issuer_organization = models.ForeignKey(
+        Organization,
+        on_delete=models.PROTECT,
+        related_name="issued_directives",
+        verbose_name="Кем выдан (организация)",
     )
 
-    def clean(self):
-        if self.effective_date and self.date and self.effective_date < self.date:
-            raise ValidationError({
-                "effective_date": "Дата вступления в силу не может быть раньше даты подписания."
-            })
-
-    @property
-    def effective_date_resolved(self):
-        return self.effective_date or self.date
-
-    employee_full_name = models.CharField(
-        verbose_name='Ф.И.О. сотрудника',
-        max_length=200
-    )
-
-    employee_position = models.CharField(
-        verbose_name='Должность сотрудника',
-        max_length=200
-    )
-
-    organization = models.CharField(
-        verbose_name='Организация',
-        max_length=300,
-        default='АО "Мосинжпроект"'
-    )
-
+    # (pdf_file) прикреплённый файл документа
     pdf_file = models.FileField(
-        verbose_name='Файл приказа',
-        storage=directives_storage,
         upload_to=directive_upload_to,
         blank=True,
         null=True,
-        max_length=500
+        verbose_name="Файл (PDF)",
     )
 
-    original_filename = models.CharField(
-        verbose_name='Оригинальное имя файла',
-        max_length=255,
-        blank=True
+    # (note) доп. пояснение
+    note = models.CharField(
+        max_length=512,
+        blank=True,
+        verbose_name="Примечание",
     )
 
-    file_size = models.IntegerField(
-        verbose_name='Размер файла (КБ)',
-        default=0
-    )
-
-    uploaded_at = models.DateTimeField(
-        verbose_name='Время загрузки файла',
-        auto_now_add=True,
-        null=True,
-        blank=True
+    # (is_active) активен ли документ для использования в новых полномочиях
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Документ активен",
     )
 
     created_at = models.DateTimeField(
-        verbose_name='Дата создания записи',
-        auto_now_add=True
-    )
-
-    updated_at = models.DateTimeField(
-        verbose_name='Дата обновления',
-        auto_now=True
-    )
-
-    is_active = models.BooleanField(
-        verbose_name='Действующий',
-        default=True
-    )
-
-    signer_role = models.CharField(
-        verbose_name="Роль подписанта",
-        max_length=20,
-        choices=SignerRole.choices,
-        default=SignerRole.OTHER,
-        db_index=True,
+        auto_now_add=True,
+        verbose_name="Создано",
     )
 
     class Meta:
-        verbose_name = 'Приказ'
-        verbose_name_plural = 'Приказы'
-        ordering = ['-date', '-number']
+        verbose_name = "Документ-основание (приказ/доверенность)"
+        verbose_name_plural = "Документы-основания"
+        ordering = ["-date", "number"]
         indexes = [
-            models.Index(fields=['number']),
-            models.Index(fields=['date']),
-            models.Index(fields=['employee_full_name']),
+            models.Index(fields=["date", "number"]),
+            models.Index(fields=["issuer_organization"]),
         ]
 
-        # ✅ Кастомные права НЕ должны называться add_/delete_/change_/view_
-        # потому что эти 4 Django создаёт автоматически для модели.
-        permissions = [
-            ("view_directives_page", "Может открывать страницу списка приказов"),
-            ("create_directive_page", "Может открывать страницу добавления приказа"),
-            ("delete_directive_page", "Может удалять приказ (через интерфейс сайта)"),
-            ("open_directive_pdf", "Может открывать PDF приказа"),
-        ]
-
-    def save(self, *args, **kwargs):
-        if self.pdf_file and not self.original_filename:
-            self.original_filename = os.path.basename(self.pdf_file.name)
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f'Приказ №{self.number} от {self.date} - {self.employee_full_name}'
+    def __str__(self) -> str:
+        return f"{self.get_doc_type_display()} №{self.number} от {self.date:%d.%m.%Y}"
 
 
-class SignerRoleConfig(models.Model):
-    role = models.CharField(
-        verbose_name="Роль",
-        max_length=20,
-        choices=SignerRole.choices,
+class Authorization(models.Model):
+    """
+    Полномочие подписанта.
+    Связь: Person ↔ Organization ↔ Directive (+ роль + период).
+    """
+
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
         unique=True,
-        db_index=True,
+        verbose_name="Публичный идентификатор",
     )
 
-    source_paragraph = models.PositiveSmallIntegerField(
-        verbose_name="Параграф в акте",
-        null=True,
+    # (organization) от чьего имени подписывает
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.PROTECT,
+        related_name="authorizations",
+        verbose_name="Организация (от чьего имени подписывает)",
+    )
+
+    # (person) кто подписывает
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.PROTECT,
+        related_name="authorizations",
+        verbose_name="Человек (кто подписывает)",
+    )
+
+    # (role) роль в акте
+    role = models.CharField(
+        max_length=32,
+        choices=ActRole.choices,
+        verbose_name="Роль в акте",
+    )
+
+    # (directive) основание (приказ/доверенность)
+    directive = models.ForeignKey(
+        Directive,
+        on_delete=models.PROTECT,
+        related_name="authorizations",
+        verbose_name="Основание (документ)",
+    )
+
+    # (position_text) должность для подстановки в акт (пока без employment)
+    position_text = models.CharField(
+        max_length=255,
         blank=True,
-        help_text="Если не задан — проверка этой роли не выполняется.",
+        verbose_name="Должность (для подстановки в акт)",
     )
 
-    is_enabled = models.BooleanField(
-        verbose_name="Включено",
+    # (valid_from) начало действия полномочия (может быть позже даты приказа!)
+    valid_from = models.DateField(
+        verbose_name="Действует с",
+    )
+
+    # (valid_to) конец действия полномочия
+    valid_to = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name="Действует по (если бессрочно — пусто)",
+    )
+
+    # (is_active) быстро выключить полномочие
+    is_active = models.BooleanField(
         default=True,
-        help_text="Можно временно отключать проверку для этой роли.",
+        verbose_name="Полномочие активно",
     )
 
-    updated_at = models.DateTimeField(
-        verbose_name="Обновлено",
-        auto_now=True,
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Создано",
     )
 
     class Meta:
-        verbose_name = "Настройка роли подписанта"
-        verbose_name_plural = "Настройки ролей подписанта"
-        ordering = ("role",)
+        verbose_name = "Полномочие подписанта"
+        verbose_name_plural = "Полномочия подписантов"
+        ordering = ["organization", "role", "person"]
+        indexes = [
+            models.Index(fields=["organization", "role", "valid_from", "valid_to"]),
+            models.Index(fields=["person", "role"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "person", "role", "directive", "valid_from"],
+                name="uniq_auth_org_person_role_directive_from",
+            )
+        ]
 
-    def __str__(self):
-        par = self.source_paragraph if self.source_paragraph is not None else "—"
-        status = "ON" if self.is_enabled else "OFF"
-        return f"{self.get_role_display()} | par={par} | {status}"
+    def __str__(self) -> str:
+        return f"{self.organization.short_name}: {self.person.short_name} ({self.get_role_display()})"
