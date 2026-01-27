@@ -121,7 +121,7 @@
 
             <!-- Приказы -->
             {# --- Приказы (Directive) --- #}
-                    {% if user.is_superuser or perms.directive_app.view_directives_page or perms.directive_app.create_directive_page %}
+                    {% if user.is_superuser or perms.directive_app.view_directive or perms.directive_app.add_directive %}
                         <li class="nav-item">
                             <a class="nav-link {% if directives_open %}{% else %}collapsed{% endif %}"
                                data-bs-target="#directive-nav"
@@ -136,7 +136,7 @@
                                 class="nav-content collapse {% if directives_open %}show{% endif %}"
                                 data-bs-parent="#sidebar-nav">
 
-                                {% if user.is_superuser or perms.directive_app.view_directives_page %}
+                                {% if user.is_superuser or perms.directive_app.view_directive %}
                                     <li>
                                         <a href="{% url 'directive_app:directive_list' %}"
                                            class="{% if rn == 'directive_list' %}active{% endif %}">
@@ -146,7 +146,7 @@
                                     </li>
                                 {% endif %}
 
-                                {% if user.is_superuser or perms.directive_app.create_directive_page %}
+                                {% if user.is_superuser or perms.directive_app.add_directive %}
                                     <li>
                                         <a href="{% url 'directive_app:directive_create' %}"
                                            class="{% if rn == 'directive_create' %}active{% endif %}">
