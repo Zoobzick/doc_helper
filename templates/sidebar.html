@@ -121,46 +121,85 @@
 
             <!-- Приказы -->
             {# --- Приказы (Directive) --- #}
-                    {% if user.is_superuser or perms.directive_app.view_directive or perms.directive_app.add_directive %}
-                        <li class="nav-item">
-                            <a class="nav-link {% if directives_open %}{% else %}collapsed{% endif %}"
-                               data-bs-target="#directive-nav"
-                               data-bs-toggle="collapse"
-                               href="#">
-                                <i class="bi bi-person-square"></i>
-                                <span>Приказы</span>
-                                <i class="bi bi-chevron-down ms-auto"></i>
-                            </a>
+            {% if user.is_superuser or perms.directive_app.view_directive or perms.directive_app.add_directive %}
+                <li class="nav-item">
+                    <a class="nav-link {% if directives_open %}{% else %}collapsed{% endif %}"
+                       data-bs-target="#directive-nav"
+                       data-bs-toggle="collapse"
+                       href="#">
+                        <i class="bi bi-person-square"></i>
+                        <span>Приказы</span>
+                        <i class="bi bi-chevron-down ms-auto"></i>
+                    </a>
 
-                            <ul id="directive-nav"
-                                class="nav-content collapse {% if directives_open %}show{% endif %}"
-                                data-bs-parent="#sidebar-nav">
+                    <ul id="directive-nav"
+                        class="nav-content collapse {% if directives_open %}show{% endif %}"
+                        data-bs-parent="#sidebar-nav">
 
-                                {% if user.is_superuser or perms.directive_app.view_directive %}
-                                    <li>
-                                        <a href="{% url 'directive_app:directive_list' %}"
-                                           class="{% if rn == 'directive_list' %}active{% endif %}">
-                                            <i class="bi bi-circle"></i>
-                                            <span>Все приказы</span>
-                                        </a>
-                                    </li>
-                                {% endif %}
+                        {% if user.is_superuser or perms.directive_app.view_directive %}
+                            <li>
+                                <a href="{% url 'directive_app:directive_list' %}"
+                                   class="{% if rn == 'directive_list' %}active{% endif %}">
+                                    <i class="bi bi-circle"></i>
+                                    <span>Все приказы</span>
+                                </a>
+                            </li>
+                        {% endif %}
 
-                                {% if user.is_superuser or perms.directive_app.add_directive %}
-                                    <li>
-                                        <a href="{% url 'directive_app:directive_create' %}"
-                                           class="{% if rn == 'directive_create' %}active{% endif %}">
-                                            <i class="bi bi-circle"></i>
-                                            <span>Добавить приказ</span>
-                                        </a>
-                                    </li>
-                                {% endif %}
+                        {% if user.is_superuser or perms.directive_app.add_directive %}
+                            <li>
+                                <a href="{% url 'directive_app:directive_create' %}"
+                                   class="{% if rn == 'directive_create' %}active{% endif %}">
+                                    <i class="bi bi-circle"></i>
+                                    <span>Добавить приказ</span>
+                                </a>
+                            </li>
+                        {% endif %}
 
-                            </ul>
-                        </li>
-                    {% endif %}
+                    </ul>
+                </li>
+            {% endif %}
             {# --- end Приказы --- #}
             <!-- End Directives -->
+
+            {# --- Организации (Организации / Люди / НРС) --- #}
+            {% if user.is_superuser or perms.orgs_app.view_organization or perms.orgs_app.view_person or perms.orgs_app.view_personnrs %}
+                <li class="nav-item">
+                    <a class="nav-link collapsed" data-bs-target="#orgs-app-nav" data-bs-toggle="collapse" href="#">
+                        <i class="bi bi-building"></i>
+                        <span>Организации</span>
+                        <i class="bi bi-chevron-down ms-auto"></i>
+                    </a>
+
+                    <ul id="orgs-app-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+
+                        {% if user.is_superuser or perms.orgs_app.view_organization %}
+                            <li>
+                                <a href="{% url 'orgs_app:organization_list' %}">
+                                    <i class="bi bi-circle"></i><span>Организации</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
+                        {% if user.is_superuser or perms.orgs_app.view_person %}
+                            <li>
+                                <a href="{% url 'orgs_app:person_list' %}">
+                                    <i class="bi bi-circle"></i><span>Люди</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
+                        {% if user.is_superuser or perms.orgs_app.view_personnrs %}
+                            <li>
+                                <a href="{% url 'orgs_app:personnrs_list' %}">
+                                    <i class="bi bi-circle"></i><span>НРС</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
+                    </ul>
+                </li>
+            {% endif %}
 
             <!-- Согласования -->
             {% if user.is_superuser or perms.approvals_app.view_approvals_done_page or perms.approvals_app.view_approvals_pending_page %}
