@@ -1,17 +1,16 @@
+# directive_app/views.py
+
+import re
+
 from django.contrib import messages
-from django.contrib.auth.mixins import PermissionRequiredMixin, LoginRequiredMixin
-from django.db.models import Q
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse
+from django.views import View
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
 
 from .forms import DirectiveForm, AuthorizationForm
-from .models import Directive, Authorization, DirectiveType
-
-import re
-from django.http import FileResponse, Http404
-from django.views import View
-
+from .models import Directive, Authorization
 
 
 class DirectiveListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
@@ -19,11 +18,10 @@ class DirectiveListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     template_name = "directive_app/directive_list.html"
     context_object_name = "directives"
 
-    # Права на просмотр реестра приказов
-    permission_required = "directive_app.view_directives_page"
+    # стандартное право Django на просмотр модели Directive
+    permission_required = "directive_app.view_directive"
     raise_exception = True
 
-    # DataTables сам делает поиск/сортировку/страницы на фронте
     paginate_by = None
 
     def get_queryset(self):
@@ -34,12 +32,15 @@ class DirectiveListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
         )
 
 
-class DirectiveDetailView(DetailView):
+class DirectiveDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = Directive
     template_name = "directive_app/directive_detail.html"
     context_object_name = "directive"
     slug_field = "uuid"
     slug_url_kwarg = "uuid"
+
+    permission_required = "directive_app.view_directive"
+    raise_exception = True
 
     def get_queryset(self):
         return Directive.objects.select_related("issuer_organization")
@@ -55,10 +56,13 @@ class DirectiveDetailView(DetailView):
         return ctx
 
 
-class DirectiveCreateView(CreateView):
+class DirectiveCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = Directive
     form_class = DirectiveForm
     template_name = "directive_app/directive_upload.html"
+
+    permission_required = "directive_app.add_directive"
+    raise_exception = True
 
     def form_valid(self, form):
         obj = form.save()
@@ -66,12 +70,15 @@ class DirectiveCreateView(CreateView):
         return redirect("directive_app:directive_detail", uuid=obj.uuid)
 
 
-class DirectiveUpdateView(UpdateView):
+class DirectiveUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     model = Directive
     form_class = DirectiveForm
     template_name = "directive_app/directive_upload.html"
     slug_field = "uuid"
     slug_url_kwarg = "uuid"
+
+    permission_required = "directive_app.change_directive"
+    raise_exception = True
 
     def form_valid(self, form):
         obj = form.save()
@@ -79,11 +86,13 @@ class DirectiveUpdateView(UpdateView):
         return redirect("directive_app:directive_detail", uuid=obj.uuid)
 
 
-class AuthorizationCreateView(CreateView):
+class AuthorizationCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = Authorization
     form_class = AuthorizationForm
     template_name = "directive_app/authorization_form.html"
-    permission_required = "directive_app.create_directive_page"
+
+    # добавление полномочия
+    permission_required = "directive_app.add_authorization"
     raise_exception = True
 
     def dispatch(self, request, *args, **kwargs):
@@ -103,42 +112,41 @@ class AuthorizationCreateView(CreateView):
         messages.success(self.request, "Полномочие добавлено.")
         return redirect("directive_app:directive_detail", uuid=self.directive.uuid)
 
-    def form_invalid(self, form):
-        # важно: при ошибке формы шаблон всё равно должен знать directive
-        return super().form_invalid(form)
-
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["directive"] = self.directive
         return ctx
 
 
-class AuthorizationUpdateView(UpdateView):
+class AuthorizationUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     model = Authorization
     form_class = AuthorizationForm
     template_name = "directive_app/authorization_form.html"
     slug_field = "uuid"
     slug_url_kwarg = "uuid"
 
+    permission_required = "directive_app.change_authorization"
+    raise_exception = True
+
     def form_valid(self, form):
         obj = form.save()
         messages.success(self.request, "Полномочие обновлено.")
         return redirect("directive_app:directive_detail", uuid=obj.directive.uuid)
 
-class DirectiveOpenView(PermissionRequiredMixin, View):
-    permission_required = "directive_app.view_directives_page"
+
+class DirectiveOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "directive_app.view_directive"
     raise_exception = True
 
     def get(self, request, uuid):
         directive = get_object_or_404(Directive, uuid=uuid)
         if not directive.pdf_file:
             raise Http404("Файл не прикреплён.")
-        # inline (откроется в браузере)
         return FileResponse(directive.pdf_file.open("rb"), content_type="application/pdf")
 
 
-class DirectiveDownloadView(PermissionRequiredMixin, View):
-    permission_required = "directive_app.view_directives_page"
+class DirectiveDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "directive_app.view_directive"
     raise_exception = True
 
     def get(self, request, uuid):
@@ -149,10 +157,8 @@ class DirectiveDownloadView(PermissionRequiredMixin, View):
         org = directive.issuer_organization.short_name if directive.issuer_organization else ""
         date_str = directive.date.strftime("%d.%m.%Y")
 
-        # безопасное имя файла (убираем запрещённые символы)
         def safe(s: str) -> str:
-            s = re.sub(r"[\\/:*?\"<>|]+", "_", s)
-            return s.strip()
+            return re.sub(r"[\\/:*?\"<>|]+", "_", s).strip()
 
         filename = safe(f"№{directive.number} от {date_str} ({org}).pdf")
 
@@ -161,20 +167,17 @@ class DirectiveDownloadView(PermissionRequiredMixin, View):
         return resp
 
 
-class DirectiveDeleteView(PermissionRequiredMixin, View):
-    permission_required = "directive_app.create_directive_page"
+class DirectiveDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "directive_app.delete_directive"
     raise_exception = True
 
     def post(self, request, uuid):
         directive = get_object_or_404(Directive, uuid=uuid)
 
-        # 1) удалить файл из хранилища
         if directive.pdf_file:
             directive.pdf_file.delete(save=False)
 
-        # 2) удалить запись (Authorization удалятся каскадом, т.к. FK на Directive)
         directive.delete()
 
         messages.success(request, "Приказ удалён.")
         return redirect("directive_app:directive_list")
-
