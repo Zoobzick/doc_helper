@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+  <div class="pagetitle">
+    <h1>НРС</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'orgs_app:personnrs_list' %}">НРС</a></li>
+        <li class="breadcrumb-item active">Детали</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section">
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card">
+          <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <div>
+                <h5 class="card-title mb-0">НРС: {{ item.nrs_id }}</h5>
+                <p class="text-muted mb-0">{{ item.person.full_name }}</p>
+              </div>
+
+              <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-outline-secondary" href="{% url 'orgs_app:personnrs_list' %}">Назад</a>
+                <a class="btn btn-outline-secondary" href="{% url 'orgs_app:person_detail' item.person.uuid %}">
+                  К человеку
+                </a>
+
+                {% if perms.orgs_app.change_personnrs %}
+                  <a class="btn btn-primary" href="{% url 'orgs_app:personnrs_update' item.uuid %}">
+                    <i class="bi bi-pencil me-1"></i> Редактировать
+                  </a>
+                {% endif %}
+
+                {% if perms.orgs_app.delete_personnrs %}
+                  <a class="btn btn-danger" href="{% url 'orgs_app:personnrs_delete' item.uuid %}">
+                    <i class="bi bi-trash me-1"></i> Удалить
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+
+            <dl class="row mb-0">
+              <dt class="col-sm-3">Человек</dt><dd class="col-sm-9">{{ item.person.full_name }}</dd>
+              <dt class="col-sm-3">Действует с</dt><dd class="col-sm-9">{{ item.valid_from|date:"d.m.Y" }}</dd>
+              <dt class="col-sm-3">Действует по</dt><dd class="col-sm-9">{% if item.valid_to %}{{ item.valid_to|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}</dd>
+              <dt class="col-sm-3">Активна</dt>
+              <dd class="col-sm-9">
+                {% if item.is_active %}
+                  <span class="badge bg-success">Да</span>
+                {% else %}
+                  <span class="badge bg-secondary">Нет</span>
+                {% endif %}
+              </dd>
+            </dl>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+{% endblock %}

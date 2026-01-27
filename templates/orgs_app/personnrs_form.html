@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+  <div class="pagetitle">
+    <h1>{% if form.instance.pk %}Редактирование НРС{% else %}Создание НРС{% endif %}</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'orgs_app:personnrs_list' %}">НРС</a></li>
+        <li class="breadcrumb-item active">{% if form.instance.pk %}Редактирование{% else %}Создание{% endif %}</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section">
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card">
+          <div class="card-body">
+
+            <form method="post" class="mt-3" novalidate>
+              {% csrf_token %}
+
+              {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+              {% endif %}
+
+              <div class="row g-3">
+                {% for field in form %}
+                  <div class="col-12 col-lg-6">
+                    <label class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors }}</div>{% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button class="btn btn-success" type="submit">
+                  <i class="bi bi-check2-circle me-1"></i> Сохранить
+                </button>
+                <a class="btn btn-outline-secondary" href="javascript:history.back()">Назад</a>
+              </div>
+            </form>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+{% endblock %}

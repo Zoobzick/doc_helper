@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+  <div class="pagetitle">
+    <h1>Удаление</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+        <li class="breadcrumb-item active">Подтверждение</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section">
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card">
+          <div class="card-body">
+
+            <h5 class="card-title mb-2">Подтвердите действие</h5>
+
+            <div class="alert alert-warning">
+              Точно удалить: <strong>{{ object }}</strong>?
+            </div>
+
+            <form method="post" class="d-flex gap-2 flex-wrap">
+              {% csrf_token %}
+
+              <button class="btn btn-danger" type="submit">
+                <i class="bi bi-trash me-1"></i> Удалить
+              </button>
+
+              <a class="btn btn-outline-secondary" href="javascript:history.back()">
+                Назад
+              </a>
+            </form>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+{% endblock %}

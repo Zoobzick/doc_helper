@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+  <div class="pagetitle">
+    <h1>Люди</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+        <li class="breadcrumb-item active">Люди</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section">
+    <div class="row">
+      <div class="col-lg-12">
+
+        <div class="card">
+          <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <div>
+                <h5 class="card-title mb-0">Реестр людей</h5>
+                <p class="text-muted mb-0">Справочник персон</p>
+              </div>
+
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                {% if perms.orgs_app.add_person %}
+                  <a href="{% url 'orgs_app:person_create' %}" class="btn btn-sm btn-success">
+                    <i class="bi bi-plus-circle me-1"></i> Добавить человека
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+
+            <form method="get" class="row g-2 align-items-end mb-3">
+              <div class="col-12 col-lg-6">
+                <label class="form-label">Поиск</label>
+                <input class="form-control" name="q" value="{{ q }}" placeholder="Фамилия / имя / отчество">
+              </div>
+
+              <div class="col-12 col-lg-3">
+                <label class="form-label">Активность</label>
+                <select class="form-select" name="is_active">
+                  <option value="" {% if not is_active %}selected{% endif %}>Все</option>
+                  <option value="1" {% if is_active == "1" %}selected{% endif %}>Активные</option>
+                  <option value="0" {% if is_active == "0" %}selected{% endif %}>Неактивные</option>
+                </select>
+              </div>
+
+              <div class="col-12 col-lg-3 d-flex gap-2 flex-wrap">
+                <button class="btn btn-primary" type="submit">
+                  <i class="bi bi-funnel me-1"></i> Фильтр
+                </button>
+                <a class="btn btn-outline-secondary" href="{% url 'orgs_app:person_list' %}">Сброс</a>
+              </div>
+            </form>
+
+            <div class="table-responsive">
+              <table class="table table-striped table-bordered align-middle w-100">
+                <thead>
+                  <tr>
+                    <th>ФИО</th>
+                    <th class="text-center">Активен</th>
+                    <th class="text-center">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in items %}
+                    <tr>
+                      <td style="word-break: break-word;">{{ item.full_name }}</td>
+
+                      <td class="text-center">
+                        {% if item.is_active %}
+                          <span class="badge bg-success">Да</span>
+                        {% else %}
+                          <span class="badge bg-secondary">Нет</span>
+                        {% endif %}
+                      </td>
+
+                      <td class="text-center text-nowrap">
+                        {% if perms.orgs_app.view_person %}
+                          <a href="{% url 'orgs_app:person_detail' item.uuid %}"
+                             class="btn btn-sm btn-outline-primary"
+                             title="Открыть">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                          </a>
+                        {% endif %}
+
+                        {% if perms.orgs_app.change_person %}
+                          <a href="{% url 'orgs_app:person_update' item.uuid %}"
+                             class="btn btn-sm btn-outline-success ms-1"
+                             title="Редактировать">
+                            <i class="bi bi-pencil"></i>
+                          </a>
+                        {% endif %}
+
+                        {% if perms.orgs_app.delete_person %}
+                          <a href="{% url 'orgs_app:person_delete' item.uuid %}"
+                             class="btn btn-sm btn-outline-danger ms-1"
+                             title="Удалить">
+                            <i class="bi bi-trash"></i>
+                          </a>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% empty %}
+                    <tr><td colspan="3" class="text-muted">Люди не найдены</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            {% include "orgs_app/_pagination.html" %}
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+{% endblock %}

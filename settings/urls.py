@@ -27,5 +27,7 @@ urlpatterns = [
     path("projects/", include(("projects_app.urls", "projects"), namespace="projects")),
     path("approvals/", include(("approvals_app.urls", "approvals"), namespace="approvals")),
     path("documents/", include(('documents_app.urls', 'documents'), namespace='documents')),
+    path("orgs/", include("orgs_app.urls", namespace="orgs_app")),
+
     path("", include("health_app.urls")),
 ]
