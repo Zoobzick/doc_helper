@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Акт {{ act.number }}{% endblock %}
+
+{% block content %}
+<div class="pagetitle">
+  <h1>Акт №{{ act.number }}</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Главная</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
+      <li class="breadcrumb-item active">Акт №{{ act.number }}</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      {% if act.status == "FINAL" %}
+        <span class="badge bg-success">Финальный</span>
+      {% else %}
+        <span class="badge bg-secondary">Черновик</span>
+      {% endif %}
+      <span class="text-muted">Дата: {{ act.act_date|date:"d.m.Y" }}</span>
+      <span class="text-muted">Листов: {{ act.sheets_total }}</span>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">
+        <i class="bi bi-arrow-left me-1"></i>К списку
+      </a>
+      <a class="btn btn-primary" href="{% url 'acts_app:act_update' act.uuid %}">
+        <i class="bi bi-pencil me-1"></i>Редактировать
+      </a>
+      <form method="post" action="{% url 'acts_app:act_rebuild_appendix' act.uuid %}">
+        {% csrf_token %}
+        <button class="btn btn-outline-primary" type="submit">
+          <i class="bi bi-arrow-repeat me-1"></i>Пересобрать приложения
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body pt-3">
+          <h5 class="card-title">Основное</h5>
+
+          <dl class="row mb-0">
+            <dt class="col-sm-4 text-muted">Шифр проекта</dt>
+            <dd class="col-sm-8">{{ act.project }}</dd>
+
+            <dt class="col-sm-4 text-muted">Работы</dt>
+            <dd class="col-sm-8">{{ act.work_name }}</dd>
+
+            <dt class="col-sm-4 text-muted">Начало</dt>
+            <dd class="col-sm-8">
+              {% if act.work_start_date %}{{ act.work_start_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </dd>
+
+            <dt class="col-sm-4 text-muted">Окончание</dt>
+            <dd class="col-sm-8">
+              {% if act.work_end_date %}{{ act.work_end_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </dd>
+
+            <dt class="col-sm-4 text-muted">Последующие</dt>
+            <dd class="col-sm-8">
+              {% if act.following_works %}{{ act.following_works|linebreaksbr }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body pt-3">
+          <h5 class="card-title">Приложения (как будет в реестре)</h5>
+
+          {% if act.appendix_lines.all %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th style="white-space: nowrap;">№</th>
+                    <th>Наименование</th>
+                    <th style="white-space: nowrap;">Листов</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for line in act.appendix_lines.all %}
+                    <tr>
+                      <td style="white-space: nowrap;">{{ line.position }}</td>
+                      <td>{{ line.label }}</td>
+                      <td style="white-space: nowrap;">{{ line.sheets_count }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">Приложения ещё не собраны.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body pt-3">
+          <h5 class="card-title">Материалы</h5>
+
+          {% if act.materials.all %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th style="white-space: nowrap;">№</th>
+                    <th>Материал / Паспорт</th>
+                    <th style="white-space: nowrap;">Тип</th>
+                    <th style="white-space: nowrap;">Листов</th>
+                    <th style="white-space: nowrap;">V, м³</th>
+                    <th>Примечание</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for m in act.materials.all %}
+                    <tr>
+                      <td style="white-space: nowrap;">{{ m.position }}</td>
+                      <td>
+                        {% if m.passport %}
+                          <div class="fw-semibold">{{ m.passport }}</div>
+                        {% else %}
+                          <div class="fw-semibold">{{ m.manual_name }}</div>
+                          <div class="text-muted small">
+                            {% if m.manual_doc_no %}№{{ m.manual_doc_no }}{% endif %}
+                            {% if m.manual_doc_date %} от {{ m.manual_doc_date|date:"d.m.Y" }}{% endif %}
+                            {% if m.manual_issuer %} — {{ m.manual_issuer }}{% endif %}
+                          </div>
+                        {% endif %}
+                      </td>
+                      <td style="white-space: nowrap;">{{ m.get_material_kind_display }}</td>
+                      <td style="white-space: nowrap;">{{ m.sheets_count }}</td>
+                      <td style="white-space: nowrap;">
+                        {% if m.volume_m3 %}{{ m.volume_m3 }}{% else %}<span class="text-muted">—</span>{% endif %}
+                      </td>
+                      <td>
+                        {% if m.note %}{{ m.note }}{% else %}<span class="text-muted">—</span>{% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">Материалы не добавлены.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body pt-3">
+          <h5 class="card-title">Документы</h5>
+
+          {% if act.attachments.all %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>Тип</th>
+                    <th>Название / №</th>
+                    <th style="white-space: nowrap;">Дата</th>
+                    <th style="white-space: nowrap;">Листов</th>
+                    <th style="white-space: nowrap;">Файл</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for a in act.attachments.all %}
+                    <tr>
+                      <td style="white-space: nowrap;">{{ a.get_type_display }}</td>
+                      <td>
+                        <div class="fw-semibold">
+                          {% if a.title %}{{ a.title }}{% else %}—{% endif %}
+                        </div>
+                        <div class="text-muted small">
+                          {% if a.doc_no %}№{{ a.doc_no }}{% endif %}
+                        </div>
+                      </td>
+                      <td style="white-space: nowrap;">
+                        {% if a.doc_date %}{{ a.doc_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
+                      </td>
+                      <td style="white-space: nowrap;">{{ a.sheets_count }}</td>
+                      <td style="white-space: nowrap;">
+                        {% if a.file %}
+                          <a href="{{ a.file.url }}" target="_blank" rel="noopener">Открыть</a>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">Документы не добавлены.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+{% endblock %}
