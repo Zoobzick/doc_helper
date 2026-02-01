@@ -128,6 +128,11 @@ class AuthorizationUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Updat
     permission_required = "directive_app.change_authorization"
     raise_exception = True
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["directive"] = self.object.directive  # <-- ВОТ ЭТО
+        return ctx
+
     def form_valid(self, form):
         obj = form.save()
         messages.success(self.request, "Полномочие обновлено.")
