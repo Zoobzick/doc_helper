@@ -106,8 +106,6 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             doc_name = (p.document_name or "").strip() or "—"
             doc_no = (p.document_number or "").strip() or "—"
             doc_date = p.document_date.strftime("%d.%m.%Y") if p.document_date else "—"
-
-            # то, что будет вставляться в строку материала в акте
             label = f"{material} — {doc_name} №{doc_no} от {doc_date}"
 
             data.append(
@@ -139,7 +137,8 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         projects_form = ActProjectsForm()
         act_form = ActForm()
 
-        material_fs = ActMaterialFormSet(prefix="mat")
+        # ActMaterialFormSet.extra = 0 -> на create показываем 1 пустую строку через initial
+        material_fs = ActMaterialFormSet(prefix="mat", initial=[{}])
         attach_fs = ActAttachmentFormSet(prefix="att", act_number="")
 
         return render(
@@ -313,3 +312,43 @@ class ActRebuildAppendixView(LoginRequiredMixin, PermissionRequiredMixin, View):
         except AppendixBuilderError as e:
             messages.error(request, f"Не удалось пересобрать приложения: {e}")
         return redirect("acts_app:act_detail", uuid=str(act.uuid))
+
+
+class PassportsLabelsView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """
+    Для /edit/: отдать подписи для паспортов по списку id.
+    GET ?ids=1,2,3
+    """
+    permission_required = "acts_app.change_act"
+
+    def get(self, request: HttpRequest) -> JsonResponse:
+        ids_raw = (request.GET.get("ids") or "").strip()
+        if not ids_raw:
+            return JsonResponse({"labels": {}})
+
+        try:
+            ids = [int(x) for x in ids_raw.split(",") if x.strip().isdigit()]
+        except Exception:
+            ids = []
+
+        if not ids:
+            return JsonResponse({"labels": {}})
+
+        from passports_app.models import Passport  # noqa: WPS433
+
+        qs = (
+            Passport.objects
+            .select_related("material")
+            .filter(id__in=ids)
+            .only("id", "document_name", "document_number", "document_date", "material__name")
+        )
+
+        labels = {}
+        for p in qs:
+            material = p.material.name if p.material_id and p.material else "—"
+            doc_name = (p.document_name or "").strip() or "—"
+            doc_no = (p.document_number or "").strip() or "—"
+            doc_date = p.document_date.strftime("%d.%m.%Y") if p.document_date else "—"
+            labels[str(p.id)] = f"{material} — {doc_name} №{doc_no} от {doc_date}"
+
+        return JsonResponse({"labels": labels})

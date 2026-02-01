@@ -7,7 +7,7 @@ from acts_app.views import (
     ActListView,
     ActRebuildAppendixView,
     ActUpdateView,
-    PassportsDatatableView,
+    PassportsDatatableView, PassportsLabelsView,
 )
 
 app_name = "acts_app"
@@ -22,4 +22,6 @@ urlpatterns = [
     path("<uuid:uuid>/", ActDetailView.as_view(), name="act_detail"),
     path("<uuid:uuid>/edit/", ActUpdateView.as_view(), name="act_update"),
     path("<uuid:uuid>/rebuild-appendix/", ActRebuildAppendixView.as_view(), name="act_rebuild_appendix"),
+    path("passports/labels/", PassportsLabelsView.as_view(), name="passports_labels"),
+
 ]

@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Акт {{ act.number }}{% endblock %}
+{% block title %}Акт №{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}{% endblock %}
 
 {% block content %}
 <div class="pagetitle">
-  <h1>Акт №{{ act.number }}</h1>
+  <h1>Акт №{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}</h1>
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="/">Главная</a></li>
       <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
-      <li class="breadcrumb-item active">Акт №{{ act.number }}</li>
+      <li class="breadcrumb-item active">№{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}</li>
     </ol>
   </nav>
 </div>
@@ -52,13 +52,18 @@
           <dl class="row mb-0">
             <dt class="col-sm-4 text-muted">Шифры проектов</dt>
             <dd class="col-sm-8">
-              {% if act.projects.all %}
-                {% for p in act.projects.all %}
-                  <span class="badge bg-light text-dark border me-1 mb-1">{{ p }}</span>
-                {% endfor %}
-              {% else %}
-                <span class="text-muted">—</span>
-              {% endif %}
+              {% with projects=act.projects.all %}
+                {% if projects %}
+                  {% for p in projects %}
+                    <a href="{% url 'projects:project_detail' p.id %}"
+                       class="text-decoration-none">
+                      {{ p }}
+                    </a>{% if not forloop.last %}, {% endif %}
+                  {% endfor %}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              {% endwith %}
             </dd>
 
             <dt class="col-sm-4 text-muted">Работы</dt>
@@ -110,7 +115,11 @@
               </table>
             </div>
           {% else %}
-            <div class="text-muted">Приложения ещё не собраны.</div>
+            <div class="text-muted mb-2">Приложения ещё не собраны.</div>
+            <div class="small text-muted">
+              Это отдельная “витрина” (ActAppendixLine), она формируется сервисом пересборки.
+              Нажми “Пересобрать приложения”.
+            </div>
           {% endif %}
         </div>
       </div>

@@ -46,7 +46,8 @@
                         <div class="col-12 col-lg-6">
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                <input type="text" class="form-control" id="project-search" placeholder="Поиск проекта…">
+                                <input type="text" class="form-control" id="project-search"
+                                       placeholder="Поиск проекта…">
                             </div>
                         </div>
 
@@ -74,7 +75,8 @@
                     <div class="border rounded p-2" style="max-height: 360px; overflow:auto;">
                         <div class="row g-2" id="projects-grid">
                             {% for p in projects_form.fields.projects.queryset %}
-                                <div class="col-12 col-md-6 col-xl-4 project-item" data-text="{{ p|stringformat:'s'|lower }}">
+                                <div class="col-12 col-md-6 col-xl-4 project-item"
+                                     data-text="{{ p|stringformat:'s'|lower }}">
                                     <label class="d-flex gap-2 align-items-start border rounded p-2 w-100">
                                         <input class="form-check-input mt-1 project-checkbox"
                                                type="checkbox"
@@ -205,7 +207,7 @@
                                                 <input type="text"
                                                        class="form-control passport-display"
                                                        placeholder="Паспорт не выбран"
-                                                       value="{% if f.instance.passport_id %}{{ f.instance.passport.material.name }} — {{ f.instance.passport.document_name }} №{{ f.instance.passport.document_number|default:'—' }} от {% if f.instance.passport.document_date %}{{ f.instance.passport.document_date|date:'d.m.Y' }}{% else %}—{% endif %}{% endif %}"
+                                                       value=""
                                                        readonly
                                                        data-target-hidden-id="{{ f.passport.auto_id }}">
                                                 <button type="button"
@@ -260,7 +262,8 @@
                                                     <label class="form-check-label small">Удалить</label>
                                                 </div>
                                             {% else %}
-                                                <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-danger js-remove-row">
                                                     <i class="bi bi-x-lg"></i>
                                                 </button>
                                             {% endif %}
@@ -353,7 +356,8 @@
                                         <tr class="attachment-row {% if forloop.first %}scheme-row{% endif %}">
                                             <td>
                                                 {% if forloop.first %}
-                                                    <input type="text" class="form-control" value="Исполнительная схема" readonly>
+                                                    <input type="text" class="form-control" value="Исполнительная схема"
+                                                           readonly>
                                                     {{ f.title.as_hidden }}
                                                 {% else %}
                                                     {{ f.title }}
@@ -362,7 +366,8 @@
 
                                             <td>
                                                 {% if forloop.first %}
-                                                    <input type="text" class="form-control" id="scheme-doc-no" value="" readonly>
+                                                    <input type="text" class="form-control" id="scheme-doc-no" value=""
+                                                           readonly>
                                                     {{ f.doc_no.as_hidden }}
                                                 {% else %}
                                                     {{ f.doc_no }}
@@ -395,7 +400,8 @@
                                                             <label class="form-check-label small">Удалить</label>
                                                         </div>
                                                     {% else %}
-                                                        <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-outline-danger js-remove-row">
                                                             <i class="bi bi-x-lg"></i>
                                                         </button>
                                                     {% endif %}
@@ -407,21 +413,27 @@
                                 {% else %}
                                     <tr class="attachment-row scheme-row">
                                         <td>
-                                            <input type="text" class="form-control" value="Исполнительная схема" readonly>
-                                            <input type="hidden" name="att-0-title" id="id_att-0-title" value="Исполнительная схема">
+                                            <input type="text" class="form-control" value="Исполнительная схема"
+                                                   readonly>
+                                            <input type="hidden" name="att-0-title" id="id_att-0-title"
+                                                   value="Исполнительная схема">
                                         </td>
                                         <td>
-                                            <input type="text" class="form-control" id="scheme-doc-no" value="" readonly>
+                                            <input type="text" class="form-control" id="scheme-doc-no" value=""
+                                                   readonly>
                                             <input type="hidden" name="att-0-doc_no" id="id_att-0-doc_no" value="">
                                         </td>
                                         <td>
-                                            <input type="date" class="form-control" name="att-0-doc_date" id="id_att-0-doc_date">
+                                            <input type="date" class="form-control" name="att-0-doc_date"
+                                                   id="id_att-0-doc_date">
                                         </td>
                                         <td>
-                                            <input type="number" class="form-control" name="att-0-sheets_count" id="id_att-0-sheets_count" min="1" value="1">
+                                            <input type="number" class="form-control" name="att-0-sheets_count"
+                                                   id="id_att-0-sheets_count" min="1" value="1">
                                         </td>
                                         <td>
-                                            <input type="file" class="form-control" name="att-0-file" id="id_att-0-file">
+                                            <input type="file" class="form-control" name="att-0-file"
+                                                   id="id_att-0-file">
                                         </td>
                                         <td class="text-end">
                                             <span class="text-muted small">обяз.</span>
@@ -491,7 +503,7 @@
 
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
-                    <button type="button" class="btn btn-primary" id="btnPickPassport">Выбрать</button>
+                    <button type="button" class="btn btn-primary" id="btnPickPassports">Добавить выбранные</button>
                 </div>
             </div>
         </div>
@@ -635,6 +647,7 @@
                 const hidden = document.getElementById("id_att-0-doc_no");
                 if (hidden) hidden.value = v;
             }
+
             actNumberInput?.addEventListener("input", syncSchemeNo);
             syncSchemeNo();
 
@@ -642,7 +655,7 @@
             function addRow(tableId, tplId, prefix) {
                 const table = document.getElementById(tableId);
                 const tpl = document.getElementById(tplId);
-                if (!table || !tpl) return;
+                if (!table || !tpl) return null;
 
                 const totalInput = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
                 const total = parseInt(totalInput.value, 10);
@@ -650,6 +663,8 @@
                 let html = tpl.innerHTML.replaceAll("__prefix__", total);
                 table.querySelector("tbody").insertAdjacentHTML("beforeend", html);
                 totalInput.value = String(total + 1);
+
+                return table.querySelector("tbody tr:last-child");
             }
 
             document.getElementById("add-material")?.addEventListener("click", function () {
@@ -659,31 +674,104 @@
                 addRow("attachments-table", "attachment-empty-form", "att");
             });
 
+            // ---------- REMOVE ROWS CORRECTLY (formsets) ----------
+            function markFormDeleted(row, prefix) {
+                const delCb = row.querySelector(`input[type="checkbox"][name^="${prefix}-"][name$="-DELETE"]`);
+                if (delCb) {
+                    delCb.checked = true;
+                    row.style.display = "none";
+                    return;
+                }
+
+                const anyNamed = row.querySelector(`[name^="${prefix}-"][name*="-"]`);
+                if (!anyNamed) {
+                    row.remove();
+                    return;
+                }
+
+                const m = anyNamed.getAttribute("name").match(new RegExp(`^${prefix}-(\\d+)-`));
+                if (!m) {
+                    row.remove();
+                    return;
+                }
+
+                const idx = m[1];
+                const hiddenName = `${prefix}-${idx}-DELETE`;
+
+                let hidden = row.querySelector(`input[type="hidden"][name="${hiddenName}"]`);
+                if (!hidden) {
+                    hidden = document.createElement("input");
+                    hidden.type = "hidden";
+                    hidden.name = hiddenName;
+                    row.appendChild(hidden);
+                }
+                hidden.value = "on";
+
+                row.style.display = "none";
+            }
+
             document.addEventListener("click", function (e) {
                 const btn = e.target.closest(".js-remove-row");
                 if (!btn) return;
+
                 const row = btn.closest("tr");
                 if (!row) return;
-                row.remove();
+
+                const table = btn.closest("table");
+                if (!table) return;
+
+                if (table.id === "materials-table") {
+                    markFormDeleted(row, "mat");
+                } else if (table.id === "attachments-table") {
+                    markFormDeleted(row, "att");
+                } else {
+                    row.remove();
+                }
             });
 
-            // ---------- PASSPORT MODAL (DataTables) ----------
+            // ---------- PASSPORT MODAL (DataTables MULTISELECT) ----------
             const modalEl = document.getElementById("passportModal");
-            const btnPick = document.getElementById("btnPickPassport");
+            const btnPickMany = document.getElementById("btnPickPassports");
             let passportDT = null;
 
             let currentHiddenId = null;
             let currentDisplayInput = null;
-            let selectedPassport = null; // {id, label}
 
             function getDisplayByHiddenId(hiddenId) {
                 return document.querySelector(`.passport-display[data-target-hidden-id="${hiddenId}"]`);
             }
 
+            function getHiddenInputById(hiddenId) {
+                return document.getElementById(hiddenId);
+            }
+
+            function getPickedPassportIdsOnPage() {
+                const ids = new Set();
+                document.querySelectorAll('input[type="hidden"][id^="id_mat-"][id$="-passport"]').forEach(inp => {
+                    const v = (inp.value || "").trim();
+                    if (v) ids.add(v);
+                });
+                return ids;
+            }
+
+            function fillMaterialRowWithPassport(row, passportId, label, hiddenIdToUse) {
+                const hidden = hiddenIdToUse
+                    ? getHiddenInputById(hiddenIdToUse)
+                    : row.querySelector('input[type="hidden"][id$="-passport"]');
+
+                const display = hidden
+                    ? getDisplayByHiddenId(hidden.id)
+                    : row.querySelector(".passport-display");
+
+                if (hidden) hidden.value = passportId;
+                if (display) display.value = label;
+
+                row.querySelectorAll('input[name$="manual_name"], input[name$="manual_doc_no"], input[name$="manual_doc_date"]').forEach(i => i.value = "");
+            }
+
             function openPassportModal(hiddenId) {
                 currentHiddenId = hiddenId;
                 currentDisplayInput = getDisplayByHiddenId(hiddenId);
-                selectedPassport = null;
 
                 if (!passportDT) {
                     passportDT = $('#passportPickTable').DataTable({
@@ -705,7 +793,7 @@
                             {
                                 data: null,
                                 render: function (data, type, row) {
-                                    return `<input type="radio" name="passport_pick_radio" value="${row.id}">`;
+                                    return `<input type="checkbox" class="passport-pick-cb" value="${row.id}">`;
                                 }
                             },
                             {data: "material"},
@@ -719,11 +807,11 @@
                         }
                     });
 
-                    $('#passportPickTable tbody').on('click', 'tr', function () {
-                        const id = this.dataset.passportId;
-                        const label = this.dataset.passportLabel;
-                        $(this).find('input[type="radio"]').prop('checked', true);
-                        selectedPassport = {id: id, label: label};
+                    $('#passportPickTable tbody').on('click', 'tr', function (e) {
+                        if (e.target && e.target.closest('input')) return;
+                        const cb = this.querySelector('input.passport-pick-cb');
+                        if (!cb) return;
+                        cb.checked = !cb.checked;
                     });
                 } else {
                     passportDT.ajax.reload(null, false);
@@ -744,7 +832,7 @@
                 if (!btn) return;
 
                 const hiddenId = btn.dataset.targetHiddenId;
-                const hidden = document.getElementById(hiddenId);
+                const hidden = getHiddenInputById(hiddenId);
                 const display = getDisplayByHiddenId(hiddenId);
 
                 if (hidden) hidden.value = "";
@@ -756,26 +844,79 @@
                 }
             });
 
-            btnPick?.addEventListener("click", function () {
-                const checked = document.querySelector('#passportPickTable input[type="radio"]:checked');
-                if (checked && !selectedPassport) {
-                    const tr = checked.closest("tr");
-                    selectedPassport = {id: checked.value, label: tr?.dataset.passportLabel || ""};
+            btnPickMany?.addEventListener("click", function () {
+                const picked = [];
+                document.querySelectorAll('#passportPickTable input.passport-pick-cb:checked').forEach(cb => {
+                    const tr = cb.closest("tr");
+                    const id = (cb.value || "").trim();
+                    const label = tr?.dataset.passportLabel || "";
+                    if (id) picked.push({id, label});
+                });
+
+                if (!picked.length || !currentHiddenId) return;
+
+                const already = getPickedPassportIdsOnPage();
+
+                const targetHidden = getHiddenInputById(currentHiddenId);
+                const targetRow = targetHidden ? targetHidden.closest("tr") : (currentDisplayInput?.closest("tr") || null);
+
+                if (targetRow) {
+                    const first = picked.shift();
+                    if (!already.has(first.id)) {
+                        fillMaterialRowWithPassport(targetRow, first.id, first.label, currentHiddenId);
+                        already.add(first.id);
+                    }
                 }
 
-                if (!selectedPassport || !currentHiddenId) return;
+                for (const item of picked) {
+                    if (already.has(item.id)) continue;
 
-                const hidden = document.getElementById(currentHiddenId);
-                if (hidden) hidden.value = selectedPassport.id;
-                if (currentDisplayInput) currentDisplayInput.value = selectedPassport.label;
+                    const newRow = addRow("materials-table", "material-empty-form", "mat");
+                    if (!newRow) continue;
 
-                const row = currentDisplayInput?.closest("tr");
-                if (row) {
-                    row.querySelectorAll('input[name$="manual_name"], input[name$="manual_doc_no"], input[name$="manual_doc_date"]').forEach(i => i.value = "");
+                    fillMaterialRowWithPassport(newRow, item.id, item.label);
+                    already.add(item.id);
                 }
 
                 bootstrap.Modal.getInstance(modalEl)?.hide();
+                document.querySelectorAll('#passportPickTable input.passport-pick-cb').forEach(cb => cb.checked = false);
             });
+
+            // ---------- FILL PASSPORT DISPLAY ON EDIT ----------
+            async function fillPassportDisplaysFromHidden() {
+                const hiddenInputs = Array.from(
+                    document.querySelectorAll('input[type="hidden"][id^="id_mat-"][id$="-passport"]')
+                );
+
+                const ids = hiddenInputs
+                    .map(i => (i.value || "").trim())
+                    .filter(Boolean);
+
+                if (!ids.length) return;
+
+                const uniq = Array.from(new Set(ids));
+                const url = new URL("{% url 'acts_app:passports_labels' %}", window.location.origin);
+                url.searchParams.set("ids", uniq.join(","));
+
+                const resp = await fetch(url.toString(), {headers: {"X-Requested-With": "XMLHttpRequest"}});
+                if (!resp.ok) return;
+
+                const data = await resp.json();
+                const labels = data.labels || {};
+
+                for (const hid of hiddenInputs) {
+                    const id = (hid.value || "").trim();
+                    if (!id) continue;
+
+                    const display = document.querySelector(`.passport-display[data-target-hidden-id="${hid.id}"]`);
+                    if (!display) continue;
+
+                    display.value = labels[id] || display.value || "";
+                }
+            }
+
+            fillPassportDisplaysFromHidden();
+
         })();
     </script>
 {% endblock %}
