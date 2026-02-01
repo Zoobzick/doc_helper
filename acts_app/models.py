@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from decimal import Decimal
 
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -24,22 +23,14 @@ class AttachmentType(models.TextChoices):
     OTHER_QUALITY_DOC = "OTHER_QUALITY_DOC", "Документ качества (прочее)"
 
 
-class MaterialKind(models.TextChoices):
-    CONCRETE_MIX = "CONCRETE_MIX", "Бетонная смесь"
-    MESH = "MESH", "Сетка"
-    REBAR = "REBAR", "Арматура"
-    OTHER = "OTHER", "Прочее"
-
-
 class Act(models.Model):
     uuid = models.UUIDField("UUID", default=uuid.uuid4, editable=False, unique=True, db_index=True)
 
-    # TODO: подставь фактическую модель шифра проекта
-    project = models.ForeignKey(
+    projects = models.ManyToManyField(
         "projects_app.Project",
-        on_delete=models.PROTECT,
         related_name="acts",
-        verbose_name="Шифр проекта",
+        verbose_name="Шифры проектов",
+        blank=True,
     )
 
     number = models.CharField("№ Акта", max_length=64)
@@ -50,23 +41,13 @@ class Act(models.Model):
     work_start_date = models.DateField("Дата начала работ", null=True, blank=True)
     work_end_date = models.DateField("Дата окончания работ", null=True, blank=True)
 
-    work_norms_text = models.TextField(
-        "Работы выполнены в соответствии с",
-        blank=True,
-        default="",
-    )
-
-    allow_next_works_text = models.TextField(
-        "Разрешается производство последующих работ",
-        blank=True,
-        default="",
-    )
-
+    work_norms_text = models.TextField("Работы выполнены в соответствии с", blank=True, default="")
+    allow_next_works_text = models.TextField("Разрешается производство последующих работ", blank=True, default="")
     extra_info_text = models.TextField(
         "Доп. сведения",
         blank=True,
         default="",
-        help_text="Позже сюда подключим выбор из approvals_app + свободный текст.",
+        help_text="Позже подключим approvals_app + свободный текст.",
     )
 
     copies_count = models.PositiveSmallIntegerField(
@@ -90,8 +71,8 @@ class Act(models.Model):
         verbose_name_plural = "Акты скрытых работ"
         ordering = ("-act_date", "number")
         indexes = [
-            models.Index(fields=["project", "act_year", "act_month"], name="act_proj_ym_idx"),
-            models.Index(fields=["project", "act_date"], name="act_proj_date_idx"),
+            models.Index(fields=["act_year", "act_month"], name="act_ym_idx"),
+            models.Index(fields=["act_date"], name="act_date_idx"),
         ]
         constraints = [
             models.CheckConstraint(check=Q(act_month__gte=1) & Q(act_month__lte=12), name="act_month_1_12"),
@@ -104,17 +85,19 @@ class Act(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"Акт №{self.number} от {self.act_date:%d.%m.%Y} ({self.project})"
+        return f"Акт №{self.number} от {self.act_date:%d.%m.%Y}"
 
 
 class ActMaterialItem(models.Model):
+    """
+    Материалы:
+    - либо ссылка на Passport из БД
+    - либо ручной ввод (material_name + document_name + document_date)
+    """
     act = models.ForeignKey("acts_app.Act", on_delete=models.CASCADE, related_name="materials", verbose_name="Акт")
 
-    position = models.PositiveIntegerField(
-        "Позиция",
-        validators=[MinValueValidator(1)],
-        default=1,
-    )
+    # порядок для печати/стабильности, но в UI мы не показываем — проставляем автоматически
+    position = models.PositiveIntegerField("Позиция", validators=[MinValueValidator(1)], default=1)
 
     passport = models.ForeignKey(
         "passports_app.Passport",
@@ -125,34 +108,14 @@ class ActMaterialItem(models.Model):
         verbose_name="Паспорт (из БД)",
     )
 
-    manual_name = models.CharField("Наименование (ручной ввод)", max_length=255, blank=True, default="")
-    manual_doc_no = models.CharField("№ документа (ручной ввод)", max_length=64, blank=True, default="")
+    # ручной ввод
+    manual_name = models.CharField("Наименование материала (ручной ввод)", max_length=255, blank=True, default="")
+    manual_doc_no = models.CharField("Наименование/№ документа (ручной ввод)", max_length=255, blank=True, default="")
     manual_doc_date = models.DateField("Дата документа (ручной ввод)", null=True, blank=True)
-    manual_issuer = models.CharField("Кем выдан (ручной ввод)", max_length=255, blank=True, default="")
 
-    material_kind = models.CharField(
-        "Тип материала",
-        max_length=32,
-        choices=MaterialKind.choices,
-        default=MaterialKind.OTHER,
-        db_index=True,
-    )
-
-    sheets_count = models.PositiveIntegerField(
-        "Листов",
-        validators=[MinValueValidator(1)],
-    )
-
-    volume_m3 = models.DecimalField(
-        "V бетона, м3",
-        max_digits=10,
-        decimal_places=3,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(Decimal("0.001"))],
-    )
-
+    sheets_count = models.PositiveIntegerField("Листов", validators=[MinValueValidator(1)])
     note = models.CharField("Примечание", max_length=255, blank=True, default="")
+
     created_at = models.DateTimeField("Создан", auto_now_add=True)
 
     class Meta:
@@ -164,14 +127,6 @@ class ActMaterialItem(models.Model):
             models.CheckConstraint(
                 check=Q(passport__isnull=False) | (Q(manual_name__isnull=False) & ~Q(manual_name="")),
                 name="act_material_passport_or_manual",
-            ),
-            models.CheckConstraint(
-                check=~Q(material_kind=MaterialKind.CONCRETE_MIX) | Q(volume_m3__isnull=False),
-                name="act_material_volume_required_for_concrete",
-            ),
-            models.CheckConstraint(
-                check=Q(material_kind=MaterialKind.CONCRETE_MIX) | Q(volume_m3__isnull=True),
-                name="act_material_volume_forbidden_for_non_concrete",
             ),
         ]
         indexes = [
@@ -194,10 +149,11 @@ class ActAttachment(models.Model):
 
     act = models.ForeignKey("acts_app.Act", on_delete=models.CASCADE, related_name="attachments", verbose_name="Акт")
 
+    # тип оставляем (для AppendixBuilder), но пользователю не показываем
     type = models.CharField("Тип документа", max_length=32, choices=AttachmentType.choices, db_index=True)
 
     title = models.CharField("Наименование", max_length=255, blank=True, default="")
-    doc_no = models.CharField("№", max_length=64, blank=True, default="")
+    doc_no = models.CharField("№", max_length=255, blank=True, default="")
     doc_date = models.DateField("Дата", null=True, blank=True)
 
     sheets_count = models.PositiveIntegerField("Листов", validators=[MinValueValidator(1)])
@@ -213,8 +169,7 @@ class ActAttachment(models.Model):
         indexes = [models.Index(fields=["act", "type"], name="attach_act_type_idx")]
 
     def __str__(self) -> str:
-        base = dict(AttachmentType.choices).get(self.type, self.type)
-        parts = [base]
+        parts = [self.title or "Документ"]
         if self.doc_no:
             parts.append(f"№{self.doc_no}")
         if self.doc_date:

@@ -2,431 +2,780 @@
 {% load static %}
 
 {% block title %}
-  {% if mode == "create" %}Создать акт{% else %}Редактировать акт{% endif %}
+    {% if mode == "create" %}Создать акт{% else %}Редактировать акт{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="pagetitle">
-  <h1>{% if mode == "create" %}Создать акт{% else %}Редактировать акт{% endif %}</h1>
-  <nav>
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="/">Главная</a></li>
-      <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
-      <li class="breadcrumb-item active">{% if mode == "create" %}Создание{% else %}Редактирование{% endif %}</li>
-    </ol>
-  </nav>
-</div>
-
-<section class="section">
-  <form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
-    {% endif %}
-
-    <div class="row g-3">
-      <!-- ОСНОВНОЕ -->
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body pt-3">
-            <h5 class="card-title mb-3">Основное</h5>
-
-            <div class="row g-3">
-              <div class="col-12 col-lg-4">
-                <label class="form-label">{{ form.project.label }}</label>
-                {{ form.project }}
-                {% if form.project.errors %}<div class="invalid-feedback d-block">{{ form.project.errors }}</div>{% endif %}
-              </div>
-
-              <div class="col-6 col-lg-4">
-                <label class="form-label">{{ form.number.label }}</label>
-                {{ form.number }}
-                {% if form.number.errors %}<div class="invalid-feedback d-block">{{ form.number.errors }}</div>{% endif %}
-              </div>
-
-              <div class="col-6 col-lg-4">
-                <label class="form-label">{{ form.act_date.label }}</label>
-                {{ form.act_date }}
-                {% if form.act_date.errors %}<div class="invalid-feedback d-block">{{ form.act_date.errors }}</div>{% endif %}
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">{{ form.work_name.label }}</label>
-                {{ form.work_name }}
-                {% if form.work_name.errors %}<div class="invalid-feedback d-block">{{ form.work_name.errors }}</div>{% endif %}
-              </div>
-
-              <div class="col-6 col-lg-3">
-                <label class="form-label">{{ form.work_start_date.label }}</label>
-                {{ form.work_start_date }}
-                {% if form.work_start_date.errors %}<div class="invalid-feedback d-block">{{ form.work_start_date.errors }}</div>{% endif %}
-              </div>
-
-              <div class="col-6 col-lg-3">
-                <label class="form-label">{{ form.work_end_date.label }}</label>
-                {{ form.work_end_date }}
-                {% if form.work_end_date.errors %}<div class="invalid-feedback d-block">{{ form.work_end_date.errors }}</div>{% endif %}
-              </div>
-
-              <div class="col-12 col-lg-6">
-                <label class="form-label">{{ form.copies_count.label }}</label>
-                {{ form.copies_count }}
-                {% if form.copies_count.errors %}<div class="invalid-feedback d-block">{{ form.copies_count.errors }}</div>{% endif %}
-                <div class="form-text">По умолчанию 3, можно изменить.</div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">{{ form.work_norms_text.label }}</label>
-                {{ form.work_norms_text }}
-                {% if form.work_norms_text.errors %}<div class="invalid-feedback d-block">{{ form.work_norms_text.errors }}</div>{% endif %}
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">{{ form.allow_next_works_text.label }}</label>
-                {{ form.allow_next_works_text }}
-                {% if form.allow_next_works_text.errors %}<div class="invalid-feedback d-block">{{ form.allow_next_works_text.errors }}</div>{% endif %}
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">{{ form.extra_info_text.label }}</label>
-                {{ form.extra_info_text }}
-                {% if form.extra_info_text.errors %}<div class="invalid-feedback d-block">{{ form.extra_info_text.errors }}</div>{% endif %}
-                <div class="form-text">Позже: выбор из approvals_app + свободный текст.</div>
-              </div>
-
-              <div class="col-12 col-lg-4">
-                <label class="form-label">{{ form.status.label }}</label>
-                {{ form.status }}
-                {% if form.status.errors %}<div class="invalid-feedback d-block">{{ form.status.errors }}</div>{% endif %}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      <!-- МАТЕРИАЛЫ -->
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body pt-3">
-            <div class="d-flex justify-content-between align-items-center">
-              <h5 class="card-title mb-0">При выполнении работ применены (материалы)</h5>
-              <button type="button" class="btn btn-sm btn-outline-primary" id="add-material">
-                <i class="bi bi-plus-lg me-1"></i>Добавить материал
-              </button>
-            </div>
-
-            {% if material_formset.non_form_errors %}
-              <div class="alert alert-danger mt-3">{{ material_formset.non_form_errors }}</div>
-            {% endif %}
-
-            {{ material_formset.management_form }}
-
-            <div class="table-responsive mt-3">
-              <table class="table table-sm align-middle" id="materials-table">
-                <thead>
-                  <tr>
-                    <th style="width: 70px;">№</th>
-                    <th style="min-width: 260px;">Паспорт (из БД)</th>
-                    <th style="min-width: 260px;">Ручной ввод (наименование)</th>
-                    <th style="width: 170px;">Тип</th>
-                    <th style="width: 120px;">Листов</th>
-                    <th style="width: 140px;">V, м³</th>
-                    <th style="width: 90px;"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for f in material_formset.forms %}
-                    <tr class="material-row">
-                      <td>
-                        {{ f.position }}
-                        {% if f.position.errors %}<div class="invalid-feedback d-block">{{ f.position.errors }}</div>{% endif %}
-                      </td>
-                      <td>
-                        {{ f.passport }}
-                        {% if f.passport.errors %}<div class="invalid-feedback d-block">{{ f.passport.errors }}</div>{% endif %}
-                      </td>
-                      <td>
-                        {{ f.manual_name }}
-                        {% if f.manual_name.errors %}<div class="invalid-feedback d-block">{{ f.manual_name.errors }}</div>{% endif %}
-                        <div class="mt-2 small text-muted">
-                          Доп. поля ручного ввода ниже (№/дата/кем выдан)
-                        </div>
-                        <div class="row g-2 mt-1">
-                          <div class="col-6">{{ f.manual_doc_no }}</div>
-                          <div class="col-6">{{ f.manual_doc_date }}</div>
-                          <div class="col-12">{{ f.manual_issuer }}</div>
-                        </div>
-                      </td>
-                      <td>{{ f.material_kind }}</td>
-                      <td>{{ f.sheets_count }}</td>
-                      <td>
-                        {{ f.volume_m3 }}
-                        <div class="form-text">Только бетонная смесь.</div>
-                      </td>
-                      <td class="text-end">
-                        {% if f.instance.pk %}
-                          <div class="form-check">
-                            {{ f.DELETE }}
-                            <label class="form-check-label small">Удалить</label>
-                          </div>
-                        {% endif %}
-                      </td>
-                      {{ f.id }}
-                    </tr>
-
-                    {% if f.non_field_errors %}
-                      <tr><td colspan="7"><div class="alert alert-danger mb-2">{{ f.non_field_errors }}</div></td></tr>
-                    {% endif %}
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-
-            <div class="text-muted small">
-              Если материалов будет <b>5 и больше</b> — добавь документ типа <b>“Реестр материалов”</b> в блоке ниже и укажи листы.
-            </div>
-
-            <!-- empty_form для JS -->
-            <template id="material-empty-form">
-              <tr class="material-row">
-                <td>__POSITION__</td>
-                <td>{{ material_formset.empty_form.position }}{{ material_formset.empty_form.passport }}</td>
-                <td>
-                  {{ material_formset.empty_form.manual_name }}
-                  <div class="row g-2 mt-1">
-                    <div class="col-6">{{ material_formset.empty_form.manual_doc_no }}</div>
-                    <div class="col-6">{{ material_formset.empty_form.manual_doc_date }}</div>
-                    <div class="col-12">{{ material_formset.empty_form.manual_issuer }}</div>
-                  </div>
-                </td>
-                <td>{{ material_formset.empty_form.material_kind }}</td>
-                <td>{{ material_formset.empty_form.sheets_count }}</td>
-                <td>{{ material_formset.empty_form.volume_m3 }}</td>
-                <td class="text-end">
-                  <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
-                    <i class="bi bi-x-lg"></i>
-                  </button>
-                </td>
-                {{ material_formset.empty_form.id }}
-              </tr>
-            </template>
-
-          </div>
-        </div>
-      </div>
-
-      <!-- ДОКУМЕНТЫ -->
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body pt-3">
-            <div class="d-flex justify-content-between align-items-center">
-              <h5 class="card-title mb-0">Предъявлены документы, подтверждающие соответствие работ</h5>
-              <button type="button" class="btn btn-sm btn-outline-primary" id="add-attachment">
-                <i class="bi bi-plus-lg me-1"></i>Добавить документ
-              </button>
-            </div>
-
-            {% if attachment_formset.non_form_errors %}
-              <div class="alert alert-danger mt-3">{{ attachment_formset.non_form_errors }}</div>
-            {% endif %}
-
-            {{ attachment_formset.management_form }}
-
-            <div class="table-responsive mt-3">
-              <table class="table table-sm align-middle" id="attachments-table">
-                <thead>
-                  <tr>
-                    <th style="width: 220px;">Тип</th>
-                    <th>Наименование</th>
-                    <th style="width: 160px;">№</th>
-                    <th style="width: 160px;">Дата</th>
-                    <th style="width: 120px;">Листов</th>
-                    <th style="width: 260px;">Файл</th>
-                    <th style="width: 90px;"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for f in attachment_formset.forms %}
-                    <tr class="attach-row">
-                      <td>{{ f.type }}</td>
-                      <td>{{ f.title }}</td>
-                      <td>{{ f.doc_no }}</td>
-                      <td>{{ f.doc_date }}</td>
-                      <td>{{ f.sheets_count }}</td>
-                      <td>
-                        {{ f.file }}
-                        {% if f.instance.pk and f.instance.file %}
-                          <div class="small mt-1">
-                            Текущий: <a href="{{ f.instance.file.url }}" target="_blank" rel="noopener">открыть</a>
-                          </div>
-                        {% endif %}
-                      </td>
-                      <td class="text-end">
-                        {% if f.instance.pk %}
-                          <div class="form-check">
-                            {{ f.DELETE }}
-                            <label class="form-check-label small">Удалить</label>
-                          </div>
-                        {% else %}
-                          <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
-                            <i class="bi bi-x-lg"></i>
-                          </button>
-                        {% endif %}
-                      </td>
-                      {{ f.id }}
-                    </tr>
-
-                    {% if f.non_field_errors %}
-                      <tr><td colspan="7"><div class="alert alert-danger mb-2">{{ f.non_field_errors }}</div></td></tr>
-                    {% endif %}
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-
-            <div class="text-muted small">
-              Минимум одна <b>Исполнительная схема</b>, иначе пересборка приложений не пройдёт.
-            </div>
-
-            <template id="attachment-empty-form">
-              <tr class="attach-row">
-                <td>{{ attachment_formset.empty_form.type }}</td>
-                <td>{{ attachment_formset.empty_form.title }}</td>
-                <td>{{ attachment_formset.empty_form.doc_no }}</td>
-                <td>{{ attachment_formset.empty_form.doc_date }}</td>
-                <td>{{ attachment_formset.empty_form.sheets_count }}</td>
-                <td>{{ attachment_formset.empty_form.file }}</td>
-                <td class="text-end">
-                  <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
-                    <i class="bi bi-x-lg"></i>
-                  </button>
-                </td>
-                {{ attachment_formset.empty_form.id }}
-              </tr>
-            </template>
-
-          </div>
-        </div>
-      </div>
-
-      <!-- ПРЕВЬЮ ПРИЛОЖЕНИЙ -->
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body pt-3">
-            <h5 class="card-title">Превью порядка приложений</h5>
-
-            {% if mode == "update" and act %}
-              {% if act.appendix_lines.all %}
-                <div class="table-responsive">
-                  <table class="table table-sm align-middle">
-                    <thead>
-                      <tr>
-                        <th style="width: 80px;">№</th>
-                        <th>Наименование</th>
-                        <th style="width: 120px;">Листов</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for line in act.appendix_lines.all %}
-                        <tr>
-                          <td>{{ line.position }}</td>
-                          <td>{{ line.label }}</td>
-                          <td>{{ line.sheets_count }}</td>
-                        </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-              {% else %}
-                <div class="text-muted">Приложения ещё не собраны.</div>
-              {% endif %}
-            {% else %}
-              <div class="text-muted">
-                Превью появится после первого сохранения (на странице редактирования).
-              </div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-
-      <!-- КНОПКИ -->
-      <div class="col-12 d-flex justify-content-between align-items-center">
-        <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">
-          <i class="bi bi-arrow-left me-1"></i>Назад
-        </a>
-        <button class="btn btn-primary" type="submit">
-          <i class="bi bi-check-lg me-1"></i>Сохранить
-        </button>
-      </div>
+    <div class="pagetitle">
+        <h1>{% if mode == "create" %}Создать акт{% else %}Редактировать акт{% endif %}</h1>
     </div>
-  </form>
-</section>
-{% endblock %}
 
-{% block extra_js %}
-<script>
-(function () {
-  function replacePrefix(html, prefix, index) {
-    const re = new RegExp(prefix, "g");
-    return html.replace(re, index);
-  }
+    <section class="section">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
 
-  function addFormRow(tableBody, totalInput, templateId, prefix) {
-    const total = parseInt(totalInput.value || "0", 10);
-    const tpl = document.getElementById(templateId).innerHTML;
+            {% if projects_form.non_field_errors %}
+                <div class="alert alert-danger">{{ projects_form.non_field_errors }}</div>
+            {% endif %}
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
 
-    // Django formset uses __prefix__
-    let rowHtml = tpl.replaceAll("__prefix__", total);
-    rowHtml = rowHtml.replaceAll("__POSITION__", String(total + 1));
+            <!-- ВЫБОР ПРОЕКТОВ -->
+            <div class="card mb-3">
+                <div class="card-body pt-3">
+                    <div class="d-flex flex-wrap gap-2 justify-content-between align-items-start">
+                        <div>
+                            <h5 class="card-title mb-2">Выбор проектов</h5>
+                            <div class="text-muted small">
+                                Начни вводить шифр/название — список отфильтруется. Выбор — галочками.
+                            </div>
+                        </div>
 
-    const tr = document.createElement("tbody");
-    tr.innerHTML = rowHtml.trim();
-    const row = tr.firstElementChild;
+                        <div class="text-end">
+                            <div class="small text-muted">Шифры проектов:</div>
+                            <div class="fw-semibold" id="selected-projects-label">—</div>
+                        </div>
+                    </div>
 
-    tableBody.appendChild(row);
-    totalInput.value = String(total + 1);
-  }
+                    {% if projects_form.projects.errors %}
+                        <div class="alert alert-danger mt-3">{{ projects_form.projects.errors }}</div>
+                    {% endif %}
 
-  function bindRemove(root) {
-    root.addEventListener("click", function (e) {
-      const btn = e.target.closest(".js-remove-row");
-      if (!btn) return;
-      const row = btn.closest("tr");
-      if (row) row.remove();
-    });
-  }
+                    <div class="row g-2 mt-3">
+                        <div class="col-12 col-lg-6">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" id="project-search" placeholder="Поиск проекта…">
+                            </div>
+                        </div>
 
-  // Materials
-  const matTable = document.getElementById("materials-table");
-  if (matTable) {
-    const matBody = matTable.querySelector("tbody");
-    const matTotal = document.querySelector('input[name="mat-TOTAL_FORMS"]');
-    const matAdd = document.getElementById("add-material");
+                        <div class="col-12 col-lg-6">
+                            <div class="d-flex flex-wrap gap-2 justify-content-lg-end align-items-center">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-clear-projects">
+                                    Очистить выбор
+                                </button>
+                                <button type="button" class="btn btn-primary" id="btn-continue">
+                                    Продолжить
+                                </button>
+                                <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">Назад</a>
+                            </div>
+                        </div>
+                    </div>
 
-    if (matAdd && matBody && matTotal) {
-      matAdd.addEventListener("click", function () {
-        addFormRow(matBody, matTotal, "material-empty-form", "mat");
-      });
-    }
-    bindRemove(matTable);
-  }
+                    <div class="mt-3" id="selected-project-chips"></div>
 
-  // Attachments
-  const attTable = document.getElementById("attachments-table");
-  if (attTable) {
-    const attBody = attTable.querySelector("tbody");
-    const attTotal = document.querySelector('input[name="att-TOTAL_FORMS"]');
-    const attAdd = document.getElementById("add-attachment");
+                    <div id="projects-hidden-inputs">
+                        {{ projects_form.projects }}
+                    </div>
 
-    if (attAdd && attBody && attTotal) {
-      attAdd.addEventListener("click", function () {
-        addFormRow(attBody, attTotal, "attachment-empty-form", "att");
-      });
-    }
-    bindRemove(attTable);
-  }
-})();
-</script>
+                    <hr class="my-3">
+
+                    <div class="border rounded p-2" style="max-height: 360px; overflow:auto;">
+                        <div class="row g-2" id="projects-grid">
+                            {% for p in projects_form.fields.projects.queryset %}
+                                <div class="col-12 col-md-6 col-xl-4 project-item" data-text="{{ p|stringformat:'s'|lower }}">
+                                    <label class="d-flex gap-2 align-items-start border rounded p-2 w-100">
+                                        <input class="form-check-input mt-1 project-checkbox"
+                                               type="checkbox"
+                                               value="{{ p.id }}"
+                                               data-label="{{ p|stringformat:'s' }}">
+                                        <div>
+                                            <div class="fw-semibold">{{ p }}</div>
+                                            <div class="text-muted small">ID: {{ p.id }}</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="text-muted small mt-2" id="projects-empty" style="display:none;">
+                            Ничего не найдено по фильтру.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ОСТАЛЬНАЯ ФОРМА -->
+            <div id="rest-form" style="display:none;">
+                <div class="alert alert-info">
+                    <div class="fw-semibold mb-1">Шифры проектов:</div>
+                    <div id="selected-projects-badge">—</div>
+                </div>
+
+                <!-- ОСНОВНОЕ -->
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <h5 class="card-title mb-3">Основное</h5>
+
+                        <div class="row g-3">
+                            <div class="col-6 col-lg-4">
+                                <label class="form-label">{{ form.number.label }}</label>
+                                {{ form.number }}
+                                {% if form.number.errors %}
+                                    <div class="invalid-feedback d-block">{{ form.number.errors }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-6 col-lg-4">
+                                <label class="form-label">{{ form.act_date.label }}</label>
+                                {{ form.act_date }}
+                                {% if form.act_date.errors %}
+                                    <div class="invalid-feedback d-block">{{ form.act_date.errors }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">{{ form.work_name.label }}</label>
+                                {{ form.work_name }}
+                                {% if form.work_name.errors %}
+                                    <div class="invalid-feedback d-block">{{ form.work_name.errors }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-6 col-lg-3">
+                                <label class="form-label">{{ form.work_start_date.label }}</label>
+                                {{ form.work_start_date }}
+                            </div>
+
+                            <div class="col-6 col-lg-3">
+                                <label class="form-label">{{ form.work_end_date.label }}</label>
+                                {{ form.work_end_date }}
+                            </div>
+
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label">{{ form.copies_count.label }}</label>
+                                {{ form.copies_count }}
+                                <div class="form-text">По умолчанию 3.</div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">{{ form.allow_next_works_text.label }}</label>
+                                {{ form.allow_next_works_text }}
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">{{ form.extra_info_text.label }}</label>
+                                {{ form.extra_info_text }}
+                            </div>
+
+                            <div class="col-12 col-lg-4">
+                                <label class="form-label">{{ form.status.label }}</label>
+                                {{ form.status }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- МАТЕРИАЛЫ -->
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Материалы</h5>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="add-material">
+                                <i class="bi bi-plus-lg me-1"></i>Добавить материал
+                            </button>
+                        </div>
+
+                        {% if material_formset.non_form_errors %}
+                            <div class="alert alert-danger mt-3">{{ material_formset.non_form_errors }}</div>
+                        {% endif %}
+
+                        {{ material_formset.management_form }}
+
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm align-middle" id="materials-table">
+                                <thead>
+                                <tr>
+                                    <th style="min-width: 360px;">Паспорт из БД</th>
+                                    <th style="min-width: 260px;">Материал (ручной ввод)</th>
+                                    <th style="min-width: 240px;">Документ (ручной ввод)</th>
+                                    <th style="width: 170px;">Дата документа</th>
+                                    <th style="width: 120px;">Листов</th>
+                                    <th style="width: 90px;"></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for f in material_formset.forms %}
+                                    <tr class="material-row">
+                                        <td>
+                                            {{ f.passport }}
+                                            {{ f.id }}
+
+                                            <div class="input-group">
+                                                <input type="text"
+                                                       class="form-control passport-display"
+                                                       placeholder="Паспорт не выбран"
+                                                       value="{% if f.instance.passport_id %}{{ f.instance.passport.material.name }} — {{ f.instance.passport.document_name }} №{{ f.instance.passport.document_number|default:'—' }} от {% if f.instance.passport.document_date %}{{ f.instance.passport.document_date|date:'d.m.Y' }}{% else %}—{% endif %}{% endif %}"
+                                                       readonly
+                                                       data-target-hidden-id="{{ f.passport.auto_id }}">
+                                                <button type="button"
+                                                        class="btn btn-outline-primary js-open-passport-modal"
+                                                        data-target-hidden-id="{{ f.passport.auto_id }}">
+                                                    Выбрать
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary js-clear-passport"
+                                                        data-target-hidden-id="{{ f.passport.auto_id }}">
+                                                    Очистить
+                                                </button>
+                                            </div>
+
+                                            {% if f.passport.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.passport.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.manual_name }}
+                                            {% if f.manual_name.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_name.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.manual_doc_no }}
+                                            {% if f.manual_doc_no.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_doc_no.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.manual_doc_date }}
+                                            {% if f.manual_doc_date.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_doc_date.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.sheets_count }}
+                                            {% if f.sheets_count.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.sheets_count.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td class="text-end">
+                                            {% if f.instance.pk %}
+                                                <div class="form-check">
+                                                    {{ f.DELETE }}
+                                                    <label class="form-check-label small">Удалить</label>
+                                                </div>
+                                            {% else %}
+                                                <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+
+                                    {% if f.non_field_errors %}
+                                        <tr>
+                                            <td colspan="6">
+                                                <div class="alert alert-danger mb-2">{{ f.non_field_errors }}</div>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <template id="material-empty-form">
+                            <tr class="material-row">
+                                <td>
+                                    {{ material_formset.empty_form.passport }}
+                                    {{ material_formset.empty_form.id }}
+
+                                    <div class="input-group">
+                                        <input type="text"
+                                               class="form-control passport-display"
+                                               placeholder="Паспорт не выбран"
+                                               value=""
+                                               readonly
+                                               data-target-hidden-id="{{ material_formset.empty_form.passport.auto_id }}">
+                                        <button type="button"
+                                                class="btn btn-outline-primary js-open-passport-modal"
+                                                data-target-hidden-id="{{ material_formset.empty_form.passport.auto_id }}">
+                                            Выбрать
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-outline-secondary js-clear-passport"
+                                                data-target-hidden-id="{{ material_formset.empty_form.passport.auto_id }}">
+                                            Очистить
+                                        </button>
+                                    </div>
+                                </td>
+
+                                <td>{{ material_formset.empty_form.manual_name }}</td>
+                                <td>{{ material_formset.empty_form.manual_doc_no }}</td>
+                                <td>{{ material_formset.empty_form.manual_doc_date }}</td>
+                                <td>{{ material_formset.empty_form.sheets_count }}</td>
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- ДОКУМЕНТЫ -->
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Предъявлены документы, подтверждающие соответствие работ</h5>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="add-attachment">
+                                <i class="bi bi-plus-lg me-1"></i>Добавить документ
+                            </button>
+                        </div>
+
+                        {% if attachment_formset.non_form_errors %}
+                            <div class="alert alert-danger mt-3">{{ attachment_formset.non_form_errors }}</div>
+                        {% endif %}
+
+                        {{ attachment_formset.management_form }}
+
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm align-middle" id="attachments-table">
+                                <thead>
+                                <tr>
+                                    <th style="min-width: 260px;">Наименование</th>
+                                    <th style="min-width: 220px;">№</th>
+                                    <th style="width: 170px;">Дата</th>
+                                    <th style="width: 120px;">Листов</th>
+                                    <th style="min-width: 220px;">Файл</th>
+                                    <th style="width: 90px;"></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% if attachment_formset.forms %}
+                                    {% for f in attachment_formset.forms %}
+                                        <tr class="attachment-row {% if forloop.first %}scheme-row{% endif %}">
+                                            <td>
+                                                {% if forloop.first %}
+                                                    <input type="text" class="form-control" value="Исполнительная схема" readonly>
+                                                    {{ f.title.as_hidden }}
+                                                {% else %}
+                                                    {{ f.title }}
+                                                {% endif %}
+                                            </td>
+
+                                            <td>
+                                                {% if forloop.first %}
+                                                    <input type="text" class="form-control" id="scheme-doc-no" value="" readonly>
+                                                    {{ f.doc_no.as_hidden }}
+                                                {% else %}
+                                                    {{ f.doc_no }}
+                                                {% endif %}
+                                            </td>
+
+                                            <td>
+                                                {{ f.doc_date }}
+                                                {% if f.doc_date.errors %}
+                                                    <div class="invalid-feedback d-block">{{ f.doc_date.errors }}</div>
+                                                {% endif %}
+                                            </td>
+
+                                            <td>
+                                                {{ f.sheets_count }}
+                                                {% if f.sheets_count.errors %}
+                                                    <div class="invalid-feedback d-block">{{ f.sheets_count.errors }}</div>
+                                                {% endif %}
+                                            </td>
+
+                                            <td>{{ f.file }}</td>
+
+                                            <td class="text-end">
+                                                {% if forloop.first %}
+                                                    <span class="text-muted small">обяз.</span>
+                                                {% else %}
+                                                    {% if f.instance.pk %}
+                                                        <div class="form-check">
+                                                            {{ f.DELETE }}
+                                                            <label class="form-check-label small">Удалить</label>
+                                                        </div>
+                                                    {% else %}
+                                                        <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
+                                                            <i class="bi bi-x-lg"></i>
+                                                        </button>
+                                                    {% endif %}
+                                                {% endif %}
+                                                {{ f.id }}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr class="attachment-row scheme-row">
+                                        <td>
+                                            <input type="text" class="form-control" value="Исполнительная схема" readonly>
+                                            <input type="hidden" name="att-0-title" id="id_att-0-title" value="Исполнительная схема">
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control" id="scheme-doc-no" value="" readonly>
+                                            <input type="hidden" name="att-0-doc_no" id="id_att-0-doc_no" value="">
+                                        </td>
+                                        <td>
+                                            <input type="date" class="form-control" name="att-0-doc_date" id="id_att-0-doc_date">
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control" name="att-0-sheets_count" id="id_att-0-sheets_count" min="1" value="1">
+                                        </td>
+                                        <td>
+                                            <input type="file" class="form-control" name="att-0-file" id="id_att-0-file">
+                                        </td>
+                                        <td class="text-end">
+                                            <span class="text-muted small">обяз.</span>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <template id="attachment-empty-form">
+                            <tr class="attachment-row">
+                                <td>{{ attachment_formset.empty_form.title }}</td>
+                                <td>{{ attachment_formset.empty_form.doc_no }}</td>
+                                <td>{{ attachment_formset.empty_form.doc_date }}</td>
+                                <td>{{ attachment_formset.empty_form.sheets_count }}</td>
+                                <td>{{ attachment_formset.empty_form.file }}</td>
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                    {{ attachment_formset.empty_form.id }}
+                                </td>
+                            </tr>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-success" type="submit">
+                        {% if mode == "create" %}Создать{% else %}Сохранить{% endif %}
+                    </button>
+                    <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">Отмена</a>
+                </div>
+            </div>
+        </form>
+    </section>
+
+    <!-- МОДАЛКА ВЫБОРА ПАСПОРТА -->
+    <div class="modal fade" id="passportModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Выбор паспорта из БД</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table id="passportPickTable" class="table table-striped table-bordered align-middle w-100">
+                            <thead>
+                            <tr>
+                                <th style="width: 40px;"></th>
+                                <th>Материал</th>
+                                <th>Документ</th>
+                                <th>№</th>
+                                <th>Дата</th>
+                            </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="text-muted small mt-2">
+                        Поиск в таблице: материал / наименование документа / номер.
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="btnPickPassport">Выбрать</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DataTables CDN (если у тебя уже подключено в base.html — можешь удалить эти строки) -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        (function () {
+            // ---------- PROJECTS UI ----------
+            const restForm = document.getElementById("rest-form");
+            const labelTop = document.getElementById("selected-projects-label");
+            const labelBadge = document.getElementById("selected-projects-badge");
+
+            const searchInput = document.getElementById("project-search");
+            const grid = document.getElementById("projects-grid");
+            const empty = document.getElementById("projects-empty");
+            const chipsBox = document.getElementById("selected-project-chips");
+            const hiddenBox = document.getElementById("projects-hidden-inputs");
+            const btnContinue = document.getElementById("btn-continue");
+            const btnClear = document.getElementById("btn-clear-projects");
+
+            function getCheckedProjects() {
+                return Array.from(document.querySelectorAll(".project-checkbox:checked"));
+            }
+
+            function selectedProjectsText() {
+                const checked = getCheckedProjects();
+                if (!checked.length) return "—";
+                return checked.map(cb => (cb.dataset.label || "").trim()).filter(Boolean).join(", ");
+            }
+
+            function refreshProjectLabels() {
+                const txt = selectedProjectsText();
+                if (labelTop) labelTop.textContent = txt;
+                if (labelBadge) labelBadge.textContent = txt;
+            }
+
+            function syncProjectHiddenInputs() {
+                hiddenBox?.querySelectorAll('input[name="projects"]').forEach(n => n.remove());
+                if (!hiddenBox) return;
+                for (const cb of getCheckedProjects()) {
+                    const inp = document.createElement("input");
+                    inp.type = "hidden";
+                    inp.name = "projects";
+                    inp.value = cb.value;
+                    hiddenBox.appendChild(inp);
+                }
+            }
+
+            function renderProjectChips() {
+                if (!chipsBox) return;
+                chipsBox.innerHTML = "";
+                const checked = getCheckedProjects();
+                if (!checked.length) {
+                    chipsBox.innerHTML = '<span class="text-muted small">Проекты не выбраны.</span>';
+                    return;
+                }
+                for (const cb of checked) {
+                    const chip = document.createElement("span");
+                    chip.className = "badge bg-light text-dark border me-1 mb-1";
+                    chip.style.cursor = "pointer";
+                    chip.textContent = (cb.dataset.label || "").trim() + " ×";
+                    chip.addEventListener("click", () => {
+                        cb.checked = false;
+                        refreshProjectsAll();
+                    });
+                    chipsBox.appendChild(chip);
+                }
+            }
+
+            function refreshProjectsAll() {
+                syncProjectHiddenInputs();
+                renderProjectChips();
+                refreshProjectLabels();
+            }
+
+            function applyProjectFilter() {
+                if (!grid || !empty) return;
+                const q = (searchInput?.value || "").trim().toLowerCase();
+                let shown = 0;
+                grid.querySelectorAll(".project-item").forEach(el => {
+                    const text = (el.getAttribute("data-text") || "");
+                    const ok = !q || text.includes(q);
+                    el.style.display = ok ? "" : "none";
+                    if (ok) shown += 1;
+                });
+                empty.style.display = shown ? "none" : "";
+            }
+
+            function initProjectsFromHidden() {
+                if (!hiddenBox) return;
+                const current = new Set(
+                    Array.from(hiddenBox.querySelectorAll('input[name="projects"]')).map(i => i.value)
+                );
+                document.querySelectorAll(".project-checkbox").forEach(cb => {
+                    if (current.has(cb.value)) cb.checked = true;
+                });
+            }
+
+            function canOpenRest() {
+                return getCheckedProjects().length > 0;
+            }
+
+            function openRestIfPossible() {
+                refreshProjectsAll();
+                if (canOpenRest()) {
+                    restForm.style.display = "";
+                    restForm.scrollIntoView({behavior: "smooth", block: "start"});
+                }
+            }
+
+            document.addEventListener("change", (e) => {
+                if (e.target && e.target.classList.contains("project-checkbox")) {
+                    refreshProjectsAll();
+                }
+            });
+            searchInput?.addEventListener("input", applyProjectFilter);
+            btnClear?.addEventListener("click", () => {
+                document.querySelectorAll(".project-checkbox:checked").forEach(cb => (cb.checked = false));
+                refreshProjectsAll();
+            });
+            btnContinue?.addEventListener("click", openRestIfPossible);
+
+            initProjectsFromHidden();
+            applyProjectFilter();
+            refreshProjectsAll();
+            if (canOpenRest()) restForm.style.display = "";
+
+            // ---------- SCHEME DOC NO = ACT NUMBER ----------
+            const actNumberInput = document.getElementById("id_number");
+            const schemeDocNo = document.getElementById("scheme-doc-no");
+
+            function syncSchemeNo() {
+                const v = (actNumberInput?.value || "").trim();
+                if (schemeDocNo) schemeDocNo.value = v;
+                const hidden = document.getElementById("id_att-0-doc_no");
+                if (hidden) hidden.value = v;
+            }
+            actNumberInput?.addEventListener("input", syncSchemeNo);
+            syncSchemeNo();
+
+            // ---------- ADD ROWS (materials/docs) ----------
+            function addRow(tableId, tplId, prefix) {
+                const table = document.getElementById(tableId);
+                const tpl = document.getElementById(tplId);
+                if (!table || !tpl) return;
+
+                const totalInput = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
+                const total = parseInt(totalInput.value, 10);
+
+                let html = tpl.innerHTML.replaceAll("__prefix__", total);
+                table.querySelector("tbody").insertAdjacentHTML("beforeend", html);
+                totalInput.value = String(total + 1);
+            }
+
+            document.getElementById("add-material")?.addEventListener("click", function () {
+                addRow("materials-table", "material-empty-form", "mat");
+            });
+            document.getElementById("add-attachment")?.addEventListener("click", function () {
+                addRow("attachments-table", "attachment-empty-form", "att");
+            });
+
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-remove-row");
+                if (!btn) return;
+                const row = btn.closest("tr");
+                if (!row) return;
+                row.remove();
+            });
+
+            // ---------- PASSPORT MODAL (DataTables) ----------
+            const modalEl = document.getElementById("passportModal");
+            const btnPick = document.getElementById("btnPickPassport");
+            let passportDT = null;
+
+            let currentHiddenId = null;
+            let currentDisplayInput = null;
+            let selectedPassport = null; // {id, label}
+
+            function getDisplayByHiddenId(hiddenId) {
+                return document.querySelector(`.passport-display[data-target-hidden-id="${hiddenId}"]`);
+            }
+
+            function openPassportModal(hiddenId) {
+                currentHiddenId = hiddenId;
+                currentDisplayInput = getDisplayByHiddenId(hiddenId);
+                selectedPassport = null;
+
+                if (!passportDT) {
+                    passportDT = $('#passportPickTable').DataTable({
+                        processing: true,
+                        serverSide: true,
+                        searching: true,
+                        ordering: false,
+                        pageLength: 10,
+                        lengthMenu: [10, 25, 50],
+                        language: {
+                            url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json',
+                            emptyTable: "Паспорта не найдены"
+                        },
+                        ajax: {
+                            url: "{% url 'acts_app:passports_datatable' %}",
+                            dataSrc: "data"
+                        },
+                        columns: [
+                            {
+                                data: null,
+                                render: function (data, type, row) {
+                                    return `<input type="radio" name="passport_pick_radio" value="${row.id}">`;
+                                }
+                            },
+                            {data: "material"},
+                            {data: "doc_name"},
+                            {data: "doc_no"},
+                            {data: "doc_date"},
+                        ],
+                        rowCallback: function (row, data) {
+                            row.dataset.passportId = data.id;
+                            row.dataset.passportLabel = data.label;
+                        }
+                    });
+
+                    $('#passportPickTable tbody').on('click', 'tr', function () {
+                        const id = this.dataset.passportId;
+                        const label = this.dataset.passportLabel;
+                        $(this).find('input[type="radio"]').prop('checked', true);
+                        selectedPassport = {id: id, label: label};
+                    });
+                } else {
+                    passportDT.ajax.reload(null, false);
+                }
+
+                const bsModal = new bootstrap.Modal(modalEl);
+                bsModal.show();
+            }
+
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-open-passport-modal");
+                if (!btn) return;
+                openPassportModal(btn.dataset.targetHiddenId);
+            });
+
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-clear-passport");
+                if (!btn) return;
+
+                const hiddenId = btn.dataset.targetHiddenId;
+                const hidden = document.getElementById(hiddenId);
+                const display = getDisplayByHiddenId(hiddenId);
+
+                if (hidden) hidden.value = "";
+                if (display) display.value = "";
+
+                const row = btn.closest("tr");
+                if (row) {
+                    row.querySelectorAll('input[name$="manual_name"], input[name$="manual_doc_no"], input[name$="manual_doc_date"]').forEach(i => i.value = "");
+                }
+            });
+
+            btnPick?.addEventListener("click", function () {
+                const checked = document.querySelector('#passportPickTable input[type="radio"]:checked');
+                if (checked && !selectedPassport) {
+                    const tr = checked.closest("tr");
+                    selectedPassport = {id: checked.value, label: tr?.dataset.passportLabel || ""};
+                }
+
+                if (!selectedPassport || !currentHiddenId) return;
+
+                const hidden = document.getElementById(currentHiddenId);
+                if (hidden) hidden.value = selectedPassport.id;
+                if (currentDisplayInput) currentDisplayInput.value = selectedPassport.label;
+
+                const row = currentDisplayInput?.closest("tr");
+                if (row) {
+                    row.querySelectorAll('input[name$="manual_name"], input[name$="manual_doc_no"], input[name$="manual_doc_date"]').forEach(i => i.value = "");
+                }
+
+                bootstrap.Modal.getInstance(modalEl)?.hide();
+            });
+        })();
+    </script>
 {% endblock %}

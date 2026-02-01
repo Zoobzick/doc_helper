@@ -50,8 +50,16 @@
           <h5 class="card-title">Основное</h5>
 
           <dl class="row mb-0">
-            <dt class="col-sm-4 text-muted">Шифр проекта</dt>
-            <dd class="col-sm-8">{{ act.project }}</dd>
+            <dt class="col-sm-4 text-muted">Шифры проектов</dt>
+            <dd class="col-sm-8">
+              {% if act.projects.all %}
+                {% for p in act.projects.all %}
+                  <span class="badge bg-light text-dark border me-1 mb-1">{{ p }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </dd>
 
             <dt class="col-sm-4 text-muted">Работы</dt>
             <dd class="col-sm-8">{{ act.work_name }}</dd>
@@ -68,7 +76,7 @@
 
             <dt class="col-sm-4 text-muted">Последующие</dt>
             <dd class="col-sm-8">
-              {% if act.following_works %}{{ act.following_works|linebreaksbr }}{% else %}<span class="text-muted">—</span>{% endif %}
+              {% if act.allow_next_works_text %}{{ act.allow_next_works_text|linebreaksbr }}{% else %}<span class="text-muted">—</span>{% endif %}
             </dd>
           </dl>
         </div>
@@ -107,113 +115,6 @@
         </div>
       </div>
     </div>
-
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body pt-3">
-          <h5 class="card-title">Материалы</h5>
-
-          {% if act.materials.all %}
-            <div class="table-responsive">
-              <table class="table table-hover align-middle">
-                <thead>
-                  <tr>
-                    <th style="white-space: nowrap;">№</th>
-                    <th>Материал / Паспорт</th>
-                    <th style="white-space: nowrap;">Тип</th>
-                    <th style="white-space: nowrap;">Листов</th>
-                    <th style="white-space: nowrap;">V, м³</th>
-                    <th>Примечание</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for m in act.materials.all %}
-                    <tr>
-                      <td style="white-space: nowrap;">{{ m.position }}</td>
-                      <td>
-                        {% if m.passport %}
-                          <div class="fw-semibold">{{ m.passport }}</div>
-                        {% else %}
-                          <div class="fw-semibold">{{ m.manual_name }}</div>
-                          <div class="text-muted small">
-                            {% if m.manual_doc_no %}№{{ m.manual_doc_no }}{% endif %}
-                            {% if m.manual_doc_date %} от {{ m.manual_doc_date|date:"d.m.Y" }}{% endif %}
-                            {% if m.manual_issuer %} — {{ m.manual_issuer }}{% endif %}
-                          </div>
-                        {% endif %}
-                      </td>
-                      <td style="white-space: nowrap;">{{ m.get_material_kind_display }}</td>
-                      <td style="white-space: nowrap;">{{ m.sheets_count }}</td>
-                      <td style="white-space: nowrap;">
-                        {% if m.volume_m3 %}{{ m.volume_m3 }}{% else %}<span class="text-muted">—</span>{% endif %}
-                      </td>
-                      <td>
-                        {% if m.note %}{{ m.note }}{% else %}<span class="text-muted">—</span>{% endif %}
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">Материалы не добавлены.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body pt-3">
-          <h5 class="card-title">Документы</h5>
-
-          {% if act.attachments.all %}
-            <div class="table-responsive">
-              <table class="table table-hover align-middle">
-                <thead>
-                  <tr>
-                    <th>Тип</th>
-                    <th>Название / №</th>
-                    <th style="white-space: nowrap;">Дата</th>
-                    <th style="white-space: nowrap;">Листов</th>
-                    <th style="white-space: nowrap;">Файл</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for a in act.attachments.all %}
-                    <tr>
-                      <td style="white-space: nowrap;">{{ a.get_type_display }}</td>
-                      <td>
-                        <div class="fw-semibold">
-                          {% if a.title %}{{ a.title }}{% else %}—{% endif %}
-                        </div>
-                        <div class="text-muted small">
-                          {% if a.doc_no %}№{{ a.doc_no }}{% endif %}
-                        </div>
-                      </td>
-                      <td style="white-space: nowrap;">
-                        {% if a.doc_date %}{{ a.doc_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
-                      </td>
-                      <td style="white-space: nowrap;">{{ a.sheets_count }}</td>
-                      <td style="white-space: nowrap;">
-                        {% if a.file %}
-                          <a href="{{ a.file.url }}" target="_blank" rel="noopener">Открыть</a>
-                        {% else %}
-                          <span class="text-muted">—</span>
-                        {% endif %}
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">Документы не добавлены.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-
   </div>
 </section>
 {% endblock %}

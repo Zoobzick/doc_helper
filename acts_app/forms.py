@@ -1,25 +1,17 @@
 # acts_app/forms.py
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Optional
 
 from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
-from acts_app.models import (
-    Act,
-    ActAttachment,
-    ActMaterialItem,
-    AttachmentType,
-    MaterialKind,
-)
-from acts_app.services.passport_suggestions import PassportSuggester, PassportSuggestionConfig
+from acts_app.models import Act, ActAttachment, ActMaterialItem, AttachmentType
 
 
 def _bootstrapify(form: forms.Form):
-    for name, field in form.fields.items():
+    for _, field in form.fields.items():
         w = field.widget
         cls = w.attrs.get("class", "")
 
@@ -27,8 +19,6 @@ def _bootstrapify(form: forms.Form):
             base = "form-select"
         elif isinstance(w, (forms.CheckboxInput,)):
             base = "form-check-input"
-        elif isinstance(w, (forms.FileInput,)):
-            base = "form-control"
         else:
             base = "form-control"
 
@@ -41,15 +31,25 @@ def _bootstrapify(form: forms.Form):
             w.attrs.setdefault("min", "1")
 
 
-def get_suggested_passports_qs(project_id: int, limit: int = 200):
-    return PassportSuggester(project_id=project_id, config=PassportSuggestionConfig(limit=limit)).queryset()
+class ActProjectsForm(forms.Form):
+    projects = forms.ModelMultipleChoiceField(
+        queryset=None,
+        required=True,
+        label="Шифры проектов",
+        widget=forms.MultipleHiddenInput,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from projects_app.models import Project  # noqa: WPS433
+        self.fields["projects"].queryset = Project.objects.all().order_by("id")
+        _bootstrapify(self)
 
 
 class ActForm(forms.ModelForm):
     class Meta:
         model = Act
         fields = (
-            "project",
             "number",
             "act_date",
             "work_name",
@@ -83,10 +83,109 @@ class ActForm(forms.ModelForm):
         return cleaned
 
 
+class ActMaterialItemForm(forms.ModelForm):
+    """
+    passport выбираем через модалку -> хранится только hidden id.
+    ВАЖНО: queryset = Passport.objects.all() чтобы не было ошибки
+    "Вашего варианта нет среди допустимых значений".
+    """
+    passport = forms.ModelChoiceField(queryset=None, required=False, widget=forms.HiddenInput)
+
+    class Meta:
+        model = ActMaterialItem
+        fields = (
+            "passport",
+            "manual_name",
+            "manual_doc_no",
+            "manual_doc_date",
+            "sheets_count",
+            "note",
+        )
+        widgets = {"manual_doc_date": forms.DateInput(attrs={"type": "date"})}
+
+    def __init__(self, *args, project_id: Optional[int] = None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        from passports_app.models import Passport  # noqa: WPS433
+        # НЕ ограничиваем queryset подсказками/лимитами — иначе валидатор не примет выбранный id
+        self.fields["passport"].queryset = Passport.objects.all().order_by("-id")
+
+        _bootstrapify(self)
+
+    def clean(self):
+        cleaned = super().clean()
+        passport = cleaned.get("passport")
+        manual_name = (cleaned.get("manual_name") or "").strip()
+        sheets = cleaned.get("sheets_count")
+
+        if not passport and not manual_name:
+            raise ValidationError("Выбери паспорт из БД или заполни наименование материала вручную.")
+        if sheets in (None, ""):
+            raise ValidationError("Укажи количество листов.")
+        return cleaned
+
+
+class BaseActMaterialFormSet(BaseInlineFormSet):
+    """
+    1) не даём дублировать один и тот же passport
+    2) position проставляем автоматически 1..N (position НЕ в форме)
+    """
+    def clean(self):
+        super().clean()
+        seen = set()
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
+                continue
+
+            p = form.cleaned_data.get("passport")
+            if p:
+                if p.pk in seen:
+                    raise ValidationError("Один и тот же паспорт нельзя добавить в акт дважды.")
+                seen.add(p.pk)
+
+    def save(self, commit=True):
+        objs = []
+        pos = 1
+
+        # сохраняем только не удалённые формы
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
+                continue
+
+            obj: ActMaterialItem = form.save(commit=False)
+            obj.act = self.instance
+            obj.position = pos
+            pos += 1
+
+            if commit:
+                obj.save()
+                form.save_m2m()
+
+            objs.append(obj)
+
+        if commit:
+            for form in self.deleted_forms:
+                if form.instance and form.instance.pk:
+                    form.instance.delete()
+
+        return objs
+
+
+ActMaterialFormSet = inlineformset_factory(
+    parent_model=Act,
+    model=ActMaterialItem,
+    form=ActMaterialItemForm,
+    formset=BaseActMaterialFormSet,
+    extra=1,
+    can_delete=True,
+)
+
+
 class ActAttachmentForm(forms.ModelForm):
     class Meta:
         model = ActAttachment
-        fields = ("type", "title", "doc_no", "doc_date", "sheets_count", "file")
+        fields = ("title", "doc_no", "doc_date", "sheets_count", "file")
         widgets = {"doc_date": forms.DateInput(attrs={"type": "date"})}
 
     def __init__(self, *args, **kwargs):
@@ -100,97 +199,51 @@ class ActAttachmentForm(forms.ModelForm):
         return cleaned
 
 
-class ActMaterialItemForm(forms.ModelForm):
-    passport = forms.ModelChoiceField(queryset=None, required=False, label="Паспорт (из БД)")
-
-    class Meta:
-        model = ActMaterialItem
-        fields = (
-            "position",
-            "passport",
-            "manual_name",
-            "manual_doc_no",
-            "manual_doc_date",
-            "manual_issuer",
-            "material_kind",
-            "sheets_count",
-            "volume_m3",
-            "note",
-        )
-        widgets = {"manual_doc_date": forms.DateInput(attrs={"type": "date"})}
-
-    def __init__(self, *args, project_id: Optional[int] = None, **kwargs):
+class BaseActAttachmentFormSet(BaseInlineFormSet):
+    """
+    первая строка — Исполнительная схема
+    """
+    def __init__(self, *args, act_number: str = "", **kwargs):
+        self.act_number = (act_number or "").strip()
         super().__init__(*args, **kwargs)
 
-        if project_id:
-            self.fields["passport"].queryset = get_suggested_passports_qs(project_id)
-        else:
-            from passports_app.models import Passport  # noqa
-            self.fields["passport"].queryset = Passport.objects.all().order_by("-id")
-
-        _bootstrapify(self)
-
-    def clean(self):
-        cleaned = super().clean()
-        passport = cleaned.get("passport")
-        manual_name = (cleaned.get("manual_name") or "").strip()
-        sheets = cleaned.get("sheets_count")
-        kind = cleaned.get("material_kind")
-        vol = cleaned.get("volume_m3")
-
-        if not passport and not manual_name:
-            raise ValidationError("Выбери паспорт из БД или заполни наименование вручную.")
-
-        if sheets in (None, ""):
-            raise ValidationError("Укажи количество листов для материала/паспорта.")
-
-        if kind == MaterialKind.CONCRETE_MIX:
-            if vol in (None, ""):
-                raise ValidationError("Для бетонной смеси нужно указать V бетона, м3.")
-            if isinstance(vol, Decimal) and vol <= 0:
-                raise ValidationError("V бетона, м3 должен быть больше 0.")
-        else:
-            if vol not in (None, ""):
-                raise ValidationError("Объём указывается только для бетонной смеси. Для сетки/прочего оставь пустым.")
-
-        return cleaned
-
-
-class BaseActMaterialFormSet(BaseInlineFormSet):
     def clean(self):
         super().clean()
-        seen = set()
-        for form in self.forms:
+        if self.forms:
+            f0 = self.forms[0]
+            if hasattr(f0, "cleaned_data") and f0.cleaned_data.get("DELETE"):
+                raise ValidationError("Строку 'Исполнительная схема' удалять нельзя.")
+            if hasattr(f0, "cleaned_data") and not f0.cleaned_data.get("doc_date"):
+                raise ValidationError("Для 'Исполнительной схемы' нужно указать дату.")
+
+    def save(self, commit=True):
+        objs = []
+        for idx, form in enumerate(self.forms):
             if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
                 continue
-            p = form.cleaned_data.get("passport")
-            if p:
-                if p.pk in seen:
-                    raise ValidationError("Один и тот же паспорт нельзя добавить в акт дважды.")
-                seen.add(p.pk)
 
+            obj: ActAttachment = form.save(commit=False)
+            obj.act = self.instance
 
-ActMaterialFormSet = inlineformset_factory(
-    parent_model=Act,
-    model=ActMaterialItem,
-    form=ActMaterialItemForm,
-    formset=BaseActMaterialFormSet,
-    extra=1,
-    can_delete=True,
-)
+            if idx == 0:
+                obj.type = AttachmentType.EXEC_SCHEME
+                obj.title = "Исполнительная схема"
+                obj.doc_no = self.act_number
+            else:
+                obj.type = AttachmentType.OTHER_QUALITY_DOC
 
+            if commit:
+                obj.save()
+                form.save_m2m()
 
-class BaseActAttachmentFormSet(BaseInlineFormSet):
-    def clean(self):
-        super().clean()
-        reg = 0
-        for form in self.forms:
-            if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
-                continue
-            if form.cleaned_data.get("type") == AttachmentType.MATERIALS_REGISTRY:
-                reg += 1
-        if reg > 1:
-            raise ValidationError("Реестр материалов можно прикрепить только один (MATERIALS_REGISTRY).")
+            objs.append(obj)
+
+        if commit:
+            for form in self.deleted_forms:
+                if form.instance and form.instance.pk:
+                    form.instance.delete()
+
+        return objs
 
 
 ActAttachmentFormSet = inlineformset_factory(
@@ -198,6 +251,6 @@ ActAttachmentFormSet = inlineformset_factory(
     model=ActAttachment,
     form=ActAttachmentForm,
     formset=BaseActAttachmentFormSet,
-    extra=1,
+    extra=1,   # чтобы схема всегда была первой строкой на create
     can_delete=True,
 )

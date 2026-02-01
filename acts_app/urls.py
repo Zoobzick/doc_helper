@@ -2,19 +2,24 @@
 from django.urls import path
 
 from acts_app.views import (
-    ActListView,
-    ActDetailView,
     ActCreateView,
-    ActUpdateView,
+    ActDetailView,
+    ActListView,
     ActRebuildAppendixView,
+    ActUpdateView,
+    PassportsDatatableView,
 )
 
 app_name = "acts_app"
 
 urlpatterns = [
-    path("acts/", ActListView.as_view(), name="act_list"),
-    path("acts/create/", ActCreateView.as_view(), name="act_create"),
-    path("acts/<uuid:uuid>/", ActDetailView.as_view(), name="act_detail"),
-    path("acts/<uuid:uuid>/edit/", ActUpdateView.as_view(), name="act_update"),
-    path("acts/<uuid:uuid>/rebuild-appendix/", ActRebuildAppendixView.as_view(), name="act_rebuild_appendix"),
+    path("", ActListView.as_view(), name="act_list"),
+    path("create/", ActCreateView.as_view(), name="act_create"),
+
+    # DataTables modal passports
+    path("passports/datatables/", PassportsDatatableView.as_view(), name="passports_datatable"),
+
+    path("<uuid:uuid>/", ActDetailView.as_view(), name="act_detail"),
+    path("<uuid:uuid>/edit/", ActUpdateView.as_view(), name="act_update"),
+    path("<uuid:uuid>/rebuild-appendix/", ActRebuildAppendixView.as_view(), name="act_rebuild_appendix"),
 ]

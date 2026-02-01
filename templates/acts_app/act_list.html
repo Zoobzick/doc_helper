@@ -58,7 +58,7 @@
           <thead>
             <tr>
               <th style="white-space: nowrap;">№ / Дата</th>
-              <th>Шифр проекта</th>
+              <th>Шифры проектов</th>
               <th>Работы</th>
               <th style="white-space: nowrap;">Листов</th>
               <th style="white-space: nowrap;">Статус</th>
@@ -73,7 +73,15 @@
                   <div class="text-muted small">{{ act.act_date|date:"d.m.Y" }}</div>
                 </td>
                 <td>
-                  <div class="fw-semibold">{{ act.project }}</div>
+                  {% if act.projects.all %}
+                    <div class="small">
+                      {% for p in act.projects.all %}
+                        <span class="badge bg-light text-dark border me-1 mb-1">{{ p }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
                 </td>
                 <td>
                   <div class="text-truncate" style="max-width: 520px;">

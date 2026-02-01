@@ -4,15 +4,23 @@ from __future__ import annotations
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db import transaction
-from django.http import HttpRequest, HttpResponse
+from django.db.models import Q
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
 from django.views import View
-from django.views.generic import ListView, DetailView
+from django.views.generic import DetailView, ListView
 
-from acts_app.forms import ActForm, ActMaterialFormSet, ActAttachmentFormSet
+from acts_app.forms import ActAttachmentFormSet, ActForm, ActMaterialFormSet, ActProjectsForm
 from acts_app.models import Act, ActStatus
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
+
+
+def _first_project_id_from_cleaned_projects(projects) -> int | None:
+    try:
+        first = projects.order_by("id").first()
+        return first.id if first else None
+    except Exception:
+        return None
 
 
 class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
@@ -23,11 +31,7 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        qs = (
-            Act.objects
-            .select_related("project")
-            .order_by("-act_date", "number")
-        )
+        qs = Act.objects.prefetch_related("projects").order_by("-act_date", "number")
 
         q = (self.request.GET.get("q") or "").strip()
         if q:
@@ -35,7 +39,7 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
         project_id = (self.request.GET.get("project") or "").strip()
         if project_id.isdigit():
-            qs = qs.filter(project_id=int(project_id))
+            qs = qs.filter(projects__id=int(project_id)).distinct()
 
         status = (self.request.GET.get("status") or "").strip()
         if status in {ActStatus.DRAFT, ActStatus.FINAL}:
@@ -53,10 +57,77 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     slug_url_kwarg = "uuid"
 
     def get_queryset(self):
-        return (
-            Act.objects
-            .select_related("project")
-            .prefetch_related("materials", "attachments", "appendix_lines")
+        return Act.objects.prefetch_related("projects", "materials", "attachments", "appendix_lines")
+
+
+class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """
+    Server-side DataTables JSON
+    GET params:
+      draw, start, length, search[value]
+    """
+    permission_required = "acts_app.add_act"
+
+    def get(self, request: HttpRequest) -> JsonResponse:
+        from passports_app.models import Passport  # noqa: WPS433
+
+        draw = int(request.GET.get("draw") or 1)
+        start = int(request.GET.get("start") or 0)
+        length = int(request.GET.get("length") or 10)
+        length = min(max(length, 5), 50)
+
+        search = (request.GET.get("search[value]") or "").strip()
+
+        base_qs = Passport.objects.select_related("material").only(
+            "id",
+            "document_name",
+            "document_number",
+            "document_date",
+            "material__name",
+        )
+
+        records_total = base_qs.count()
+
+        qs = base_qs
+        if search:
+            qs = qs.filter(
+                Q(material__name__icontains=search)
+                | Q(document_name__icontains=search)
+                | Q(document_number__icontains=search)
+            )
+
+        records_filtered = qs.count()
+
+        qs = qs.order_by("-id")[start:start + length]
+
+        data = []
+        for p in qs:
+            material = p.material.name if p.material_id and p.material else "—"
+            doc_name = (p.document_name or "").strip() or "—"
+            doc_no = (p.document_number or "").strip() or "—"
+            doc_date = p.document_date.strftime("%d.%m.%Y") if p.document_date else "—"
+
+            # то, что будет вставляться в строку материала в акте
+            label = f"{material} — {doc_name} №{doc_no} от {doc_date}"
+
+            data.append(
+                {
+                    "id": p.id,
+                    "material": material,
+                    "doc_name": doc_name,
+                    "doc_no": doc_no,
+                    "doc_date": doc_date,
+                    "label": label,
+                }
+            )
+
+        return JsonResponse(
+            {
+                "draw": draw,
+                "recordsTotal": records_total,
+                "recordsFiltered": records_filtered,
+                "data": data,
+            }
         )
 
 
@@ -65,13 +136,17 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
     template_name = "acts_app/act_form.html"
 
     def get(self, request: HttpRequest) -> HttpResponse:
+        projects_form = ActProjectsForm()
         act_form = ActForm()
+
         material_fs = ActMaterialFormSet(prefix="mat")
-        attach_fs = ActAttachmentFormSet(prefix="att")
+        attach_fs = ActAttachmentFormSet(prefix="att", act_number="")
+
         return render(
             request,
             self.template_name,
             {
+                "projects_form": projects_form,
                 "form": act_form,
                 "material_formset": material_fs,
                 "attachment_formset": attach_fs,
@@ -81,15 +156,33 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     @transaction.atomic
     def post(self, request: HttpRequest) -> HttpResponse:
+        projects_form = ActProjectsForm(request.POST)
         act_form = ActForm(request.POST)
-        material_fs = ActMaterialFormSet(request.POST, prefix="mat")
-        attach_fs = ActAttachmentFormSet(request.POST, request.FILES, prefix="att")
 
-        if not (act_form.is_valid() and material_fs.is_valid() and attach_fs.is_valid()):
+        project_id_hint = None
+        if projects_form.is_valid():
+            project_id_hint = _first_project_id_from_cleaned_projects(projects_form.cleaned_data["projects"])
+
+        material_fs = ActMaterialFormSet(
+            request.POST,
+            prefix="mat",
+            form_kwargs={"project_id": project_id_hint},
+        )
+
+        act_number_hint = (request.POST.get("number") or "").strip()
+        attach_fs = ActAttachmentFormSet(
+            request.POST,
+            request.FILES,
+            prefix="att",
+            act_number=act_number_hint,
+        )
+
+        if not (projects_form.is_valid() and act_form.is_valid() and material_fs.is_valid() and attach_fs.is_valid()):
             return render(
                 request,
                 self.template_name,
                 {
+                    "projects_form": projects_form,
                     "form": act_form,
                     "material_formset": material_fs,
                     "attachment_formset": attach_fs,
@@ -98,15 +191,14 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
 
         act = act_form.save()
+        act.projects.set(projects_form.cleaned_data["projects"])
 
-        # важно: после появления act.project_id можем подмешать project_id в формы материалов на следующем редактировании
         material_fs.instance = act
         attach_fs.instance = act
 
         material_fs.save()
         attach_fs.save()
 
-        # пересборка приложений (может упасть, например если нет схемы)
         try:
             AppendixBuilder(act).rebuild()
             messages.success(request, "Акт сохранён. Приложения пересобраны.")
@@ -126,21 +218,26 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         act = self.get_object(uuid)
 
+        projects_form = ActProjectsForm(initial={"projects": act.projects.all()})
         act_form = ActForm(instance=act)
 
-        # ВАЖНО: прокидываем project_id, чтобы в материалах паспорта были отсортированы “умно”
+        first_project = act.projects.order_by("id").first()
+        project_id_hint = first_project.id if first_project else None
+
         material_fs = ActMaterialFormSet(
             instance=act,
             prefix="mat",
-            form_kwargs={"project_id": act.project_id},
+            form_kwargs={"project_id": project_id_hint},
         )
-        attach_fs = ActAttachmentFormSet(instance=act, prefix="att")
+
+        attach_fs = ActAttachmentFormSet(instance=act, prefix="att", act_number=act.number)
 
         return render(
             request,
             self.template_name,
             {
                 "act": act,
+                "projects_form": projects_form,
                 "form": act_form,
                 "material_formset": material_fs,
                 "attachment_formset": attach_fs,
@@ -152,26 +249,36 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
         act = self.get_object(uuid)
 
+        projects_form = ActProjectsForm(request.POST)
         act_form = ActForm(request.POST, instance=act)
+
+        project_id_hint = None
+        if projects_form.is_valid():
+            project_id_hint = _first_project_id_from_cleaned_projects(projects_form.cleaned_data["projects"])
+
         material_fs = ActMaterialFormSet(
             request.POST,
             instance=act,
             prefix="mat",
-            form_kwargs={"project_id": act.project_id},
+            form_kwargs={"project_id": project_id_hint},
         )
+
+        act_number_hint = (request.POST.get("number") or act.number or "").strip()
         attach_fs = ActAttachmentFormSet(
             request.POST,
             request.FILES,
             instance=act,
             prefix="att",
+            act_number=act_number_hint,
         )
 
-        if not (act_form.is_valid() and material_fs.is_valid() and attach_fs.is_valid()):
+        if not (projects_form.is_valid() and act_form.is_valid() and material_fs.is_valid() and attach_fs.is_valid()):
             return render(
                 request,
                 self.template_name,
                 {
                     "act": act,
+                    "projects_form": projects_form,
                     "form": act_form,
                     "material_formset": material_fs,
                     "attachment_formset": attach_fs,
@@ -180,10 +287,11 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
 
         act = act_form.save()
+        act.projects.set(projects_form.cleaned_data["projects"])
+
         material_fs.save()
         attach_fs.save()
 
-        # кнопка "Сохранить без пересборки" — если нужно, можно добавить, но по умолчанию пересобираем всегда
         try:
             AppendixBuilder(act).rebuild()
             messages.success(request, "Изменения сохранены. Приложения пересобраны.")
@@ -194,10 +302,6 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 
 class ActRebuildAppendixView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """
-    Отдельный эндпоинт на случай, если в интерфейсе будет кнопка
-    “Пересобрать приложения” без сохранения других данных.
-    """
     permission_required = "acts_app.change_act"
 
     @transaction.atomic
