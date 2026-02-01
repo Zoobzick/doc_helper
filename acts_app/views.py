@@ -1,6 +1,8 @@
 # acts_app/views.py
 from __future__ import annotations
 
+from datetime import datetime
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db import transaction
@@ -20,6 +22,12 @@ from acts_app.forms import (
 from acts_app.models import Act, ActStatus, AttachmentType
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
 
+try:
+    # Для поиска по проекту в строке q (шифр/код/название проекта).
+    from projects_app.models import Project
+except Exception:  # pragma: no cover
+    Project = None
+
 
 def _first_project_id_from_cleaned_projects(projects) -> int | None:
     try:
@@ -31,6 +39,30 @@ def _first_project_id_from_cleaned_projects(projects) -> int | None:
 
 def _fmt_date(d) -> str:
     return d.strftime("%d.%m.%Y") if d else "—"
+
+
+def _parse_search_date(raw: str):
+    """Парсим дату из строки поиска q.
+
+    Поддерживаем:
+      - 02.02.2026
+      - 02-02-2026
+      - 2026-02-02
+      - 02/02/2026
+
+    Возвращает date или None.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return None
+
+    for fmt in ("%d.%m.%Y", "%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+
+    return None
 
 
 class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
@@ -45,7 +77,39 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
         q = (self.request.GET.get("q") or "").strip()
         if q:
-            qs = qs.filter(number__icontains=q)
+            # filters: общий фильтр поиска
+            # - номер акта: number__icontains
+            # - дата акта: act_date == parsed_date
+            # - год: act_date__year == YYYY
+            # - проект: projects__<field>__icontains (подбираем поле динамически)
+            filters = Q(number__icontains=q)
+
+            parsed_date = _parse_search_date(q)
+            if parsed_date:
+                filters |= Q(act_date=parsed_date)
+
+            if q.isdigit() and len(q) == 4:
+                filters |= Q(act_date__year=int(q))
+
+            # Поиск по проекту (шифр/код/название).
+            # Важно: не хардкодим одно поле, чтобы не словить FieldError.
+            if Project is not None:
+                project_fields = {
+                    f.name
+                    for f in Project._meta.get_fields()
+                    if getattr(f, "concrete", False)
+                }
+
+                proj_q = Q()
+                # candidates: вероятные названия поля шифра/кода/названия
+                for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
+                    if fname in project_fields:
+                        proj_q |= Q(**{f"projects__{fname}__icontains": q})
+
+                if proj_q:
+                    filters |= proj_q
+
+            qs = qs.filter(filters).distinct()
 
         project_id = (self.request.GET.get("project") or "").strip()
         if project_id.isdigit():
@@ -122,7 +186,11 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
             # --- 2) Реестр документов соответствия (П-4): раскрываем состав ---
             if src is not None and hasattr(AttachmentType, "DOCS_REGISTRY"):
                 if getattr(src, "type", None) == AttachmentType.DOCS_REGISTRY:
-                    exclude_types = [AttachmentType.EXEC_SCHEME, AttachmentType.MATERIALS_REGISTRY, AttachmentType.DOCS_REGISTRY]
+                    exclude_types = [
+                        AttachmentType.EXEC_SCHEME,
+                        AttachmentType.MATERIALS_REGISTRY,
+                        AttachmentType.DOCS_REGISTRY,
+                    ]
                     children = []
                     for a in act.attachments.exclude(type__in=exclude_types).order_by("created_at"):
                         title = (a.title or "").strip() or "—"
