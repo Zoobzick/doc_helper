@@ -9,7 +9,6 @@ from django.forms import BaseInlineFormSet, inlineformset_factory
 
 from acts_app.models import Act, ActAttachment, ActMaterialItem, AttachmentType
 
-
 ISO_DATE_FORMAT = "%Y-%m-%d"
 
 
@@ -151,6 +150,11 @@ class ActMaterialItemForm(forms.ModelForm):
         # форсим ISO формат для manual_doc_date
         if "manual_doc_date" in self.fields:
             force_iso_date_field(self.fields["manual_doc_date"])
+        # UI: используем note как "Наименование документа"
+        self.fields["manual_name"].label = "Материал"
+        self.fields["note"].label = "Наименование документа"
+        self.fields["manual_doc_no"].label = "Номер документа"
+        self.fields["manual_doc_date"].label = "Дата документа"
 
         _bootstrapify(self)
 
@@ -184,6 +188,7 @@ class BaseActMaterialFormSet(BaseInlineFormSet):
     2) position проставляем автоматически 1..N
     3) sheets_count никогда не NULL
     """
+
     def clean(self):
         super().clean()
         seen = set()
@@ -233,7 +238,7 @@ ActMaterialFormSet = inlineformset_factory(
     model=ActMaterialItem,
     form=ActMaterialItemForm,
     formset=BaseActMaterialFormSet,
-    extra=0,          # было 1
+    extra=0,  # было 1
     can_delete=True,
 )
 
@@ -263,10 +268,21 @@ class ActAttachmentForm(forms.ModelForm):
 class BaseActAttachmentFormSet(BaseInlineFormSet):
     """
     первая строка — Исполнительная схема
+
+    ВАЖНО:
+    реестры (MATERIALS_REGISTRY / DOCS_REGISTRY) — системные сущности,
+    в форму "Предъявлены документы..." НЕ попадают.
     """
+
     def __init__(self, *args, act_number: str = "", **kwargs):
         self.act_number = (act_number or "").strip()
         super().__init__(*args, **kwargs)
+
+        # --- скрываем системные реестры из этого formset ---
+        exclude_types = [AttachmentType.MATERIALS_REGISTRY]
+        if hasattr(AttachmentType, "DOCS_REGISTRY"):
+            exclude_types.append(AttachmentType.DOCS_REGISTRY)
+        self.queryset = self.queryset.exclude(type__in=exclude_types)
 
     def clean(self):
         super().clean()
@@ -291,7 +307,7 @@ class BaseActAttachmentFormSet(BaseInlineFormSet):
 
             if idx == 0:
                 obj.type = AttachmentType.EXEC_SCHEME
-                obj.title = "Исполнительная схема"
+                obj.title = "исполнительная схема"
                 obj.doc_no = self.act_number
             else:
                 obj.type = AttachmentType.OTHER_QUALITY_DOC
@@ -315,6 +331,15 @@ ActAttachmentFormSet = inlineformset_factory(
     model=ActAttachment,
     form=ActAttachmentForm,
     formset=BaseActAttachmentFormSet,
-    extra=1,
+    extra=0,  # <-- было 1
+    can_delete=True,
+)
+
+ActAttachmentCreateFormSet = inlineformset_factory(
+    parent_model=Act,
+    model=ActAttachment,
+    form=ActAttachmentForm,
+    formset=BaseActAttachmentFormSet,
+    extra=1,  # <-- только для create
     can_delete=True,
 )

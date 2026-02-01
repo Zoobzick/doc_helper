@@ -18,6 +18,7 @@ class ActStatus(models.TextChoices):
 class AttachmentType(models.TextChoices):
     EXEC_SCHEME = "EXEC_SCHEME", "Исполнительная схема"
     MATERIALS_REGISTRY = "MATERIALS_REGISTRY", "Реестр материалов"
+    DOCS_REGISTRY = "DOCS_REGISTRY", "Реестр документов соответствия"
     CONCRETE_SAMPLES_ACT = "CONCRETE_SAMPLES_ACT", "Акт контрольных образцов бетона"
     TEST_PROTOCOL = "TEST_PROTOCOL", "Протокол испытаний"
     OTHER_QUALITY_DOC = "OTHER_QUALITY_DOC", "Документ качества (прочее)"

@@ -10,8 +10,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.generic import DetailView, ListView
 
-from acts_app.forms import ActAttachmentFormSet, ActForm, ActMaterialFormSet, ActProjectsForm
-from acts_app.models import Act, ActStatus
+from acts_app.forms import (
+    ActAttachmentFormSet,
+    ActAttachmentCreateFormSet,
+    ActForm,
+    ActMaterialFormSet,
+    ActProjectsForm,
+)
+from acts_app.models import Act, ActStatus, AttachmentType
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
 
 
@@ -21,6 +27,10 @@ def _first_project_id_from_cleaned_projects(projects) -> int | None:
         return first.id if first else None
     except Exception:
         return None
+
+
+def _fmt_date(d) -> str:
+    return d.strftime("%d.%m.%Y") if d else "—"
 
 
 class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
@@ -58,6 +68,111 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
     def get_queryset(self):
         return Act.objects.prefetch_related("projects", "materials", "attachments", "appendix_lines")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        act: Act = ctx["act"]
+
+        appendix_rows: list[dict] = []
+        for line in act.appendix_lines.all():
+            label = (line.label or "").strip()
+            sheets = int(line.sheets_count or 0)
+
+            row: dict = {
+                "label": label,
+                "sheets": sheets,
+                "children": [],
+            }
+
+            # --- 1) Реестр материалов: раскрываем состав ---
+            src = getattr(line, "source_attachment", None)
+            if src is not None and getattr(src, "type", None) == AttachmentType.MATERIALS_REGISTRY:
+                children = []
+                for mi in act.materials.all():
+                    if mi.passport_id and mi.passport:
+                        doc_name = (getattr(mi.passport, "document_name", "") or "").strip()
+                        doc_date = getattr(mi.passport, "document_date", None)
+                        material_name = ""
+                        material = getattr(mi.passport, "material", None)
+                        if material is not None:
+                            material_name = (getattr(material, "name", "") or "").strip()
+
+                        child_label = f"{doc_name} от {_fmt_date(doc_date)}, {material_name}".strip().strip(",")
+                    else:
+                        # ручной ввод
+                        doc_name = (mi.note or "").strip()  # note = Наименование документа
+                        doc_no = (mi.manual_doc_no or "").strip()
+                        doc_date = mi.manual_doc_date
+                        material_name = (mi.manual_name or "").strip()
+
+                        left = doc_name or doc_no or "—"
+                        child_label = f"{left} от {_fmt_date(doc_date)}, {material_name}".strip().strip(",")
+
+                    children.append(
+                        {
+                            "label": child_label or "—",
+                            "sheets": int(mi.sheets_count or 0),
+                        }
+                    )
+
+                row["children"] = children
+                appendix_rows.append(row)
+                continue
+
+            # --- 2) Реестр документов соответствия (П-4): раскрываем состав ---
+            if src is not None and hasattr(AttachmentType, "DOCS_REGISTRY"):
+                if getattr(src, "type", None) == AttachmentType.DOCS_REGISTRY:
+                    exclude_types = [AttachmentType.EXEC_SCHEME, AttachmentType.MATERIALS_REGISTRY, AttachmentType.DOCS_REGISTRY]
+                    children = []
+                    for a in act.attachments.exclude(type__in=exclude_types).order_by("created_at"):
+                        title = (a.title or "").strip() or "—"
+                        doc_no = (a.doc_no or "").strip()
+                        doc_date = a.doc_date
+                        parts = [title]
+                        if doc_no:
+                            parts.append(f"№{doc_no}")
+                        parts.append(f"от {_fmt_date(doc_date)}")
+                        children.append({"label": " ".join(parts), "sheets": int(a.sheets_count or 0)})
+                    row["children"] = children
+                    appendix_rows.append(row)
+                    continue
+
+            # --- 3) Старое поведение: "Материалы ..." разворачиваем в список строк (как было у тебя) ---
+            if label == "Материалы (паспорта/сертификаты качества)":
+                for mi in act.materials.all():
+                    if mi.passport_id and mi.passport:
+                        doc_name = (getattr(mi.passport, "document_name", "") or "").strip()
+                        doc_date = getattr(mi.passport, "document_date", None)
+                        material_name = ""
+                        material = getattr(mi.passport, "material", None)
+                        if material is not None:
+                            material_name = (getattr(material, "name", "") or "").strip()
+
+                        date_str = _fmt_date(doc_date)
+                        expanded_label = f"{doc_name} от {date_str}, {material_name}".strip().strip(",")
+                    else:
+                        doc_name = (mi.note or "").strip()  # note = Наименование документа
+                        doc_no = (mi.manual_doc_no or "").strip()
+                        doc_date = mi.manual_doc_date
+                        material_name = (mi.manual_name or "").strip()
+                        left = doc_name or doc_no or "—"
+                        date_str = _fmt_date(doc_date)
+                        expanded_label = f"{left} от {date_str}, {material_name}".strip().strip(",")
+
+                    appendix_rows.append(
+                        {
+                            "label": expanded_label or "—",
+                            "sheets": int(mi.sheets_count),
+                            "children": [],
+                        }
+                    )
+                continue
+
+            # --- 4) Обычная строка ---
+            appendix_rows.append(row)
+
+        ctx["appendix_rows"] = [{"pos": i + 1, **r} for i, r in enumerate(appendix_rows)]
+        return ctx
 
 
 class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -139,7 +254,7 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         # ActMaterialFormSet.extra = 0 -> на create показываем 1 пустую строку через initial
         material_fs = ActMaterialFormSet(prefix="mat", initial=[{}])
-        attach_fs = ActAttachmentFormSet(prefix="att", act_number="")
+        attach_fs = ActAttachmentCreateFormSet(prefix="att", act_number="")
 
         return render(
             request,
@@ -169,7 +284,7 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
 
         act_number_hint = (request.POST.get("number") or "").strip()
-        attach_fs = ActAttachmentFormSet(
+        attach_fs = ActAttachmentCreateFormSet(
             request.POST,
             request.FILES,
             prefix="att",

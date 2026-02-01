@@ -27,7 +27,7 @@
               class="form-control"
               name="q"
               value="{{ request.GET.q|default:'' }}"
-              placeholder="Поиск по номеру…"
+              placeholder="Поиск: № акта / дата (дд.мм.гггг) / шифр проекта…"
             >
           </div>
 
@@ -48,30 +48,41 @@
           {% endif %}
         </form>
 
-        <a class="btn btn-success" href="{% url 'acts_app:act_create' %}">
-          <i class="bi bi-plus-lg me-1"></i>Создать акт
+        {# Кнопка как в passports_list: btn btn-sm btn-success + bi-plus-circle #}
+        <a class="btn btn-sm btn-success" href="{% url 'acts_app:act_create' %}">
+          <i class="bi bi-plus-circle me-1"></i>Создать акт
         </a>
       </div>
 
       <div class="table-responsive">
-        <table class="table table-hover align-middle">
+        <table class="table table-striped table-bordered align-middle w-100">
           <thead>
             <tr>
-              <th style="white-space: nowrap;">№ / Дата</th>
-              <th>Шифры проектов</th>
+              <th style="white-space: nowrap;">№ акта</th>
+              <th style="white-space: nowrap;">Дата акта</th>
               <th>Работы</th>
-              <th style="white-space: nowrap;">Листов</th>
-              <th style="white-space: nowrap;">Статус</th>
-              <th class="text-end" style="white-space: nowrap;">Действия</th>
+              <th style="white-space: nowrap;">Шифр проекта</th>
+              <th class="text-center" style="white-space: nowrap;">Действия</th>
             </tr>
           </thead>
+
           <tbody>
             {% for act in acts %}
               <tr>
                 <td style="white-space: nowrap;">
-                  <div class="fw-semibold">{{ act.number }}</div>
-                  <div class="text-muted small">{{ act.act_date|date:"d.m.Y" }}</div>
+                  <span class="fw-semibold">{{ act.number }}</span>
                 </td>
+
+                <td style="white-space: nowrap;">
+                  {{ act.act_date|date:"d.m.Y" }}
+                </td>
+
+                <td>
+                  <div class="text-truncate" style="max-width: 520px;">
+                    {{ act.work_name }}
+                  </div>
+                </td>
+
                 <td>
                   {% if act.projects.all %}
                     <div class="small">
@@ -83,33 +94,21 @@
                     <span class="text-muted">—</span>
                   {% endif %}
                 </td>
-                <td>
-                  <div class="text-truncate" style="max-width: 520px;">
-                    {{ act.work_name }}
-                  </div>
-                </td>
-                <td style="white-space: nowrap;">
-                  {{ act.sheets_total }}
-                </td>
-                <td style="white-space: nowrap;">
-                  {% if act.status == "FINAL" %}
-                    <span class="badge bg-success">Финальный</span>
-                  {% else %}
-                    <span class="badge bg-secondary">Черновик</span>
-                  {% endif %}
-                </td>
-                <td class="text-end" style="white-space: nowrap;">
-                  <a class="btn btn-sm btn-outline-primary" href="{% url 'acts_app:act_detail' act.uuid %}">
+
+                <td class="text-center text-nowrap">
+                  <a class="btn btn-sm btn-outline-primary"
+                     href="{% url 'acts_app:act_detail' act.uuid %}">
                     Открыть
                   </a>
-                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'acts_app:act_update' act.uuid %}">
+                  <a class="btn btn-sm btn-outline-secondary ms-1"
+                     href="{% url 'acts_app:act_update' act.uuid %}">
                     Править
                   </a>
                 </td>
               </tr>
             {% empty %}
               <tr>
-                <td colspan="6" class="text-center text-muted py-4">
+                <td colspan="5" class="text-center text-muted py-4">
                   Ничего не найдено.
                 </td>
               </tr>
@@ -123,7 +122,8 @@
           <ul class="pagination justify-content-center">
             {% if page_obj.has_previous %}
               <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">
+                <a class="page-link"
+                   href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.project %}&project={{ request.GET.project }}{% endif %}">
                   Назад
                 </a>
               </li>
@@ -139,7 +139,8 @@
 
             {% if page_obj.has_next %}
               <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">
+                <a class="page-link"
+                   href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.project %}&project={{ request.GET.project }}{% endif %}">
                   Вперёд
                 </a>
               </li>
