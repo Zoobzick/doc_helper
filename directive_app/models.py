@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from django.core.exceptions import ValidationError
 from django.db import models
 from orgs_app.models import Organization, Person
 
@@ -24,7 +25,6 @@ class DirectiveType(models.TextChoices):
 
 
 def directive_upload_to(instance: "Directive", filename: str) -> str:
-    # (instance.uuid) гарантирует уникальную директорию для каждого документа
     return f"directives/{instance.uuid}/{filename}"
 
 
@@ -41,7 +41,6 @@ class Directive(models.Model):
         verbose_name="Публичный идентификатор",
     )
 
-    # (doc_type) тип документа
     doc_type = models.CharField(
         max_length=16,
         choices=DirectiveType.choices,
@@ -49,18 +48,15 @@ class Directive(models.Model):
         verbose_name="Тип документа",
     )
 
-    # (number) номер документа
     number = models.CharField(
         max_length=64,
         verbose_name="Номер",
     )
 
-    # (date) дата документа (когда подписан/издан)
     date = models.DateField(
         verbose_name="Дата документа",
     )
 
-    # (issuer_organization) кем выдан документ
     issuer_organization = models.ForeignKey(
         Organization,
         on_delete=models.PROTECT,
@@ -68,7 +64,6 @@ class Directive(models.Model):
         verbose_name="Кем выдан (организация)",
     )
 
-    # (pdf_file) прикреплённый файл документа
     pdf_file = models.FileField(
         upload_to=directive_upload_to,
         blank=True,
@@ -76,14 +71,13 @@ class Directive(models.Model):
         verbose_name="Файл (PDF)",
     )
 
-    # (note) доп. пояснение
     note = models.CharField(
         max_length=512,
         blank=True,
+        default="",
         verbose_name="Примечание",
     )
 
-    # (is_active) активен ли документ для использования в новых полномочиях
     is_active = models.BooleanField(
         default=True,
         verbose_name="Документ активен",
@@ -120,7 +114,6 @@ class Authorization(models.Model):
         verbose_name="Публичный идентификатор",
     )
 
-    # (organization) от чьего имени подписывает
     organization = models.ForeignKey(
         Organization,
         on_delete=models.PROTECT,
@@ -128,7 +121,6 @@ class Authorization(models.Model):
         verbose_name="Организация (от чьего имени подписывает)",
     )
 
-    # (person) кто подписывает
     person = models.ForeignKey(
         Person,
         on_delete=models.PROTECT,
@@ -136,14 +128,12 @@ class Authorization(models.Model):
         verbose_name="Человек (кто подписывает)",
     )
 
-    # (role) роль в акте
     role = models.CharField(
         max_length=32,
         choices=ActRole.choices,
         verbose_name="Роль в акте",
     )
 
-    # (directive) основание (приказ/доверенность)
     directive = models.ForeignKey(
         Directive,
         on_delete=models.PROTECT,
@@ -151,26 +141,23 @@ class Authorization(models.Model):
         verbose_name="Основание (документ)",
     )
 
-    # (position_text) должность для подстановки в акт (пока без employment)
     position_text = models.CharField(
         max_length=255,
         blank=True,
+        default="",
         verbose_name="Должность (для подстановки в акт)",
     )
 
-    # (valid_from) начало действия полномочия (может быть позже даты приказа!)
     valid_from = models.DateField(
         verbose_name="Действует с",
     )
 
-    # (valid_to) конец действия полномочия
     valid_to = models.DateField(
         blank=True,
         null=True,
         verbose_name="Действует по (если бессрочно — пусто)",
     )
 
-    # (is_active) быстро выключить полномочие
     is_active = models.BooleanField(
         default=True,
         verbose_name="Полномочие активно",
@@ -195,6 +182,11 @@ class Authorization(models.Model):
                 name="uniq_auth_org_person_role_directive_from",
             )
         ]
+
+    def clean(self):
+        # (valid_to) не может быть раньше (valid_from)
+        if self.valid_to and self.valid_to < self.valid_from:
+            raise ValidationError({"valid_to": "Дата окончания не может быть раньше даты начала."})
 
     def __str__(self) -> str:
         return f"{self.organization.short_name}: {self.person.short_name} ({self.get_role_display()})"

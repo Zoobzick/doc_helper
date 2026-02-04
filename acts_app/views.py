@@ -6,7 +6,7 @@ from datetime import datetime
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Max
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
@@ -19,14 +19,38 @@ from acts_app.forms import (
     ActMaterialFormSet,
     ActProjectsForm,
 )
-from acts_app.models import Act, ActStatus, AttachmentType
+from acts_app.models import Act, ActStatus, AttachmentType, ActParty
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
 
+from acts_app.services.signatories import (
+    resolve_act_parties,
+    resolve_party,
+    get_candidates_for_party,
+    choose_authorization_for_party,
+    reset_choices_for_act_on_date_change,
+    validate_before_finalize,
+    freeze_signatories_to_snapshots,
+)
+
+from directive_app.models import ActRole
+
 try:
-    # Для поиска по проекту в строке q (шифр/код/название проекта).
     from projects_app.models import Project
 except Exception:  # pragma: no cover
     Project = None
+
+
+# -------------------------
+# helpers
+# -------------------------
+
+def _organizations_qs():
+    """
+    Список организаций для выпадающего списка.
+    """
+    from orgs_app.models import Organization  # noqa: WPS433
+
+    return Organization.objects.filter(is_active=True).order_by("short_name")
 
 
 def _first_project_id_from_cleaned_projects(projects) -> int | None:
@@ -42,16 +66,6 @@ def _fmt_date(d) -> str:
 
 
 def _parse_search_date(raw: str):
-    """Парсим дату из строки поиска q.
-
-    Поддерживаем:
-      - 02.02.2026
-      - 02-02-2026
-      - 2026-02-02
-      - 02/02/2026
-
-    Возвращает date или None.
-    """
     s = (raw or "").strip()
     if not s:
         return None
@@ -61,9 +75,136 @@ def _parse_search_date(raw: str):
             return datetime.strptime(s, fmt).date()
         except ValueError:
             continue
-
     return None
 
+
+def _parse_iso_date(raw: str):
+    """
+    Парсим дату из <input type="date">: YYYY-MM-DD.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+DEFAULT_PARTY_ROLES = [
+    ActRole.TECH_CUSTOMER_CONTROL,
+    ActRole.BUILDER_REP,
+    ActRole.BUILDER_CONTROL,
+    ActRole.DESIGN_REP,
+    ActRole.CONTRACTOR_REP,
+]
+
+
+def _get_last_act_for_user_or_global(*, user, exclude_act_id: int | None = None) -> Act | None:
+    qs = Act.objects.all().order_by("-created_at", "-id")
+
+    if exclude_act_id is not None:
+        qs = qs.exclude(id=exclude_act_id)
+
+    if hasattr(Act, "created_by_id"):
+        qs = qs.filter(created_by=user)
+
+    return qs.first()
+
+
+@transaction.atomic
+def ensure_default_parties_for_act(*, act: Act, user) -> None:
+    if act.parties.exists():
+        return
+
+    prev = _get_last_act_for_user_or_global(user=user, exclude_act_id=act.id)
+
+    prev_parties = []
+    if prev:
+        prev_parties = list(
+            prev.parties.select_related("organization").order_by("position", "id")
+        )
+
+    prev_by_role: dict[str, ActParty] = {}
+    prev_other: list[ActParty] = []
+
+    for p in prev_parties:
+        if p.role == ActRole.OTHER_REP:
+            prev_other.append(p)
+        else:
+            prev_by_role[p.role] = p
+
+    pos = 1
+    to_create: list[ActParty] = []
+
+    for role in DEFAULT_PARTY_ROLES:
+        prev_p = prev_by_role.get(role)
+        to_create.append(
+            ActParty(
+                act=act,
+                role=role,
+                organization=getattr(prev_p, "organization", None),
+                is_enabled=getattr(prev_p, "is_enabled", True),
+                position=pos,
+                chosen_authorization=None,
+            )
+        )
+        pos += 1
+
+    if prev_other:
+        for op in prev_other:
+            to_create.append(
+                ActParty(
+                    act=act,
+                    role=ActRole.OTHER_REP,
+                    organization=op.organization,
+                    is_enabled=op.is_enabled,
+                    position=pos,
+                    chosen_authorization=None,
+                )
+            )
+            pos += 1
+    else:
+        to_create.append(
+            ActParty(
+                act=act,
+                role=ActRole.OTHER_REP,
+                organization=None,
+                is_enabled=True,
+                position=pos,
+                chosen_authorization=None,
+            )
+        )
+    ActParty.objects.bulk_create(to_create)
+
+
+
+def _act_parties_context(act: Act) -> dict:
+    return {
+        "act": act,
+        "resolved_parties": resolve_act_parties(act),
+        "organizations": list(_organizations_qs()),
+        "preview_date": None,
+    }
+
+
+def _act_parties_context_for_date(act: Act, date_override) -> dict:
+    """
+    Виртуальный резолв подписантов на дату (date_override) без сохранения в БД.
+    """
+    parties = list(act.parties.select_related("organization", "chosen_authorization").order_by("position", "id"))
+    resolved = [resolve_party(p, date_override) for p in parties]
+    return {
+        "act": act,
+        "resolved_parties": resolved,
+        "organizations": list(_organizations_qs()),
+        "preview_date": date_override,
+    }
+
+
+# -------------------------
+# list/detail
+# -------------------------
 
 class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     permission_required = "acts_app.view_act"
@@ -77,11 +218,6 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
         q = (self.request.GET.get("q") or "").strip()
         if q:
-            # filters: общий фильтр поиска
-            # - номер акта: number__icontains
-            # - дата акта: act_date == parsed_date
-            # - год: act_date__year == YYYY
-            # - проект: projects__<field>__icontains (подбираем поле динамически)
             filters = Q(number__icontains=q)
 
             parsed_date = _parse_search_date(q)
@@ -91,8 +227,6 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
             if q.isdigit() and len(q) == 4:
                 filters |= Q(act_date__year=int(q))
 
-            # Поиск по проекту (шифр/код/название).
-            # Важно: не хардкодим одно поле, чтобы не словить FieldError.
             if Project is not None:
                 project_fields = {
                     f.name
@@ -101,7 +235,6 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
                 }
 
                 proj_q = Q()
-                # candidates: вероятные названия поля шифра/кода/названия
                 for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
                     if fname in project_fields:
                         proj_q |= Q(**{f"projects__{fname}__icontains": q})
@@ -131,7 +264,14 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     slug_url_kwarg = "uuid"
 
     def get_queryset(self):
-        return Act.objects.prefetch_related("projects", "materials", "attachments", "appendix_lines")
+        return Act.objects.prefetch_related(
+            "projects",
+            "materials",
+            "attachments",
+            "appendix_lines",
+            "parties",
+            "signatory_snapshots",
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -142,13 +282,8 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
             label = (line.label or "").strip()
             sheets = int(line.sheets_count or 0)
 
-            row: dict = {
-                "label": label,
-                "sheets": sheets,
-                "children": [],
-            }
+            row: dict = {"label": label, "sheets": sheets, "children": []}
 
-            # --- 1) Реестр материалов: раскрываем состав ---
             src = getattr(line, "source_attachment", None)
             if src is not None and getattr(src, "type", None) == AttachmentType.MATERIALS_REGISTRY:
                 children = []
@@ -163,8 +298,7 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
                         child_label = f"{doc_name} от {_fmt_date(doc_date)}, {material_name}".strip().strip(",")
                     else:
-                        # ручной ввод
-                        doc_name = (mi.note or "").strip()  # note = Наименование документа
+                        doc_name = (mi.note or "").strip()
                         doc_no = (mi.manual_doc_no or "").strip()
                         doc_date = mi.manual_doc_date
                         material_name = (mi.manual_name or "").strip()
@@ -172,18 +306,12 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                         left = doc_name or doc_no or "—"
                         child_label = f"{left} от {_fmt_date(doc_date)}, {material_name}".strip().strip(",")
 
-                    children.append(
-                        {
-                            "label": child_label or "—",
-                            "sheets": int(mi.sheets_count or 0),
-                        }
-                    )
+                    children.append({"label": child_label or "—", "sheets": int(mi.sheets_count or 0)})
 
                 row["children"] = children
                 appendix_rows.append(row)
                 continue
 
-            # --- 2) Реестр документов соответствия (П-4): раскрываем состав ---
             if src is not None and hasattr(AttachmentType, "DOCS_REGISTRY"):
                 if getattr(src, "type", None) == AttachmentType.DOCS_REGISTRY:
                     exclude_types = [
@@ -205,7 +333,6 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                     appendix_rows.append(row)
                     continue
 
-            # --- 3) Старое поведение: "Материалы ..." разворачиваем в список строк (как было у тебя) ---
             if label == "Материалы (паспорта/сертификаты качества)":
                 for mi in act.materials.all():
                     if mi.passport_id and mi.passport:
@@ -219,7 +346,7 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                         date_str = _fmt_date(doc_date)
                         expanded_label = f"{doc_name} от {date_str}, {material_name}".strip().strip(",")
                     else:
-                        doc_name = (mi.note or "").strip()  # note = Наименование документа
+                        doc_name = (mi.note or "").strip()
                         doc_no = (mi.manual_doc_no or "").strip()
                         doc_date = mi.manual_doc_date
                         material_name = (mi.manual_name or "").strip()
@@ -228,27 +355,28 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                         expanded_label = f"{left} от {date_str}, {material_name}".strip().strip(",")
 
                     appendix_rows.append(
-                        {
-                            "label": expanded_label or "—",
-                            "sheets": int(mi.sheets_count),
-                            "children": [],
-                        }
-                    )
+                        {"label": expanded_label or "—", "sheets": int(mi.sheets_count), "children": []})
                 continue
 
-            # --- 4) Обычная строка ---
             appendix_rows.append(row)
 
         ctx["appendix_rows"] = [{"pos": i + 1, **r} for i, r in enumerate(appendix_rows)]
+
+        if act.status == ActStatus.FINAL and act.signatory_snapshots.exists():
+            ctx["signatories_source"] = "snapshot"
+            ctx["signatories"] = list(act.signatory_snapshots.order_by("position", "id"))
+        else:
+            ctx["signatories_source"] = "resolved"
+            ctx["resolved_parties"] = resolve_act_parties(act)
+
         return ctx
 
 
+# -------------------------
+# passports ajax
+# -------------------------
+
 class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """
-    Server-side DataTables JSON
-    GET params:
-      draw, start, length, search[value]
-    """
     permission_required = "acts_app.add_act"
 
     def get(self, request: HttpRequest) -> JsonResponse:
@@ -280,7 +408,6 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
 
         records_filtered = qs.count()
-
         qs = qs.order_by("-id")[start:start + length]
 
         data = []
@@ -312,6 +439,10 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
 
 
+# -------------------------
+# create/update
+# -------------------------
+
 class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "acts_app.add_act"
     template_name = "acts_app/act_form.html"
@@ -320,7 +451,6 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         projects_form = ActProjectsForm()
         act_form = ActForm()
 
-        # ActMaterialFormSet.extra = 0 -> на create показываем 1 пустую строку через initial
         material_fs = ActMaterialFormSet(prefix="mat", initial=[{}])
         attach_fs = ActAttachmentCreateFormSet(prefix="att", act_number="")
 
@@ -373,11 +503,17 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
 
         act = act_form.save()
+
+        if hasattr(act, "created_by_id") and not getattr(act, "created_by_id", None):
+            act.created_by = request.user
+            act.save(update_fields=["created_by"])
+
         act.projects.set(projects_form.cleaned_data["projects"])
+
+        ensure_default_parties_for_act(act=act, user=request.user)
 
         material_fs.instance = act
         attach_fs.instance = act
-
         material_fs.save()
         attach_fs.save()
 
@@ -387,7 +523,7 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         except AppendixBuilderError as e:
             messages.warning(request, f"Акт сохранён, но приложения не пересобраны: {e}")
 
-        return redirect("acts_app:act_detail", uuid=str(act.uuid))
+        return redirect("acts_app:act_update", uuid=str(act.uuid))
 
 
 class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -399,6 +535,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         act = self.get_object(uuid)
+        ensure_default_parties_for_act(act=act, user=request.user)
 
         projects_form = ActProjectsForm(initial={"projects": act.projects.all()})
         act_form = ActForm(instance=act)
@@ -424,12 +561,16 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "material_formset": material_fs,
                 "attachment_formset": attach_fs,
                 "mode": "update",
+                **_act_parties_context(act),
             },
         )
 
     @transaction.atomic
     def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
         act = self.get_object(uuid)
+        ensure_default_parties_for_act(act=act, user=request.user)
+
+        old_date = act.act_date
 
         projects_form = ActProjectsForm(request.POST)
         act_form = ActForm(request.POST, instance=act)
@@ -465,11 +606,15 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "material_formset": material_fs,
                     "attachment_formset": attach_fs,
                     "mode": "update",
+                    **_act_parties_context(act),
                 },
             )
 
         act = act_form.save()
         act.projects.set(projects_form.cleaned_data["projects"])
+
+        if act.act_date != old_date:
+            reset_choices_for_act_on_date_change(act)
 
         material_fs.save()
         attach_fs.save()
@@ -480,8 +625,254 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         except AppendixBuilderError as e:
             messages.warning(request, f"Изменения сохранены, но приложения не пересобраны: {e}")
 
+        return redirect("acts_app:act_update", uuid=str(act.uuid))
+
+
+# -------------------------
+# Parties (HTMX/AJAX endpoints)
+# -------------------------
+
+class ActPartiesTableView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+        ensure_default_parties_for_act(act=act, user=request.user)
+
+        return render(
+            request,
+            "acts_app/partials/act_parties_table.html",
+            _act_parties_context(act),
+        )
+
+
+class ActPartiesPreviewByDateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """
+    HTMX: виртуальный пересчёт подписантов по выбранной дате без сохранения акта.
+
+    GET params:
+      - date=YYYY-MM-DD  (из <input type="date">)
+    """
+    permission_required = "acts_app.change_act"
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+        ensure_default_parties_for_act(act=act, user=request.user)
+
+        date_param = request.GET.get("date")
+        date_override = _parse_iso_date(date_param)
+
+        # если дата невалидна — просто показываем как обычно (по сохранённой)
+        if not date_override:
+            return render(
+                request,
+                "acts_app/partials/act_parties_table.html",
+                _act_parties_context(act),
+            )
+
+        return render(
+            request,
+            "acts_app/partials/act_parties_table.html",
+            _act_parties_context_for_date(act, date_override),
+        )
+
+
+class ActPartyRowView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    def get(self, request: HttpRequest, party_uuid: str) -> HttpResponse:
+        party = get_object_or_404(ActParty, uuid=party_uuid)
+        resolved = resolve_party(party, party.act.act_date)
+
+        return render(
+            request,
+            "acts_app/partials/act_party_row.html",
+            {
+                "party": party,
+                "resolved": resolved,
+                "organizations": list(_organizations_qs()),
+            },
+        )
+
+
+class ActPartyToggleEnabledView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, party_uuid: str) -> HttpResponse:
+        party = get_object_or_404(ActParty, uuid=party_uuid)
+
+        key = f"is_enabled_{party_uuid}"
+        raw = (request.POST.get(key) or "").strip().lower()
+
+        # если чекбокс снят — браузер вообще не отправит key => считаем False
+        is_enabled = raw in {"1", "true", "yes", "on"}
+
+        party.is_enabled = is_enabled
+        if not is_enabled:
+            party.chosen_authorization = None
+        party.save(update_fields=["is_enabled", "chosen_authorization"])
+
+        resolved = resolve_party(party, party.act.act_date)
+        return render(
+            request,
+            "acts_app/partials/act_party_row.html",
+            {"party": party, "resolved": resolved, "organizations": list(_organizations_qs())},
+        )
+
+
+class ActPartySetOrganizationView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, party_uuid: str) -> HttpResponse:
+        party = get_object_or_404(ActParty, uuid=party_uuid)
+
+        key = f"organization_id_{party_uuid}"
+        org_id_raw = (request.POST.get(key) or "").strip()
+
+        org_id = int(org_id_raw) if org_id_raw.isdigit() else None
+
+        if org_id is None:
+            party.organization = None
+        else:
+            from orgs_app.models import Organization
+            party.organization = get_object_or_404(Organization, id=org_id)
+
+        party.chosen_authorization = None
+        party.save(update_fields=["organization", "chosen_authorization"])
+
+        resolved = resolve_party(party, party.act.act_date)
+        return render(
+            request,
+            "acts_app/partials/act_party_row.html",
+            {"party": party, "resolved": resolved, "organizations": list(_organizations_qs())},
+        )
+
+
+class ActPartyCandidatesView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    def get(self, request: HttpRequest, party_uuid: str) -> HttpResponse:
+        party = get_object_or_404(ActParty, uuid=party_uuid)
+        candidates = get_candidates_for_party(party, party.act.act_date)
+
+        return render(
+            request,
+            "acts_app/partials/act_party_candidates.html",
+            {"party": party, "candidates": candidates},
+        )
+
+
+class ActPartyChooseAuthorizationView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, party_uuid: str) -> HttpResponse:
+        party = get_object_or_404(ActParty, uuid=party_uuid)
+
+        auth_id_raw = (request.POST.get("authorization_id") or "").strip()
+        if not auth_id_raw.isdigit():
+            messages.error(request, "Не выбрано полномочие.")
+            resolved = resolve_party(party, party.act.act_date)
+            return render(
+                request,
+                "acts_app/partials/act_party_row.html",
+                {"party": party, "resolved": resolved, "organizations": list(_organizations_qs())},
+            )
+
+        try:
+            choose_authorization_for_party(party=party, authorization_id=int(auth_id_raw))
+        except Exception as e:
+            messages.error(request, str(e))
+
+        party.refresh_from_db()
+        resolved = resolve_party(party, party.act.act_date)
+        return render(
+            request,
+            "acts_app/partials/act_party_row.html",
+            {"party": party, "resolved": resolved, "organizations": list(_organizations_qs())},
+        )
+
+
+class ActPartyAddOtherView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+        ensure_default_parties_for_act(act=act, user=request.user)
+
+        max_pos = act.parties.aggregate(m=Max("position")).get("m") or 0
+        party = ActParty.objects.create(
+            act=act,
+            role=ActRole.OTHER_REP,
+            organization=None,
+            is_enabled=True,
+            position=int(max_pos) + 1,
+        )
+
+        resolved = resolve_party(party, act.act_date)
+        return render(
+            request,
+            "acts_app/partials/act_party_row.html",
+            {"party": party, "resolved": resolved, "organizations": list(_organizations_qs())},
+        )
+
+
+class ActPartyDeleteOtherView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, party_uuid: str) -> HttpResponse:
+        party = get_object_or_404(ActParty, uuid=party_uuid)
+
+        if party.role != ActRole.OTHER_REP:
+            messages.error(request, "Удалять можно только строки 'Иные лица'.")
+            return HttpResponse(status=400)
+
+        party.delete()
+        return HttpResponse("")
+
+
+# -------------------------
+# Finalize
+# -------------------------
+
+class ActFinalizeView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+        ensure_default_parties_for_act(act=act, user=request.user)
+
+        try:
+            validate_before_finalize(act)
+        except Exception as e:
+            messages.error(request, "Нельзя финализировать акт. Исправь блок подписантов.")
+            try:
+                from django.core.exceptions import ValidationError as DjangoValidationError
+                if isinstance(e, DjangoValidationError):
+                    for msg in e.messages:
+                        messages.error(request, msg)
+                else:
+                    messages.error(request, str(e))
+            except Exception:
+                messages.error(request, str(e))
+            return redirect("acts_app:act_update", uuid=str(act.uuid))
+
+        freeze_signatories_to_snapshots(act)
+        act.status = ActStatus.FINAL
+        act.save(update_fields=["status"])
+
+        messages.success(request, "Акт переведён в финальный. Подписанты зафиксированы.")
         return redirect("acts_app:act_detail", uuid=str(act.uuid))
 
+
+# -------------------------
+# rebuild appendix
+# -------------------------
 
 class ActRebuildAppendixView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "acts_app.change_act"
@@ -497,11 +888,11 @@ class ActRebuildAppendixView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return redirect("acts_app:act_detail", uuid=str(act.uuid))
 
 
+# -------------------------
+# passports labels
+# -------------------------
+
 class PassportsLabelsView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """
-    Для /edit/: отдать подписи для паспортов по списку id.
-    GET ?ids=1,2,3
-    """
     permission_required = "acts_app.change_act"
 
     def get(self, request: HttpRequest) -> JsonResponse:

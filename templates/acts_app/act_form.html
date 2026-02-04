@@ -1,3 +1,4 @@
+{# acts_app/templates/acts_app/act_form.html #}
 {% extends "base.html" %}
 {% load static %}
 
@@ -124,6 +125,12 @@
                                 {% if form.act_date.errors %}
                                     <div class="invalid-feedback d-block">{{ form.act_date.errors }}</div>
                                 {% endif %}
+                                {% if mode != "create" %}
+                                    <div class="form-text">
+                                        Подписанты рассчитываются по <strong>сохранённой</strong> дате акта.
+                                        После изменения даты нажми «Сохранить».
+                                    </div>
+                                {% endif %}
                             </div>
 
                             <div class="col-12">
@@ -167,6 +174,36 @@
                         </div>
                     </div>
                 </div>
+
+                {# --- ПОДПИСАНТЫ (только на update, т.к. на create ещё нет act.uuid) --- #}
+                {% if mode != "create" and act %}
+                    <script>
+                        (function () {
+                            const actDateInput = document.getElementById("id_act_date");
+                            const partiesBlock = document.getElementById("act-parties-block");
+                            if (!actDateInput || !partiesBlock) return;
+
+                            const previewUrlBase = "{% url 'acts_app:act_parties_preview_by_date' act.uuid %}";
+
+                            function refreshPartiesPreview() {
+                                const dateVal = (actDateInput.value || "").trim(); // YYYY-MM-DD
+                                const url = dateVal ? (previewUrlBase + "?date=" + encodeURIComponent(dateVal)) : previewUrlBase;
+
+                                // htmx.ajax: обновляем весь блок таблицы
+                                htmx.ajax("GET", url, {target: "#act-parties-block", swap: "outerHTML"});
+                            }
+
+                            // Пересчитываем при смене даты
+                            actDateInput.addEventListener("change", refreshPartiesPreview);
+                        })();
+                    </script>
+
+                    {% include "acts_app/partials/act_parties_table.html" %}
+                {% else %}
+                    <div class="alert alert-secondary">
+                        Блок подписантов появится после создания акта.
+                    </div>
+                {% endif %}
 
                 <!-- МАТЕРИАЛЫ -->
                 <div class="card mb-3">
@@ -266,7 +303,8 @@
                                                         <label class="form-check-label small ms-1">Удалить</label>
                                                     </div>
                                                 {% else %}
-                                                    <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-danger js-remove-row">
                                                         <i class="bi bi-x-lg"></i>
                                                     </button>
                                                 {% endif %}
@@ -462,10 +500,28 @@
                     </div>
                 </div>
 
-                <div class="d-flex flex-wrap gap-2">
+                <div class="d-flex flex-wrap gap-2 align-items-center">
                     <button class="btn btn-success" type="submit">
                         {% if mode == "create" %}Создать{% else %}Сохранить{% endif %}
                     </button>
+
+                    {% if mode != "create" and act %}
+                        <form method="post" action="{% url 'acts_app:act_finalize' act.uuid %}" class="d-inline">
+                            {% csrf_token %}
+                            <button
+                                    type="submit"
+                                    class="btn btn-primary"
+                                    {% if act.status == "FINAL" %}disabled{% endif %}
+                                    onclick="return confirm('Перевести акт в финальный? Подписанты будут зафиксированы.');"
+                            >
+                                Финализировать
+                            </button>
+                        </form>
+
+                        <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_detail' act.uuid %}">К
+                            деталям</a>
+                    {% endif %}
+
                     <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">Отмена</a>
                 </div>
             </div>
@@ -509,6 +565,16 @@
         </div>
     </div>
 
+    {# HTMX (нужен для блока подписантов) #}
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script>
+        // CSRF для HTMX (чтобы hx-post работал без 403)
+        document.body.addEventListener('htmx:configRequest', function (event) {
+            const token = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value;
+            if (token) event.detail.headers['X-CSRFToken'] = token;
+        });
+    </script>
+
     <!-- DataTables CDN (если у тебя уже подключено в base.html — можешь удалить эти строки) -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -516,8 +582,16 @@
     <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
 
     <style>
-        .soft-invalid { box-shadow: 0 0 0 .2rem rgba(220, 53, 69, .15); border-color: rgba(220, 53, 69, .6); }
-        .soft-hint { color: #dc3545; font-size: .85rem; margin-top: .25rem; }
+        .soft-invalid {
+            box-shadow: 0 0 0 .2rem rgba(220, 53, 69, .15);
+            border-color: rgba(220, 53, 69, .6);
+        }
+
+        .soft-hint {
+            color: #dc3545;
+            font-size: .85rem;
+            margin-top: .25rem;
+        }
     </style>
 
     <script>
@@ -774,8 +848,14 @@
                 softClearInvalid(title);
                 softClearInvalid(date);
 
-                if (!titleVal) { softMarkInvalid(title, "Укажи наименование документа"); ok = false; }
-                if (!dateVal)  { softMarkInvalid(date, "Укажи дату документа"); ok = false; }
+                if (!titleVal) {
+                    softMarkInvalid(title, "Укажи наименование документа");
+                    ok = false;
+                }
+                if (!dateVal) {
+                    softMarkInvalid(date, "Укажи дату документа");
+                    ok = false;
+                }
 
                 return ok;
             }
@@ -858,13 +938,13 @@
                 if (hidden) hidden.value = payload.id || "";
 
                 const inpMaterial = row.querySelector('input[name$="-manual_name"]');
-                const inpDocName  = row.querySelector('input[name$="-note"]');           // note = Наименование документа
-                const inpDocNo    = row.querySelector('input[name$="-manual_doc_no"]');  // Номер документа
-                const inpDocDate  = row.querySelector('input[name$="-manual_doc_date"]');
+                const inpDocName = row.querySelector('input[name$="-note"]');
+                const inpDocNo = row.querySelector('input[name$="-manual_doc_no"]');
+                const inpDocDate = row.querySelector('input[name$="-manual_doc_date"]');
 
                 if (inpMaterial) inpMaterial.value = payload.material || "";
-                if (inpDocName)  inpDocName.value  = payload.doc_name || "";
-                if (inpDocNo)    inpDocNo.value    = payload.doc_no || "";
+                if (inpDocName) inpDocName.value = payload.doc_name || "";
+                if (inpDocNo) inpDocNo.value = payload.doc_no || "";
 
                 let iso = payload.doc_date_iso || "";
                 if (!iso && payload.doc_date) iso = ddmmyyyyToIso(payload.doc_date);
@@ -926,14 +1006,12 @@
                 bsModal.show();
             }
 
-            // open modal by button inside row
             document.addEventListener("click", function (e) {
                 const btn = e.target.closest(".js-open-passport-modal");
                 if (!btn) return;
                 openPassportModal(btn.dataset.targetHiddenId);
             });
 
-            // clear passport link only (do not clear manual fields)
             document.addEventListener("click", function (e) {
                 const btn = e.target.closest(".js-clear-passport");
                 if (!btn) return;
@@ -943,7 +1021,6 @@
                 if (hidden) hidden.value = "";
             });
 
-            // pick passports -> fill current row + create more rows
             btnPickMany?.addEventListener("click", function () {
                 const picked = [];
                 document.querySelectorAll('#passportPickTable input.passport-pick-cb:checked').forEach(cb => {
@@ -992,7 +1069,6 @@
                 document.querySelectorAll('#passportPickTable input.passport-pick-cb').forEach(cb => cb.checked = false);
             });
 
-            // new top button: add row + open modal immediately
             document.getElementById("add-material-from-db")?.addEventListener("click", function () {
                 const row = addRow("materials-table", "material-empty-form", "mat");
                 if (!row) return;

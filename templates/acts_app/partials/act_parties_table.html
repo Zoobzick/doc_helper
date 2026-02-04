@@ -1,0 +1,71 @@
+{% load static %}
+
+<div id="act-parties-block" class="card mt-3">
+  <div class="card-body pt-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <div>
+        <h5 class="card-title mb-0">Подписанты на дату акта</h5>
+
+        {% if preview_date %}
+          <small class="text-muted">
+            Дата (предпросмотр): <strong>{{ preview_date|date:"d.m.Y" }}</strong>
+            <span class="text-warning ms-2">• не сохранено</span>
+          </small>
+        {% else %}
+          <small class="text-muted">
+            Дата акта: <strong>{{ act.act_date|date:"d.m.Y" }}</strong>
+          </small>
+        {% endif %}
+      </div>
+
+      <div class="d-flex gap-2">
+        <button
+          type="button"
+          class="btn btn-outline-primary btn-sm"
+          hx-post="{% url 'acts_app:act_party_add_other' act.uuid %}"
+          hx-target="#act-parties-rows"
+          hx-swap="beforeend"
+        >
+          <i class="bi bi-plus-lg me-1"></i> Добавить "иные лица"
+        </button>
+
+        <button
+          type="button"
+          class="btn btn-outline-secondary btn-sm"
+          hx-get="{% url 'acts_app:act_parties_table' act.uuid %}"
+          hx-target="#act-parties-block"
+          hx-swap="outerHTML"
+        >
+          <i class="bi bi-arrow-repeat me-1"></i> Обновить
+        </button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr class="text-muted">
+            <th style="width: 56px;">Вкл.</th>
+            <th style="width: 28%;">Роль</th>
+            <th style="width: 28%;">Организация</th>
+            <th style="width: 22%;">Приказ</th>
+            <th style="width: 22%;">Персона</th>
+            <th style="width: 64px;"></th>
+          </tr>
+        </thead>
+
+        <tbody id="act-parties-rows">
+          {% for resolved in resolved_parties %}
+            {% include "acts_app/partials/act_party_row.html" with party=resolved.party resolved=resolved organizations=organizations %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-2">
+      <small class="text-muted">
+        ⚠ Если по строке найдено несколько полномочий на дату — требуется ручной выбор.
+      </small>
+    </div>
+  </div>
+</div>

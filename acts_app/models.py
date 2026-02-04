@@ -9,6 +9,9 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
+from directive_app.models import ActRole  # единый источник ролей
+from directive_app.models import Authorization  # FK для ручного выбора (override)
+
 
 class ActStatus(models.TextChoices):
     DRAFT = "DRAFT", "Черновик"
@@ -89,6 +92,147 @@ class Act(models.Model):
         return f"Акт №{self.number} от {self.act_date:%d.%m.%Y}"
 
 
+class ActParty(models.Model):
+    """
+    Строка таблицы "Подписанты" в акте (то, что выбирает пользователь):
+    [✓] Роль | Организация | Приказ | Персона
+
+    - Пользователь задаёт: role + organization + is_enabled
+    - Система резолвит Authorization на дату act.act_date
+    - При конфликте (несколько Authorization) пользователь обязан выбрать chosen_authorization
+    """
+
+    uuid = models.UUIDField("UUID", default=uuid.uuid4, editable=False, unique=True, db_index=True)
+
+    act = models.ForeignKey(
+        "acts_app.Act",
+        on_delete=models.CASCADE,
+        related_name="parties",
+        verbose_name="Акт",
+    )
+
+    role = models.CharField(
+        "Роль",
+        max_length=32,
+        choices=ActRole.choices,
+        db_index=True,
+    )
+
+    organization = models.ForeignKey(
+        "orgs_app.Organization",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="act_parties",
+        verbose_name="Организация",
+        help_text="Для выключенной роли можно оставить пустым.",
+    )
+
+    is_enabled = models.BooleanField(
+        "Учитывать в акте",
+        default=True,
+        db_index=True,
+        help_text="Если выключено — роль не печатается и не валидируется при финализации.",
+    )
+
+    position = models.PositiveIntegerField(
+        "Позиция",
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text="Порядок строк (важно для нескольких OTHER_REP).",
+    )
+
+    chosen_authorization = models.ForeignKey(
+        Authorization,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chosen_in_act_parties",
+        verbose_name="Выбранное полномочие (ручной выбор при конфликте)",
+        help_text="Заполняется ТОЛЬКО когда на дату акта найдено несколько полномочий.",
+    )
+
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Сторона/роль акта"
+        verbose_name_plural = "Стороны/роли акта"
+        ordering = ("position", "id")
+        indexes = [
+            models.Index(fields=["act", "role"], name="actparty_act_role_idx"),
+            models.Index(fields=["act", "is_enabled"], name="actparty_act_enabled_idx"),
+        ]
+        constraints = [
+            # Уникальность ролей в акте, кроме OTHER_REP (их может быть несколько)
+            models.UniqueConstraint(
+                fields=["act", "role"],
+                condition=~Q(role=ActRole.OTHER_REP),
+                name="uniq_actparty_role_except_other",
+            ),
+            models.UniqueConstraint(
+                fields=["act", "position"],
+                name="uniq_actparty_position",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        org = self.organization.short_name if self.organization_id else "—"
+        return f"{self.get_role_display()} → {org}"
+
+
+class ActSignatorySnapshot(models.Model):
+    """
+    Снапшот подписанта на момент FINAL.
+    Печать должна опираться на эти данные, чтобы история не "плыла".
+    """
+
+    uuid = models.UUIDField("UUID", default=uuid.uuid4, editable=False, unique=True, db_index=True)
+
+    act = models.ForeignKey(
+        "acts_app.Act",
+        on_delete=models.CASCADE,
+        related_name="signatory_snapshots",
+        verbose_name="Акт",
+    )
+
+    role = models.CharField(
+        "Роль",
+        max_length=32,
+        choices=ActRole.choices,
+        db_index=True,
+    )
+
+    position = models.PositiveIntegerField(
+        "Позиция",
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text="Порядок строк в печати (важно для нескольких OTHER_REP).",
+    )
+
+    # Для трассировки (не обязательны для печати)
+    source_authorization_uuid = models.UUIDField("UUID полномочия (источник)", null=True, blank=True, db_index=True)
+    source_directive_uuid = models.UUIDField("UUID документа-основания (источник)", null=True, blank=True, db_index=True)
+
+    # То, что реально печатаем (строками)
+    organization_name = models.CharField("Организация (как печатаем)", max_length=512)
+    person_fio = models.CharField("Подписант (ФИО)", max_length=255)
+    position_text = models.CharField("Должность", max_length=255, blank=True, default="")
+    directive_repr = models.CharField("Основание (как печатаем)", max_length=512)
+
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Снапшот подписанта"
+        verbose_name_plural = "Снапшоты подписантов"
+        ordering = ("position", "id")
+        indexes = [
+            models.Index(fields=["act", "role"], name="actsnap_act_role_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_role_display()}: {self.person_fio}"
+
+
 class ActMaterialItem(models.Model):
     """
     Материалы:
@@ -97,7 +241,6 @@ class ActMaterialItem(models.Model):
     """
     act = models.ForeignKey("acts_app.Act", on_delete=models.CASCADE, related_name="materials", verbose_name="Акт")
 
-    # порядок для печати/стабильности, но в UI мы не показываем — проставляем автоматически
     position = models.PositiveIntegerField("Позиция", validators=[MinValueValidator(1)], default=1)
 
     passport = models.ForeignKey(
@@ -109,7 +252,6 @@ class ActMaterialItem(models.Model):
         verbose_name="Паспорт (из БД)",
     )
 
-    # ручной ввод
     manual_name = models.CharField("Наименование материала (ручной ввод)", max_length=255, blank=True, default="")
     manual_doc_no = models.CharField("Наименование/№ документа (ручной ввод)", max_length=255, blank=True, default="")
     manual_doc_date = models.DateField("Дата документа (ручной ввод)", null=True, blank=True)
@@ -150,7 +292,6 @@ class ActAttachment(models.Model):
 
     act = models.ForeignKey("acts_app.Act", on_delete=models.CASCADE, related_name="attachments", verbose_name="Акт")
 
-    # тип оставляем (для AppendixBuilder), но пользователю не показываем
     type = models.CharField("Тип документа", max_length=32, choices=AttachmentType.choices, db_index=True)
 
     title = models.CharField("Наименование", max_length=255, blank=True, default="")
