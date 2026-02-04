@@ -9,6 +9,23 @@
 {% block content %}
     <div class="pagetitle">
         <h1>{% if mode == "create" %}Создать акт{% else %}Редактировать акт{% endif %}</h1>
+
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{% url 'authapp:home' %}">Главная</a>
+                </li>
+                <li class="breadcrumb-item">
+                    <a href="{% url 'acts_app:act_list' %}">Акты</a>
+                </li>
+
+                {% if mode == "create" %}
+                    <li class="breadcrumb-item active">Создание</li>
+                {% else %}
+                    <li class="breadcrumb-item active">Акт №{{ act.number }}</li>
+                {% endif %}
+            </ol>
+        </nav>
     </div>
 
     <section class="section">
@@ -27,13 +44,11 @@
                 <div class="card-body pt-3">
                     <div class="d-flex flex-wrap gap-2 justify-content-between align-items-start">
                         <div>
-                            <h5 class="card-title mb-2">Выбор проектов</h5>
-                            <div class="text-muted small">
-                                Начни вводить шифр/название — список отфильтруется. Выбор — галочками.
-                            </div>
+                            <h5 class="card-title mb-0">Выбор проектов</h5>
                         </div>
 
-                        <div class="text-end">
+                        {# единый “инстанс” выбранных проектов (будем переносить в rest-form) #}
+                        <div id="selected-projects-box" class="text-end">
                             <div class="small text-muted">Шифры проектов:</div>
                             <div class="fw-semibold" id="selected-projects-label">—</div>
                         </div>
@@ -47,7 +62,9 @@
                         <div class="col-12 col-lg-6">
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                <input type="text" class="form-control" id="project-search"
+                                <input type="text"
+                                       class="form-control"
+                                       id="project-search"
                                        placeholder="Поиск проекта…">
                             </div>
                         </div>
@@ -55,44 +72,49 @@
                         <div class="col-12 col-lg-6">
                             <div class="d-flex flex-wrap gap-2 justify-content-lg-end align-items-center">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-clear-projects">
-                                    Очистить выбор
+                                    Очистить
                                 </button>
-                                <button type="button" class="btn btn-primary" id="btn-continue">
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-continue">
                                     Продолжить
                                 </button>
-                                <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">Назад</a>
+                                <a class="btn btn-outline-secondary btn-sm" href="{% url 'acts_app:act_list' %}">
+                                    Назад
+                                </a>
                             </div>
                         </div>
                     </div>
 
-                    <div class="mt-3" id="selected-project-chips"></div>
-
-                    <div id="projects-hidden-inputs">
-                        {{ projects_form.projects }}
+                    <div class="mt-3" id="selected-project-chips">
+                        {% if selected_projects %}
+                            {% for p in selected_projects %}
+                                <span class="badge bg-light text-dark border me-1 mb-1 project-chip"
+                                      data-id="{{ p.id }}"
+                                      data-label="{{ p.label }}"
+                                      style="cursor:pointer;">
+                                    {{ p.label }} ×
+                                </span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted small">Проекты не выбраны.</span>
+                        {% endif %}
                     </div>
 
-                    <hr class="my-3">
+                    {# скрытые inputs, которые реально отправляются в POST #}
+                    <div id="projects-hidden-inputs">
+                        {% for p in selected_projects %}
+                            <input type="hidden" name="projects" value="{{ p.id }}">
+                        {% endfor %}
+                    </div>
 
-                    <div class="border rounded p-2" style="max-height: 360px; overflow:auto;">
-                        <div class="row g-2" id="projects-grid">
-                            {% for p in projects_form.fields.projects.queryset %}
-                                <div class="col-12 col-md-6 col-xl-4 project-item"
-                                     data-text="{{ p|stringformat:'s'|lower }}">
-                                    <label class="d-flex gap-2 align-items-start border rounded p-2 w-100">
-                                        <input class="form-check-input mt-1 project-checkbox"
-                                               type="checkbox"
-                                               value="{{ p.id }}"
-                                               data-label="{{ p|stringformat:'s' }}">
-                                        <div>
-                                            <div class="fw-semibold">{{ p }}</div>
-                                            <div class="text-muted small">ID: {{ p.id }}</div>
-                                        </div>
-                                    </label>
-                                </div>
-                            {% endfor %}
+                    <div class="mt-3 border rounded p-2" style="max-height: 360px; overflow:auto;">
+                        <div class="row g-2" id="projects-grid"></div>
+
+                        <div class="text-muted small mt-2" id="projects-loading" style="display:none;">
+                            Загрузка…
                         </div>
+
                         <div class="text-muted small mt-2" id="projects-empty" style="display:none;">
-                            Ничего не найдено по фильтру.
+                            Ничего не найдено.
                         </div>
                     </div>
                 </div>
@@ -100,61 +122,61 @@
 
             <!-- ОСТАЛЬНАЯ ФОРМА -->
             <div id="rest-form" style="display:none;">
-                <div class="alert alert-info">
-                    <div class="fw-semibold mb-1">Шифры проектов:</div>
-                    <div id="selected-projects-badge">—</div>
-                </div>
+
+                {# сюда переносим единственный блок “Шифры проектов” #}
+                <div class="mb-3" id="selected-projects-box-placeholder"></div>
 
                 <!-- ОСНОВНОЕ -->
                 <div class="card mb-3">
                     <div class="card-body pt-3">
                         <h5 class="card-title mb-3">Основное</h5>
 
-                        <div class="row g-3">
-                            <div class="col-6 col-lg-4">
-                                <label class="form-label">{{ form.number.label }}</label>
-                                {{ form.number }}
-                                {% if form.number.errors %}
-                                    <div class="invalid-feedback d-block">{{ form.number.errors }}</div>
-                                {% endif %}
-                            </div>
-
-                            <div class="col-6 col-lg-4">
-                                <label class="form-label">{{ form.act_date.label }}</label>
-                                {{ form.act_date }}
-                                {% if form.act_date.errors %}
-                                    <div class="invalid-feedback d-block">{{ form.act_date.errors }}</div>
-                                {% endif %}
-                                {% if mode != "create" %}
-                                    <div class="form-text">
-                                        Подписанты рассчитываются по <strong>сохранённой</strong> дате акта.
-                                        После изменения даты нажми «Сохранить».
-                                    </div>
-                                {% endif %}
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-label">{{ form.work_name.label }}</label>
-                                {{ form.work_name }}
-                                {% if form.work_name.errors %}
-                                    <div class="invalid-feedback d-block">{{ form.work_name.errors }}</div>
-                                {% endif %}
-                            </div>
-
-                            <div class="col-6 col-lg-3">
-                                <label class="form-label">{{ form.work_start_date.label }}</label>
-                                {{ form.work_start_date }}
-                            </div>
-
-                            <div class="col-6 col-lg-3">
-                                <label class="form-label">{{ form.work_end_date.label }}</label>
-                                {{ form.work_end_date }}
-                            </div>
-
+                        <div class="row g-3 align-items-start">
                             <div class="col-12 col-lg-6">
-                                <label class="form-label">{{ form.copies_count.label }}</label>
-                                {{ form.copies_count }}
-                                <div class="form-text">По умолчанию 3.</div>
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="form-label">{{ form.number.label }}</label>
+                                        {{ form.number }}
+                                        {% if form.number.errors %}
+                                            <div class="invalid-feedback d-block">{{ form.number.errors }}</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="col-6">
+                                        <label class="form-label">{{ form.act_date.label }}</label>
+                                        {{ form.act_date }}
+                                        {% if form.act_date.errors %}
+                                            <div class="invalid-feedback d-block">{{ form.act_date.errors }}</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="col-12">
+                                        <label class="form-label">{{ form.work_name.label }}</label>
+                                        {{ form.work_name }}
+                                        {% if form.work_name.errors %}
+                                            <div class="invalid-feedback d-block">{{ form.work_name.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {# В 1 столбец: дата начала / дата окончания / экземпляры #}
+                            <div class="col-12 col-lg-3">
+                                <div class="mb-2">
+                                    <label class="form-label">{{ form.work_start_date.label }}</label>
+                                    {{ form.work_start_date }}
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label">{{ form.work_end_date.label }}</label>
+                                    {{ form.work_end_date }}
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label">{{ form.copies_count.label }}</label>
+                                    {{ form.copies_count }}
+                                    <div class="form-text">По умолчанию 3.</div>
+                                </div>
                             </div>
 
                             <div class="col-12">
@@ -166,44 +188,17 @@
                                 <label class="form-label">{{ form.extra_info_text.label }}</label>
                                 {{ form.extra_info_text }}
                             </div>
-
-                            <div class="col-12 col-lg-4">
-                                <label class="form-label">{{ form.status.label }}</label>
-                                {{ form.status }}
+                            <div class="col-12">
+                                <label class="form-label">{{ form.work_norms_text.label }}</label>
+                                {{ form.work_norms_text }}
+                                {% if form.work_norms_text.errors %}
+                                    <div class="invalid-feedback d-block">{{ form.work_norms_text.errors }}</div>
+                                {% endif %}
                             </div>
+
                         </div>
                     </div>
                 </div>
-
-                {# --- ПОДПИСАНТЫ (только на update, т.к. на create ещё нет act.uuid) --- #}
-                {% if mode != "create" and act %}
-                    <script>
-                        (function () {
-                            const actDateInput = document.getElementById("id_act_date");
-                            const partiesBlock = document.getElementById("act-parties-block");
-                            if (!actDateInput || !partiesBlock) return;
-
-                            const previewUrlBase = "{% url 'acts_app:act_parties_preview_by_date' act.uuid %}";
-
-                            function refreshPartiesPreview() {
-                                const dateVal = (actDateInput.value || "").trim(); // YYYY-MM-DD
-                                const url = dateVal ? (previewUrlBase + "?date=" + encodeURIComponent(dateVal)) : previewUrlBase;
-
-                                // htmx.ajax: обновляем весь блок таблицы
-                                htmx.ajax("GET", url, {target: "#act-parties-block", swap: "outerHTML"});
-                            }
-
-                            // Пересчитываем при смене даты
-                            actDateInput.addEventListener("change", refreshPartiesPreview);
-                        })();
-                    </script>
-
-                    {% include "acts_app/partials/act_parties_table.html" %}
-                {% else %}
-                    <div class="alert alert-secondary">
-                        Блок подписантов появится после создания акта.
-                    </div>
-                {% endif %}
 
                 <!-- МАТЕРИАЛЫ -->
                 <div class="card mb-3">
@@ -389,95 +384,64 @@
                                 </tr>
                                 </thead>
                                 <tbody>
-                                {% if attachment_formset.forms %}
-                                    {% for f in attachment_formset.forms %}
-                                        <tr class="attachment-row {% if forloop.first %}scheme-row{% endif %}">
-                                            <td>
-                                                {% if forloop.first %}
-                                                    <input type="text" class="form-control" value="исполнительная схема"
-                                                           readonly>
-                                                    {{ f.title.as_hidden }}
-                                                {% else %}
-                                                    {{ f.title }}
-                                                {% endif %}
-                                            </td>
-
-                                            <td>
-                                                {% if forloop.first %}
-                                                    <input type="text" class="form-control" id="scheme-doc-no" value=""
-                                                           readonly>
-                                                    {{ f.doc_no.as_hidden }}
-                                                {% else %}
-                                                    {{ f.doc_no }}
-                                                {% endif %}
-                                            </td>
-
-                                            <td>
-                                                {{ f.doc_date }}
-                                                {% if f.doc_date.errors %}
-                                                    <div class="invalid-feedback d-block">{{ f.doc_date.errors }}</div>
-                                                {% endif %}
-                                            </td>
-
-                                            <td>
-                                                {{ f.sheets_count }}
-                                                {% if f.sheets_count.errors %}
-                                                    <div class="invalid-feedback d-block">{{ f.sheets_count.errors }}</div>
-                                                {% endif %}
-                                            </td>
-
-                                            <td>{{ f.file }}</td>
-
-                                            <td class="text-end">
-                                                {% if forloop.first %}
-                                                    <span class="text-muted small">обяз.</span>
-                                                {% else %}
-                                                    {% if f.instance.pk %}
-                                                        <div class="form-check">
-                                                            {{ f.DELETE }}
-                                                            <label class="form-check-label small">Удалить</label>
-                                                        </div>
-                                                    {% else %}
-                                                        <button type="button"
-                                                                class="btn btn-sm btn-outline-danger js-remove-row">
-                                                            <i class="bi bi-x-lg"></i>
-                                                        </button>
-                                                    {% endif %}
-                                                {% endif %}
-                                                {{ f.id }}
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                {% else %}
-                                    <tr class="attachment-row scheme-row">
+                                {% for f in attachment_formset.forms %}
+                                    <tr class="attachment-row {% if forloop.first %}scheme-row{% endif %}">
                                         <td>
-                                            <input type="text" class="form-control" value="Исполнительная схема"
-                                                   readonly>
-                                            <input type="hidden" name="att-0-title" id="id_att-0-title"
-                                                   value="Исполнительная схема">
+                                            {% if forloop.first %}
+                                                <input type="text" class="form-control" value="исполнительная схема"
+                                                       readonly>
+                                                {{ f.title.as_hidden }}
+                                            {% else %}
+                                                {{ f.title }}
+                                            {% endif %}
                                         </td>
+
                                         <td>
-                                            <input type="text" class="form-control" id="scheme-doc-no" value=""
-                                                   readonly>
-                                            <input type="hidden" name="att-0-doc_no" id="id_att-0-doc_no" value="">
+                                            {% if forloop.first %}
+                                                <input type="text" class="form-control" id="scheme-doc-no" value=""
+                                                       readonly>
+                                                {{ f.doc_no.as_hidden }}
+                                            {% else %}
+                                                {{ f.doc_no }}
+                                            {% endif %}
                                         </td>
+
                                         <td>
-                                            <input type="date" class="form-control" name="att-0-doc_date"
-                                                   id="id_att-0-doc_date">
+                                            {{ f.doc_date }}
+                                            {% if f.doc_date.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.doc_date.errors }}</div>
+                                            {% endif %}
                                         </td>
+
                                         <td>
-                                            <input type="number" class="form-control" name="att-0-sheets_count"
-                                                   id="id_att-0-sheets_count" min="1" value="1">
+                                            {{ f.sheets_count }}
+                                            {% if f.sheets_count.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.sheets_count.errors }}</div>
+                                            {% endif %}
                                         </td>
-                                        <td>
-                                            <input type="file" class="form-control" name="att-0-file"
-                                                   id="id_att-0-file">
-                                        </td>
+
+                                        <td>{{ f.file }}</td>
+
                                         <td class="text-end">
-                                            <span class="text-muted small">обяз.</span>
+                                            {% if forloop.first %}
+                                                <span class="text-muted small">обяз.</span>
+                                            {% else %}
+                                                {% if f.instance.pk %}
+                                                    <div class="form-check">
+                                                        {{ f.DELETE }}
+                                                        <label class="form-check-label small">Удалить</label>
+                                                    </div>
+                                                {% else %}
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-danger js-remove-row">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                {% endif %}
+                                            {% endif %}
+                                            {{ f.id }}
                                         </td>
                                     </tr>
-                                {% endif %}
+                                {% endfor %}
                                 </tbody>
                             </table>
                         </div>
@@ -500,26 +464,44 @@
                     </div>
                 </div>
 
+                {# --- ПОДПИСАНТЫ (якорь) --- #}
+                <div id="act-parties-block">
+                    {% if mode != "create" and act %}
+                        <script>
+                            (function () {
+                                const actDateInput = document.getElementById("id_act_date");
+                                const partiesBlock = document.getElementById("act-parties-block");
+                                if (!actDateInput || !partiesBlock) return;
+
+                                const previewUrlBase = "{% url 'acts_app:act_parties_preview_by_date' act.uuid %}";
+
+                                function refreshPartiesPreview() {
+                                    const dateVal = (actDateInput.value || "").trim(); // YYYY-MM-DD
+                                    const url = dateVal ? (previewUrlBase + "?date=" + encodeURIComponent(dateVal)) : previewUrlBase;
+                                    htmx.ajax("GET", url, {target: "#act-parties-block", swap: "outerHTML"});
+                                }
+
+                                actDateInput.addEventListener("change", refreshPartiesPreview);
+                            })();
+                        </script>
+
+                        {% include "acts_app/partials/act_parties_table.html" %}
+                    {% else %}
+                        <div class="alert alert-secondary">
+                            Блок подписантов появится после создания акта.
+                        </div>
+                    {% endif %}
+                </div>
+
                 <div class="d-flex flex-wrap gap-2 align-items-center">
                     <button class="btn btn-success" type="submit">
                         {% if mode == "create" %}Создать{% else %}Сохранить{% endif %}
                     </button>
 
                     {% if mode != "create" and act %}
-                        <form method="post" action="{% url 'acts_app:act_finalize' act.uuid %}" class="d-inline">
-                            {% csrf_token %}
-                            <button
-                                    type="submit"
-                                    class="btn btn-primary"
-                                    {% if act.status == "FINAL" %}disabled{% endif %}
-                                    onclick="return confirm('Перевести акт в финальный? Подписанты будут зафиксированы.');"
-                            >
-                                Финализировать
-                            </button>
-                        </form>
-
-                        <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_detail' act.uuid %}">К
-                            деталям</a>
+                        <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_detail' act.uuid %}">
+                            К деталям
+                        </a>
                     {% endif %}
 
                     <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">Отмена</a>
@@ -565,10 +547,33 @@
         </div>
     </div>
 
+    {# --- Modal: choose authorization --- #}
+    <div class="modal fade" id="authChooseModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Выбор полномочия</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+
+                <div class="modal-body" id="authChooseModalBody">
+                    <div class="text-muted small">Загрузка…</div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        Закрыть
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
     {# HTMX (нужен для блока подписантов) #}
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script>
-        // CSRF для HTMX (чтобы hx-post работал без 403)
         document.body.addEventListener('htmx:configRequest', function (event) {
             const token = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value;
             if (token) event.detail.headers['X-CSRFToken'] = token;
@@ -594,127 +599,232 @@
         }
     </style>
 
+    <style>
+        /* чипы выбранных проектов */
+        .project-chip {
+            font-size: 0.85rem;
+            white-space: nowrap;
+            max-width: 100%;
+        }
+
+        /* шифры в карточках выдачи */
+        .project-card-title {
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+
+
     <script>
         (function () {
-            // ---------- PROJECTS UI ----------
             const restForm = document.getElementById("rest-form");
-            const labelTop = document.getElementById("selected-projects-label");
-            const labelBadge = document.getElementById("selected-projects-badge");
 
+            const searchUrl = "{% url 'acts_app:projects_search' %}";
             const searchInput = document.getElementById("project-search");
             const grid = document.getElementById("projects-grid");
             const empty = document.getElementById("projects-empty");
+            const loading = document.getElementById("projects-loading");
+
             const chipsBox = document.getElementById("selected-project-chips");
             const hiddenBox = document.getElementById("projects-hidden-inputs");
+
             const btnContinue = document.getElementById("btn-continue");
             const btnClear = document.getElementById("btn-clear-projects");
 
-            function getCheckedProjects() {
-                return Array.from(document.querySelectorAll(".project-checkbox:checked"));
+            const selectedBox = document.getElementById("selected-projects-box");
+            const selectedBoxPlaceholder = document.getElementById("selected-projects-box-placeholder");
+            const labelTop = document.getElementById("selected-projects-label");
+
+            // id -> label (главное: сохраняем подписи, чтобы чипы не превращались в "×")
+            const selectedLabels = new Map();
+
+            function getSelectedIds() {
+                return new Set(
+                    Array.from(hiddenBox.querySelectorAll('input[name="projects"]'))
+                        .map(i => String(i.value).trim())
+                        .filter(Boolean)
+                );
             }
 
-            function selectedProjectsText() {
-                const checked = getCheckedProjects();
-                if (!checked.length) return "—";
-                return checked.map(cb => (cb.dataset.label || "").trim()).filter(Boolean).join(", ");
-            }
-
-            function refreshProjectLabels() {
-                const txt = selectedProjectsText();
-                if (labelTop) labelTop.textContent = txt;
-                if (labelBadge) labelBadge.textContent = txt;
-            }
-
-            function syncProjectHiddenInputs() {
-                hiddenBox?.querySelectorAll('input[name="projects"]').forEach(n => n.remove());
-                if (!hiddenBox) return;
-                for (const cb of getCheckedProjects()) {
+            function setSelectedIds(idsSet) {
+                hiddenBox.querySelectorAll('input[name="projects"]').forEach(n => n.remove());
+                for (const id of idsSet) {
                     const inp = document.createElement("input");
                     inp.type = "hidden";
                     inp.name = "projects";
-                    inp.value = cb.value;
+                    inp.value = String(id);
                     hiddenBox.appendChild(inp);
                 }
             }
 
-            function renderProjectChips() {
-                if (!chipsBox) return;
+            function refreshTopLabel() {
+                const ids = Array.from(getSelectedIds());
+                const labels = ids.map(id => selectedLabels.get(id)).filter(Boolean);
+                labelTop.textContent = labels.length ? labels.join(", ") : "—";
+            }
+
+            function renderChips() {
+                const selected = getSelectedIds();
                 chipsBox.innerHTML = "";
-                const checked = getCheckedProjects();
-                if (!checked.length) {
+
+                if (!selected.size) {
                     chipsBox.innerHTML = '<span class="text-muted small">Проекты не выбраны.</span>';
+                    refreshTopLabel();
                     return;
                 }
-                for (const cb of checked) {
+
+                for (const id of selected) {
+                    const label = selectedLabels.get(id) || ("Проект #" + id);
+
                     const chip = document.createElement("span");
-                    chip.className = "badge bg-light text-dark border me-1 mb-1";
+                    chip.className = "badge bg-light text-dark border me-1 mb-1 project-chip";
                     chip.style.cursor = "pointer";
-                    chip.textContent = (cb.dataset.label || "").trim() + " ×";
+                    chip.dataset.id = id;
+                    chip.dataset.label = label;
+                    chip.textContent = label + " ×";
+
                     chip.addEventListener("click", () => {
-                        cb.checked = false;
-                        refreshProjectsAll();
+                        const s = getSelectedIds();
+                        s.delete(id);
+                        setSelectedIds(s);
+
+                        const cb = document.querySelector('.project-checkbox[value="' + CSS.escape(id) + '"]');
+                        if (cb) cb.checked = false;
+
+                        renderChips();
                     });
+
                     chipsBox.appendChild(chip);
                 }
-            }
 
-            function refreshProjectsAll() {
-                syncProjectHiddenInputs();
-                renderProjectChips();
-                refreshProjectLabels();
-            }
-
-            function applyProjectFilter() {
-                if (!grid || !empty) return;
-                const q = (searchInput?.value || "").trim().toLowerCase();
-                let shown = 0;
-                grid.querySelectorAll(".project-item").forEach(el => {
-                    const text = (el.getAttribute("data-text") || "");
-                    const ok = !q || text.includes(q);
-                    el.style.display = ok ? "" : "none";
-                    if (ok) shown += 1;
-                });
-                empty.style.display = shown ? "none" : "";
-            }
-
-            function initProjectsFromHidden() {
-                if (!hiddenBox) return;
-                const current = new Set(
-                    Array.from(hiddenBox.querySelectorAll('input[name="projects"]')).map(i => i.value)
-                );
-                document.querySelectorAll(".project-checkbox").forEach(cb => {
-                    if (current.has(cb.value)) cb.checked = true;
-                });
+                refreshTopLabel();
             }
 
             function canOpenRest() {
-                return getCheckedProjects().length > 0;
+                return getSelectedIds().size > 0;
             }
 
             function openRestIfPossible() {
-                refreshProjectsAll();
-                if (canOpenRest()) {
-                    restForm.style.display = "";
-                    restForm.scrollIntoView({behavior: "smooth", block: "start"});
+                if (!canOpenRest()) return;
+
+                if (selectedBox && selectedBoxPlaceholder && selectedBox.parentElement !== selectedBoxPlaceholder) {
+                    selectedBoxPlaceholder.appendChild(selectedBox);
+                }
+
+                restForm.style.display = "";
+                restForm.scrollIntoView({behavior: "smooth", block: "start"});
+            }
+
+            function renderResults(results) {
+                const selected = getSelectedIds();
+                grid.innerHTML = "";
+
+                let shown = 0;
+
+                for (const r of (results || [])) {
+                    const id = String(r.id);
+                    const label = String(r.label || ("Проект #" + id));
+
+                    // обновляем кеш подписи
+                    selectedLabels.set(id, label);
+
+                    const col = document.createElement("div");
+                    col.className = "col-12 col-md-6 col-xl-4";
+
+                    // ID скрыт полностью (никакой строки ID:)
+                    col.innerHTML = `
+        <label class="d-flex gap-2 align-items-start border rounded p-2 w-100">
+          <input class="form-check-input mt-1 project-checkbox" type="checkbox" value="${id}">
+          <div class="project-card-title"></div>
+        </label>
+      `;
+
+                    col.querySelector(".project-card-title").textContent = label;
+
+                    const cb = col.querySelector(".project-checkbox");
+                    if (selected.has(id)) cb.checked = true;
+
+                    cb.addEventListener("change", () => {
+                        const s = getSelectedIds();
+                        if (cb.checked) s.add(id);
+                        else s.delete(id);
+
+                        setSelectedIds(s);
+
+                        // если выбрали — гарантируем label
+                        if (cb.checked) selectedLabels.set(id, label);
+
+                        renderChips();
+                    });
+
+                    grid.appendChild(col);
+                    shown += 1;
+                }
+
+                empty.style.display = shown ? "none" : "";
+                renderChips();
+            }
+
+            let timer = null;
+
+            async function loadProjects(q) {
+                const query = (q || "").trim();
+
+                loading.style.display = "";
+                empty.style.display = "none";
+
+                try {
+                    const url = query ? (searchUrl + "?q=" + encodeURIComponent(query)) : searchUrl;
+                    const resp = await fetch(url, {headers: {"X-Requested-With": "XMLHttpRequest"}});
+                    const data = await resp.json();
+                    renderResults(data.results || []);
+                } catch (e) {
+                    grid.innerHTML = "";
+                    empty.style.display = "";
+                    empty.textContent = "Ошибка загрузки.";
+                } finally {
+                    loading.style.display = "none";
                 }
             }
 
-            document.addEventListener("change", (e) => {
-                if (e.target && e.target.classList.contains("project-checkbox")) {
-                    refreshProjectsAll();
-                }
-            });
-            searchInput?.addEventListener("input", applyProjectFilter);
-            btnClear?.addEventListener("click", () => {
-                document.querySelectorAll(".project-checkbox:checked").forEach(cb => (cb.checked = false));
-                refreshProjectsAll();
-            });
-            btnContinue?.addEventListener("click", openRestIfPossible);
+            function debounceLoad() {
+                const q = (searchInput.value || "").trim();
+                clearTimeout(timer);
+                timer = setTimeout(() => loadProjects(q), 250);
+            }
 
-            initProjectsFromHidden();
-            applyProjectFilter();
-            refreshProjectsAll();
+            btnClear.addEventListener("click", () => {
+                setSelectedIds(new Set());
+                renderChips();
+                loadProjects((searchInput.value || "").trim());
+            });
+
+            btnContinue.addEventListener("click", openRestIfPossible);
+            searchInput.addEventListener("input", debounceLoad);
+
+            // --- init: читаем label выбранных из HTML (если ты их рендеришь в шаблоне на edit) ---
+            document.querySelectorAll(".project-chip").forEach(ch => {
+                const id = String(ch.dataset.id || "").trim();
+                const label = String(ch.dataset.label || "").trim();
+                if (id && label) selectedLabels.set(id, label);
+            });
+
+            renderChips();
+
+            // если уже выбран проект (edit) — показываем форму сразу
             if (canOpenRest()) restForm.style.display = "";
+
+            // стартовая выдача: последние 5 использованных (сервер вернёт 5)
+            loadProjects("");
+        })();
+    </script>
+
+    {# дальше оставлен твой текущий JS (схема=номер акта, formsets, datatables, паспорта) #}
+    {{ block.super }}
+    <script>
+        (function () {
 
             // ---------- SCHEME DOC NO = ACT NUMBER ----------
             const actNumberInput = document.getElementById("id_number");
@@ -869,12 +979,10 @@
                 if (e.target.matches('input[name$="-title"], input[name$="-doc_date"]')) softClearInvalid(e.target);
             });
 
-            // add material row (manual)
             document.getElementById("add-material")?.addEventListener("click", function () {
                 addRow("materials-table", "material-empty-form", "mat");
             });
 
-            // add attachment row (validate previous first)
             document.getElementById("add-attachment")?.addEventListener("click", function () {
                 const tbody = document.querySelector("#attachments-table tbody");
                 const rows = Array.from(tbody?.querySelectorAll("tr.attachment-row") || [])
@@ -889,7 +997,6 @@
                 addRow("attachments-table", "attachment-empty-form", "att");
             });
 
-            // validate on submit
             document.getElementById("act-form")?.addEventListener("submit", function (e) {
                 const rows = Array.from(document.querySelectorAll("#attachments-table tbody tr.attachment-row"))
                     .filter(r => !r.classList.contains("scheme-row") && !isRowHiddenOrDeleted(r));
@@ -1080,3 +1187,6 @@
         })();
     </script>
 {% endblock %}
+
+
+

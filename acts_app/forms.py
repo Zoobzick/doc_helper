@@ -24,10 +24,8 @@ def force_iso_date_field(field: forms.Field):
     2) форма принимает YYYY-MM-DD при POST
     """
     if isinstance(field, forms.DateField):
-        # widget.format используется при рендере value=""
         if isinstance(field.widget, forms.DateInput):
             field.widget.format = ISO_DATE_FORMAT
-        # input_formats — чтобы принимать YYYY-MM-DD
         fmts = list(getattr(field, "input_formats", []) or [])
         if ISO_DATE_FORMAT not in fmts:
             field.input_formats = [ISO_DATE_FORMAT] + fmts
@@ -65,6 +63,7 @@ class ActProjectsForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from projects_app.models import Project  # noqa: WPS433
+
         self.fields["projects"].queryset = Project.objects.all().order_by("id")
         _bootstrapify(self)
 
@@ -82,24 +81,47 @@ class ActForm(forms.ModelForm):
             "allow_next_works_text",
             "extra_info_text",
             "copies_count",
-            "status",
+            # status УБРАЛИ из UI и из формы (реально не используете)
         )
         widgets = {
             "act_date": iso_date_widget(),
             "work_start_date": iso_date_widget(),
             "work_end_date": iso_date_widget(),
+            "work_name": forms.Textarea(attrs={"rows": 3}),
             "work_norms_text": forms.Textarea(attrs={"rows": 3}),
             "allow_next_works_text": forms.Textarea(attrs={"rows": 3}),
             "extra_info_text": forms.Textarea(attrs={"rows": 3}),
+            # copies_count -> настроим в __init__ (чтобы гарантированно применилось)
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # ВАЖНО: форсим ISO формат в полях дат
+        # Даты — строго ISO (type=date)
         for name in ("act_date", "work_start_date", "work_end_date"):
             if name in self.fields:
                 force_iso_date_field(self.fields[name])
+
+        # copies_count: только 1..9 и узкое поле
+        if "copies_count" in self.fields:
+            w = self.fields["copies_count"].widget
+            if not isinstance(w, forms.NumberInput):
+                self.fields["copies_count"].widget = forms.NumberInput()
+                w = self.fields["copies_count"].widget
+
+            w.attrs.setdefault("min", "1")
+            w.attrs.setdefault("max", "9")
+            # ширина под 1 цифру (+ стрелки)
+            w.attrs.setdefault("style", "max-width: 4.2rem;")
+            w.attrs.setdefault("inputmode", "numeric")
+
+        if not self.instance.pk:
+            self.fields["work_norms_text"].initial = (
+                "СП 122.13330.2012, "
+                "СП 70.13330.2012, "
+                "СП 120.13330.2012, "
+                "СП 48.13330.2019"
+            )
 
         _bootstrapify(self)
 
@@ -138,6 +160,7 @@ class ActMaterialItemForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         from passports_app.models import Passport  # noqa: WPS433
+
         self.fields["passport"].queryset = Passport.objects.all().order_by("-id")
 
         # sheets_count дефолт 1 (чтобы не улетал NULL)
@@ -147,9 +170,9 @@ class ActMaterialItemForm(forms.ModelForm):
         if getattr(self.instance, "sheets_count", None) in (None, ""):
             self.initial["sheets_count"] = 1
 
-        # форсим ISO формат для manual_doc_date
         if "manual_doc_date" in self.fields:
             force_iso_date_field(self.fields["manual_doc_date"])
+
         # UI: используем note как "Наименование документа"
         self.fields["manual_name"].label = "Материал"
         self.fields["note"].label = "Наименование документа"
@@ -238,7 +261,7 @@ ActMaterialFormSet = inlineformset_factory(
     model=ActMaterialItem,
     form=ActMaterialItemForm,
     formset=BaseActMaterialFormSet,
-    extra=0,  # было 1
+    extra=0,
     can_delete=True,
 )
 
@@ -278,7 +301,6 @@ class BaseActAttachmentFormSet(BaseInlineFormSet):
         self.act_number = (act_number or "").strip()
         super().__init__(*args, **kwargs)
 
-        # --- скрываем системные реестры из этого formset ---
         exclude_types = [AttachmentType.MATERIALS_REGISTRY]
         if hasattr(AttachmentType, "DOCS_REGISTRY"):
             exclude_types.append(AttachmentType.DOCS_REGISTRY)
@@ -331,7 +353,7 @@ ActAttachmentFormSet = inlineformset_factory(
     model=ActAttachment,
     form=ActAttachmentForm,
     formset=BaseActAttachmentFormSet,
-    extra=0,  # <-- было 1
+    extra=0,
     can_delete=True,
 )
 
@@ -340,6 +362,6 @@ ActAttachmentCreateFormSet = inlineformset_factory(
     model=ActAttachment,
     form=ActAttachmentForm,
     formset=BaseActAttachmentFormSet,
-    extra=1,  # <-- только для create
+    extra=1,
     can_delete=True,
 )

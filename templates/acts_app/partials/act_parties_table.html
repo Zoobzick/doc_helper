@@ -2,7 +2,7 @@
 
 <div id="act-parties-block" class="card mt-3">
   <div class="card-body pt-3">
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
       <div>
         <h5 class="card-title mb-0">Подписанты на дату акта</h5>
 
@@ -26,7 +26,7 @@
           hx-target="#act-parties-rows"
           hx-swap="beforeend"
         >
-          <i class="bi bi-plus-lg me-1"></i> Добавить "иные лица"
+          <i class="bi bi-plus-lg me-1"></i>Иные лица
         </button>
 
         <button
@@ -36,21 +36,20 @@
           hx-target="#act-parties-block"
           hx-swap="outerHTML"
         >
-          <i class="bi bi-arrow-repeat me-1"></i> Обновить
+          <i class="bi bi-arrow-repeat me-1"></i>Обновить
         </button>
       </div>
     </div>
 
     <div class="table-responsive">
-      <table class="table table-hover align-middle">
+      <table class="table table-sm table-hover align-middle mb-0">
         <thead>
-          <tr class="text-muted">
-            <th style="width: 56px;">Вкл.</th>
-            <th style="width: 28%;">Роль</th>
+          <tr class="text-muted small">
+            <th style="width: 48px;">Вкл.</th>
+            <th style="width: 30%;">Роль</th>
             <th style="width: 28%;">Организация</th>
-            <th style="width: 22%;">Приказ</th>
-            <th style="width: 22%;">Персона</th>
-            <th style="width: 64px;"></th>
+            <th>Приказ / Персона</th>
+            <th style="width: 56px;"></th>
           </tr>
         </thead>
 

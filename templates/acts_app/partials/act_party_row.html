@@ -7,7 +7,6 @@
       <input
         class="form-check-input"
         type="checkbox"
-
         name="is_enabled_{{ party.uuid }}"
         value="1"
         {% if party.is_enabled %}checked{% endif %}
@@ -46,7 +45,6 @@
     {% else %}
       <select
         class="form-select form-select-sm"
-
         name="organization_id_{{ party.uuid }}"
 
         hx-post="{% url 'acts_app:act_party_set_org' party.uuid %}"
@@ -57,7 +55,6 @@
         hx-headers='{"X-CSRFToken":"{{ csrf_token }}"}'
       >
         <option value="" {% if not party.organization_id %}selected{% endif %}>— выбери —</option>
-
         {% for org in organizations %}
           <option value="{{ org.id }}" {% if party.organization_id == org.id %}selected{% endif %}>
             {{ org.short_name }}
@@ -67,27 +64,31 @@
     {% endif %}
   </td>
 
+  {# ЕДИНАЯ КОЛОНКА: приказ + персона + должность (обрезка) #}
   <td>
     {% if party.is_enabled and resolved.effective_authorization %}
-      <div class="small">
-        {{ resolved.effective_authorization.directive.get_doc_type_display }}
-        №{{ resolved.effective_authorization.directive.number }}
-        от {{ resolved.effective_authorization.directive.date|date:"d.m.Y" }}
-      </div>
-      <div class="text-muted small">
-        {{ resolved.effective_authorization.directive.issuer_organization.short_name }}
-      </div>
-    {% else %}
-      <span class="text-muted">—</span>
-    {% endif %}
-  </td>
+      {% with a=resolved.effective_authorization %}
+        {# приказ: только № + дата #}
+        <div class="small">
+          №{{ a.directive.number }} от {{ a.directive.date|date:"d.m.Y" }}
+        </div>
 
-  <td>
-    {% if party.is_enabled and resolved.effective_authorization %}
-      <div class="fw-semibold">{{ resolved.effective_authorization.person.full_name }}</div>
-      {% if resolved.effective_authorization.position_text %}
-        <div class="text-muted small">{{ resolved.effective_authorization.position_text }}</div>
-      {% endif %}
+        {# персона: Фамилия И.О. #}
+        <div class="fw-semibold">
+          {{ a.person.short_name }}
+        </div>
+
+        {# должность: обрезка, полный текст в title #}
+        {% if a.position_text %}
+          <div
+            class="text-muted small"
+            title="{{ a.position_text }}"
+            style="max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+          >
+            {{ a.position_text }}
+          </div>
+        {% endif %}
+      {% endwith %}
     {% else %}
       <span class="text-muted">—</span>
     {% endif %}

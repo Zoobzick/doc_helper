@@ -11,6 +11,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.generic import DetailView, ListView
+from django.urls import reverse
 
 from acts_app.forms import (
     ActAttachmentFormSet,
@@ -89,6 +90,58 @@ def _parse_iso_date(raw: str):
         return datetime.strptime(s, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+# ---------- NEW: projects ajax helpers ----------
+
+def _parse_int_list(values: list[str]) -> list[int]:
+    out: list[int] = []
+    for v in values:
+        s = (v or "").strip()
+        if s.isdigit():
+            out.append(int(s))
+    return out
+
+
+def _project_label(p) -> str:
+    """
+    Формируем подпись проекта для UI.
+    Сначала "full_code/code/cipher", затем name/title (если есть).
+    """
+    def _get_first_attr(obj, names: tuple[str, ...]) -> str:
+        for n in names:
+            if hasattr(obj, n):
+                val = (getattr(obj, n) or "").strip()
+                if val:
+                    return val
+        return ""
+
+    code = _get_first_attr(p, ("full_code", "code", "cipher", "number"))
+    name = _get_first_attr(p, ("name", "title", "short_name"))
+
+    if code and name:
+        return f"{code} — {name}"
+    return code or name or str(p)
+
+
+def _set_projects_queryset_for_form(projects_form: ActProjectsForm, selected_ids: list[int]) -> None:
+    """
+    Критично: ModelMultipleChoiceField валидирует выбранные значения по queryset поля.
+    Поэтому queryset должен содержать выбранные id, иначе будет "Select a valid choice".
+    """
+    if Project is None:
+        return
+    projects_form.fields["projects"].queryset = Project.objects.filter(id__in=selected_ids).order_by("id")
+
+
+def _selected_projects_for_render(selected_ids: list[int]) -> list[dict]:
+    """
+    Для шаблона: список {id, label} выбранных проектов.
+    """
+    if Project is None or not selected_ids:
+        return []
+    qs = Project.objects.filter(id__in=selected_ids).order_by("id")
+    return [{"id": p.id, "label": _project_label(p)} for p in qs]
 
 
 DEFAULT_PARTY_ROLES = [
@@ -178,7 +231,6 @@ def ensure_default_parties_for_act(*, act: Act, user) -> None:
     ActParty.objects.bulk_create(to_create)
 
 
-
 def _act_parties_context(act: Act) -> dict:
     return {
         "act": act,
@@ -200,6 +252,95 @@ def _act_parties_context_for_date(act: Act, date_override) -> dict:
         "organizations": list(_organizations_qs()),
         "preview_date": date_override,
     }
+
+
+# -------------------------
+# NEW: projects ajax search
+# -------------------------
+
+class ProjectsSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """
+    GET /acts/projects/search/?q=...
+    - если q пустой: отдаём 5 проектов, которые последними использовались в актах
+    - если q задан: отдаём до 30 совпадений
+    Ответ: {"results":[{"id":..,"label":..}]}
+    """
+
+    # важно: и для create, и для edit
+    permission_required = ("acts_app.add_act", "acts_app.change_act")
+
+    def has_permission(self):
+        # PermissionRequiredMixin ожидает одно право, поэтому переопределяем
+        user = self.request.user
+        return user.has_perm("acts_app.add_act") or user.has_perm("acts_app.change_act")
+
+    def get(self, request: HttpRequest) -> JsonResponse:
+        if Project is None:
+            return JsonResponse({"results": []})
+
+        q = (request.GET.get("q") or "").strip()
+
+        # какие поля есть у Project (чтобы не падать на несуществующих)
+        project_fields = {
+            f.name for f in Project._meta.get_fields()
+            if getattr(f, "concrete", False)
+        }
+
+        def project_label(p) -> str:
+            code = ""
+            for name in ("full_code", "code", "cipher", "number"):
+                if name in project_fields:
+                    code = (getattr(p, name, "") or "").strip()
+                    if code:
+                        break
+
+            title = ""
+            for name in ("name", "title", "short_name"):
+                if name in project_fields:
+                    title = (getattr(p, name, "") or "").strip()
+                    if title:
+                        break
+
+            if code and title:
+                return f"{code} — {title}"
+            return code or title or str(p)
+
+        # --- 1) q пустой => последние 5 использованных ---
+        if not q:
+            # определяем поле даты в Act: updated_at -> created_at -> act_date -> id
+            act_fields = {f.name for f in Act._meta.get_fields() if getattr(f, "concrete", False)}
+            if "updated_at" in act_fields:
+                dt_field = "updated_at"
+            elif "created_at" in act_fields:
+                dt_field = "created_at"
+            elif "act_date" in act_fields:
+                dt_field = "act_date"
+            else:
+                dt_field = "id"
+
+            qs = (
+                Project.objects
+                .filter(acts__isnull=False)
+                .annotate(last_used=Max(f"acts__{dt_field}"))
+                .order_by("-last_used", "-id")
+                .distinct()
+            )[:5]
+
+            return JsonResponse({"results": [{"id": p.id, "label": project_label(p)} for p in qs]})
+
+        # --- 2) q есть => обычный поиск ---
+        qs = Project.objects.all()
+
+        cond = Q()
+        for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
+            if fname in project_fields:
+                cond |= Q(**{f"{fname}__icontains": q})
+
+        if cond:
+            qs = qs.filter(cond)
+
+        qs = qs.order_by("id")[:30]
+        return JsonResponse({"results": [{"id": p.id, "label": project_label(p)} for p in qs]})
 
 
 # -------------------------
@@ -449,6 +590,9 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def get(self, request: HttpRequest) -> HttpResponse:
         projects_form = ActProjectsForm()
+        # NEW: не тянуть все проекты — queryset пустой (выбранных ещё нет)
+        _set_projects_queryset_for_form(projects_form, selected_ids=[])
+
         act_form = ActForm()
 
         material_fs = ActMaterialFormSet(prefix="mat", initial=[{}])
@@ -463,12 +607,18 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "material_formset": material_fs,
                 "attachment_formset": attach_fs,
                 "mode": "create",
+                "selected_projects": [],
             },
         )
 
     @transaction.atomic
     def post(self, request: HttpRequest) -> HttpResponse:
+        posted_ids = _parse_int_list(request.POST.getlist("projects"))
+
         projects_form = ActProjectsForm(request.POST)
+        # NEW: queryset поля = выбранные id, иначе form.is_valid() упадёт
+        _set_projects_queryset_for_form(projects_form, selected_ids=posted_ids)
+
         act_form = ActForm(request.POST)
 
         project_id_hint = None
@@ -499,6 +649,7 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "material_formset": material_fs,
                     "attachment_formset": attach_fs,
                     "mode": "create",
+                    "selected_projects": _selected_projects_for_render(posted_ids),
                 },
             )
 
@@ -523,7 +674,8 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         except AppendixBuilderError as e:
             messages.warning(request, f"Акт сохранён, но приложения не пересобраны: {e}")
 
-        return redirect("acts_app:act_update", uuid=str(act.uuid))
+        url = reverse("acts_app:act_update", kwargs={"uuid": str(act.uuid)})
+        return redirect(f"{url}#act-parties-block")
 
 
 class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -537,7 +689,12 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         act = self.get_object(uuid)
         ensure_default_parties_for_act(act=act, user=request.user)
 
+        selected_ids = list(act.projects.values_list("id", flat=True))
+
         projects_form = ActProjectsForm(initial={"projects": act.projects.all()})
+        # NEW: queryset поля = только выбранные, чтобы не грузить всё
+        _set_projects_queryset_for_form(projects_form, selected_ids=selected_ids)
+
         act_form = ActForm(instance=act)
 
         first_project = act.projects.order_by("id").first()
@@ -561,6 +718,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "material_formset": material_fs,
                 "attachment_formset": attach_fs,
                 "mode": "update",
+                "selected_projects": _selected_projects_for_render(selected_ids),
                 **_act_parties_context(act),
             },
         )
@@ -572,7 +730,12 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         old_date = act.act_date
 
+        posted_ids = _parse_int_list(request.POST.getlist("projects"))
+
         projects_form = ActProjectsForm(request.POST)
+        # NEW: queryset поля = выбранные id, чтобы валидация прошла
+        _set_projects_queryset_for_form(projects_form, selected_ids=posted_ids)
+
         act_form = ActForm(request.POST, instance=act)
 
         project_id_hint = None
@@ -606,6 +769,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "material_formset": material_fs,
                     "attachment_formset": attach_fs,
                     "mode": "update",
+                    "selected_projects": _selected_projects_for_render(posted_ids),
                     **_act_parties_context(act),
                 },
             )
@@ -625,7 +789,8 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         except AppendixBuilderError as e:
             messages.warning(request, f"Изменения сохранены, но приложения не пересобраны: {e}")
 
-        return redirect("acts_app:act_update", uuid=str(act.uuid))
+        url = reverse("acts_app:act_update", kwargs={"uuid": str(act.uuid)})
+        return redirect(f"{url}#act-parties-block")
 
 
 # -------------------------
