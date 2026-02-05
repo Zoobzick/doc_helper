@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from django import forms
+from django.forms import inlineformset_factory
 
-from .models import Organization, Person, PersonNRS
+from .models import Organization, Person, PersonNRS, SroKind, OrganizationSroMembership
 
 
 class _BootstrapModelForm(forms.ModelForm):
@@ -73,3 +74,21 @@ class PersonNRSForm(_BootstrapModelForm):
             "valid_from": forms.DateInput(attrs={"type": "date"}),
             "valid_to": forms.DateInput(attrs={"type": "date"}),
         }
+
+class OrganizationSroMembershipForm(_BootstrapModelForm):
+    class Meta:
+        model = OrganizationSroMembership
+        fields = ["kind", "sro_name", "sro_ogrn", "sro_inn"]
+        widgets = {
+            "kind": forms.Select(),
+        }
+
+
+OrganizationSroMembershipFormSet = inlineformset_factory(
+    parent_model=Organization,
+    model=OrganizationSroMembership,
+    form=OrganizationSroMembershipForm,
+    extra=0,
+    can_delete=False,
+)
+

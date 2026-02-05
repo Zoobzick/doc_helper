@@ -94,6 +94,58 @@ class Organization(models.Model):
         return self.short_name
 
 
+class SroKind(models.TextChoices):
+    BUILD = "BUILD", "Строительство"
+    DESIGN = "DESIGN", "Проектирование"
+
+
+class OrganizationSroMembership(models.Model):
+    organization = models.ForeignKey(
+        "orgs_app.Organization",
+        on_delete=models.CASCADE,
+        related_name="sro_memberships",
+    )
+
+    kind = models.CharField(
+        "Вид деятельности",
+        max_length=16,
+        choices=SroKind.choices,
+        db_index=True,
+    )
+
+    sro_name = models.CharField(
+        "Наименование СРО",
+        max_length=512,
+        blank=True,
+        default="",
+    )
+
+    sro_ogrn = models.CharField(
+        "ОГРН СРО",
+        max_length=15,
+        blank=True,
+        default="",
+    )
+
+    sro_inn = models.CharField(
+        "ИНН СРО",
+        max_length=12,
+        blank=True,
+        default="",
+    )
+
+    date_from = models.DateField(null=True, blank=True)
+    date_to = models.DateField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "kind", "date_from"],
+                name="uniq_org_sro_kind_from",
+            )
+        ]
+
+
 class Person(models.Model):
     """
     Человек (подписант). Один человек может фигурировать в разных организациях/ролях.

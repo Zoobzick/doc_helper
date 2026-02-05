@@ -45,15 +45,15 @@
               </div>
             </div>
 
+            {# ------------------------- #}
+            {# ОСНОВНЫЕ РЕКВИЗИТЫ #}
+            {# ------------------------- #}
+
             <dl class="row mb-0">
               <dt class="col-sm-3">ИНН</dt><dd class="col-sm-9">{{ item.inn|default:"—" }}</dd>
               <dt class="col-sm-3">ОГРН</dt><dd class="col-sm-9">{{ item.ogrn|default:"—" }}</dd>
               <dt class="col-sm-3">Адрес</dt><dd class="col-sm-9">{{ item.address|default:"—"|linebreaksbr }}</dd>
               <dt class="col-sm-3">Тел/факс</dt><dd class="col-sm-9">{{ item.tel_fax|default:"—" }}</dd>
-
-              <dt class="col-sm-3">СРО</dt><dd class="col-sm-9">{{ item.sro|default:"—" }}</dd>
-              <dt class="col-sm-3">СРО ОГРН</dt><dd class="col-sm-9">{{ item.sro_ogrn|default:"—" }}</dd>
-              <dt class="col-sm-3">СРО ИНН</dt><dd class="col-sm-9">{{ item.sro_inn|default:"—" }}</dd>
 
               <dt class="col-sm-3">Активна</dt>
               <dd class="col-sm-9">
@@ -63,6 +63,55 @@
                   <span class="badge bg-secondary">Нет</span>
                 {% endif %}
               </dd>
+            </dl>
+
+            {# ------------------------- #}
+            {# НОВЫЕ СРО ПО ВИДАМ ДЕЯТЕЛЬНОСТИ #}
+            {# ------------------------- #}
+
+            <hr class="my-4">
+            <h5 class="mb-3">СРО по видам деятельности</h5>
+
+            {% with memberships=item.sro_memberships.all %}
+              {% if memberships %}
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle">
+                    <thead>
+                      <tr>
+                        <th style="width: 18%;">Вид деятельности</th>
+                        <th>Наименование СРО</th>
+                        <th style="width: 16%;">ОГРН СРО</th>
+                        <th style="width: 16%;">ИНН СРО</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for m in memberships %}
+                        <tr>
+                          <td>{{ m.get_kind_display|default:"—" }}</td>
+                          <td>{{ m.sro_name|default:"—" }}</td>
+                          <td>{{ m.sro_ogrn|default:"—" }}</td>
+                          <td>{{ m.sro_inn|default:"—" }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <div class="text-muted">Нет данных по СРО (заполни в редактировании организации).</div>
+              {% endif %}
+            {% endwith %}
+
+            {# ------------------------- #}
+            {# СТАРОЕ СРО (оставим, чтобы не ломать привычку/данные) #}
+            {# ------------------------- #}
+
+            <hr class="my-4">
+            <h6 class="text-muted mb-3">СРО (устаревшее, для совместимости)</h6>
+
+            <dl class="row mb-0">
+              <dt class="col-sm-3">Наименование СРО</dt><dd class="col-sm-9">{{ item.sro|default:"—" }}</dd>
+              <dt class="col-sm-3">ОГРН СРО</dt><dd class="col-sm-9">{{ item.sro_ogrn|default:"—" }}</dd>
+              <dt class="col-sm-3">ИНН СРО</dt><dd class="col-sm-9">{{ item.sro_inn|default:"—" }}</dd>
             </dl>
 
           </div>

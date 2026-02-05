@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.db import transaction
 from django.db.models import Q
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
 
-from .forms import OrganizationForm, PersonForm, PersonNRSForm
-from .models import Organization, Person, PersonNRS
+from .forms import OrganizationForm, PersonForm, PersonNRSForm, OrganizationSroMembershipFormSet
+from .models import Organization, Person, PersonNRS, OrganizationSroMembership, SroKind
 
 
 # ====== Organizations ======
@@ -53,11 +54,52 @@ class OrganizationDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detail
         return Organization.objects.get(uuid=self.kwargs["uuid"])
 
 
+def _ensure_two_sro_rows(org: Organization) -> None:
+    """
+    Гарантируем, что у организации всегда есть 2 строки СРО:
+    - BUILD (строительство)
+    - DESIGN (проектирование)
+    """
+    existing = set(org.sro_memberships.values_list("kind", flat=True))
+    to_create: list[OrganizationSroMembership] = []
+
+    if SroKind.BUILD not in existing:
+        to_create.append(OrganizationSroMembership(organization=org, kind=SroKind.BUILD))
+    if SroKind.DESIGN not in existing:
+        to_create.append(OrganizationSroMembership(organization=org, kind=SroKind.DESIGN))
+
+    if to_create:
+        OrganizationSroMembership.objects.bulk_create(to_create)
+
+
 class OrganizationCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = Organization
     form_class = OrganizationForm
     template_name = "orgs_app/organization_form.html"
     permission_required = "orgs_app.add_organization"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+
+        # На create показывать formset можно, но это не критично для твоего кейса.
+        # Главное — update существующих организаций.
+        if self.request.method == "POST":
+            ctx["sro_formset"] = OrganizationSroMembershipFormSet(self.request.POST, instance=self.object)
+        else:
+            ctx["sro_formset"] = None
+
+        return ctx
+
+    @transaction.atomic
+    def form_valid(self, form):
+        response = super().form_valid(form)
+
+        # После создания — гарантируем 2 строки СРО (пусть будут пустые)
+        _ensure_two_sro_rows(self.object)
+
+        # Если на create UI formset не используем — сохранять нечего.
+        # Но если позже включишь — тут можно будет сохранить POST formset.
+        return response
 
     def get_success_url(self):
         return reverse_lazy("orgs_app:organization_detail", kwargs={"uuid": self.object.uuid})
@@ -71,6 +113,35 @@ class OrganizationUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Update
 
     def get_object(self, queryset=None):
         return Organization.objects.get(uuid=self.kwargs["uuid"])
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+
+        # ✅ ВОТ ЭТО ключевое: для старых организаций создаём 2 строки СРО автоматически
+        _ensure_two_sro_rows(self.object)
+
+        if self.request.method == "POST":
+            ctx["sro_formset"] = OrganizationSroMembershipFormSet(self.request.POST, instance=self.object)
+        else:
+            ctx["sro_formset"] = OrganizationSroMembershipFormSet(instance=self.object)
+
+        return ctx
+
+    @transaction.atomic
+    def form_valid(self, form):
+        ctx = self.get_context_data()
+        sro_formset = ctx["sro_formset"]
+
+        if sro_formset is None:
+            return super().form_valid(form)
+
+        if not sro_formset.is_valid():
+            return self.render_to_response(self.get_context_data(form=form, sro_formset=sro_formset))
+
+        response = super().form_valid(form)
+        sro_formset.instance = self.object
+        sro_formset.save()
+        return response
 
     def get_success_url(self):
         return reverse_lazy("orgs_app:organization_detail", kwargs={"uuid": self.object.uuid})
