@@ -79,7 +79,6 @@ class ActForm(forms.ModelForm):
             "work_end_date",
             "work_norms_text",
             "allow_next_works_text",
-            "extra_info_text",
             "copies_count",
             # status УБРАЛИ из UI и из формы (реально не используете)
         )
@@ -90,7 +89,6 @@ class ActForm(forms.ModelForm):
             "work_name": forms.Textarea(attrs={"rows": 3}),
             "work_norms_text": forms.Textarea(attrs={"rows": 3}),
             "allow_next_works_text": forms.Textarea(attrs={"rows": 3}),
-            "extra_info_text": forms.Textarea(attrs={"rows": 3}),
             # copies_count -> настроим в __init__ (чтобы гарантированно применилось)
         }
 
@@ -293,7 +291,7 @@ class BaseActAttachmentFormSet(BaseInlineFormSet):
     первая строка — Исполнительная схема
 
     ВАЖНО:
-    реестры (MATERIALS_REGISTRY / DOCS_REGISTRY) — системные сущности,
+    реестры (MATERIALS_REGISTRY / DOCS_REGISTRY / APPROVALS_REGISTRY) — системные сущности,
     в форму "Предъявлены документы..." НЕ попадают.
     """
 
@@ -301,9 +299,15 @@ class BaseActAttachmentFormSet(BaseInlineFormSet):
         self.act_number = (act_number or "").strip()
         super().__init__(*args, **kwargs)
 
+        # ✅ исключаем все системные реестры, чтобы пользователь их не видел/не трогал
         exclude_types = [AttachmentType.MATERIALS_REGISTRY]
+
         if hasattr(AttachmentType, "DOCS_REGISTRY"):
             exclude_types.append(AttachmentType.DOCS_REGISTRY)
+
+        if hasattr(AttachmentType, "APPROVALS_REGISTRY"):
+            exclude_types.append(AttachmentType.APPROVALS_REGISTRY)
+
         self.queryset = self.queryset.exclude(type__in=exclude_types)
 
     def clean(self):

@@ -50,4 +50,6 @@ urlpatterns = [
          name="act_party_delete_other"),
     path("projects/search/", views.ProjectsSearchView.as_view(), name="projects_search"),
 
+    path("approvals/datatable/", views.ApprovalsDatatableView.as_view(), name="approvals_datatable"),
+
 ]

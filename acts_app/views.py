@@ -9,9 +9,9 @@ from django.db import transaction
 from django.db.models import Q, Max
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views import View
 from django.views.generic import DetailView, ListView
-from django.urls import reverse
 
 from acts_app.forms import (
     ActAttachmentFormSet,
@@ -20,9 +20,14 @@ from acts_app.forms import (
     ActMaterialFormSet,
     ActProjectsForm,
 )
-from acts_app.models import Act, ActStatus, AttachmentType, ActParty
+from acts_app.models import (
+    Act,
+    ActStatus,
+    AttachmentType,
+    ActParty,
+    ActApprovalItem,
+)
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
-
 from acts_app.services.signatories import (
     resolve_act_parties,
     resolve_party,
@@ -32,7 +37,6 @@ from acts_app.services.signatories import (
     validate_before_finalize,
     freeze_signatories_to_snapshots,
 )
-
 from directive_app.models import ActRole
 
 try:
@@ -45,21 +49,17 @@ except Exception:  # pragma: no cover
 # helpers
 # -------------------------
 
-def _organizations_qs():
-    """
-    Список организаций для выпадающего списка.
-    """
-    from orgs_app.models import Organization  # noqa: WPS433
+def _parse_int_list(values: list[str]) -> list[int]:
+    out: list[int] = []
+    for v in values:
+        s = (v or "").strip()
+        if s.isdigit():
+            out.append(int(s))
+    return out
 
-    return Organization.objects.filter(is_active=True).order_by("short_name")
 
-
-def _first_project_id_from_cleaned_projects(projects) -> int | None:
-    try:
-        first = projects.order_by("id").first()
-        return first.id if first else None
-    except Exception:
-        return None
+def _parse_int_list_from_post(request: HttpRequest, name: str) -> list[int]:
+    return _parse_int_list(request.POST.getlist(name))
 
 
 def _fmt_date(d) -> str:
@@ -80,9 +80,6 @@ def _parse_search_date(raw: str):
 
 
 def _parse_iso_date(raw: str):
-    """
-    Парсим дату из <input type="date">: YYYY-MM-DD.
-    """
     s = (raw or "").strip()
     if not s:
         return None
@@ -92,22 +89,20 @@ def _parse_iso_date(raw: str):
         return None
 
 
-# ---------- NEW: projects ajax helpers ----------
+def _organizations_qs():
+    from orgs_app.models import Organization  # noqa: WPS433
+    return Organization.objects.filter(is_active=True).order_by("short_name")
 
-def _parse_int_list(values: list[str]) -> list[int]:
-    out: list[int] = []
-    for v in values:
-        s = (v or "").strip()
-        if s.isdigit():
-            out.append(int(s))
-    return out
+
+def _first_project_id_from_cleaned_projects(projects) -> int | None:
+    try:
+        first = projects.order_by("id").first()
+        return first.id if first else None
+    except Exception:
+        return None
 
 
 def _project_label(p) -> str:
-    """
-    Формируем подпись проекта для UI.
-    Сначала "full_code/code/cipher", затем name/title (если есть).
-    """
     def _get_first_attr(obj, names: tuple[str, ...]) -> str:
         for n in names:
             if hasattr(obj, n):
@@ -125,23 +120,60 @@ def _project_label(p) -> str:
 
 
 def _set_projects_queryset_for_form(projects_form: ActProjectsForm, selected_ids: list[int]) -> None:
-    """
-    Критично: ModelMultipleChoiceField валидирует выбранные значения по queryset поля.
-    Поэтому queryset должен содержать выбранные id, иначе будет "Select a valid choice".
-    """
     if Project is None:
         return
     projects_form.fields["projects"].queryset = Project.objects.filter(id__in=selected_ids).order_by("id")
 
 
 def _selected_projects_for_render(selected_ids: list[int]) -> list[dict]:
-    """
-    Для шаблона: список {id, label} выбранных проектов.
-    """
     if Project is None or not selected_ids:
         return []
     qs = Project.objects.filter(id__in=selected_ids).order_by("id")
     return [{"id": p.id, "label": _project_label(p)} for p in qs]
+
+
+def _approval_auto_label(a) -> str:
+    parts = []
+    if getattr(a, "project", None):
+        parts.append(a.project.full_code)
+
+    if hasattr(a, "get_status_display"):
+        parts.append(a.get_status_display())
+
+    if getattr(a, "created_at", None):
+        parts.append(a.created_at.strftime("%d.%m.%Y"))
+
+    desc = (getattr(a, "description", "") or "").strip()
+    if desc:
+        parts.append(desc)
+
+    return " — ".join(parts)
+
+
+def _approval_label_short(a) -> str:
+    proj = getattr(a, "project", None)
+    proj_code = (getattr(proj, "full_code", "") or "").strip() if proj else ""
+    proj_part = proj_code or "Общее"
+
+    status_part = ""
+    if hasattr(a, "get_status_display"):
+        status_part = (a.get_status_display() or "").strip()
+
+    dt = getattr(a, "created_at", None)
+    date_part = dt.strftime("%d.%m.%Y") if dt else "—"
+
+    desc = (getattr(a, "description", "") or "").strip()
+    if len(desc) > 60:
+        desc = desc[:60].rstrip() + "…"
+
+    parts = [proj_part]
+    if status_part:
+        parts.append(status_part)
+    parts.append(date_part)
+    if desc:
+        parts.append(desc)
+
+    return " — ".join(parts)
 
 
 DEFAULT_PARTY_ROLES = [
@@ -174,9 +206,7 @@ def ensure_default_parties_for_act(*, act: Act, user) -> None:
 
     prev_parties = []
     if prev:
-        prev_parties = list(
-            prev.parties.select_related("organization").order_by("position", "id")
-        )
+        prev_parties = list(prev.parties.select_related("organization").order_by("position", "id"))
 
     prev_by_role: dict[str, ActParty] = {}
     prev_other: list[ActParty] = []
@@ -228,6 +258,7 @@ def ensure_default_parties_for_act(*, act: Act, user) -> None:
                 chosen_authorization=None,
             )
         )
+
     ActParty.objects.bulk_create(to_create)
 
 
@@ -241,9 +272,6 @@ def _act_parties_context(act: Act) -> dict:
 
 
 def _act_parties_context_for_date(act: Act, date_override) -> dict:
-    """
-    Виртуальный резолв подписантов на дату (date_override) без сохранения в БД.
-    """
     parties = list(act.parties.select_related("organization", "chosen_authorization").order_by("position", "id"))
     resolved = [resolve_party(p, date_override) for p in parties]
     return {
@@ -254,23 +282,55 @@ def _act_parties_context_for_date(act: Act, date_override) -> dict:
     }
 
 
+def _approval_items_from_post(request: HttpRequest) -> list[dict]:
+    """
+    Для возврата в шаблон при ошибках валидации.
+    """
+    items = []
+    for aid in _parse_int_list_from_post(request, "approvals"):
+        items.append(
+            {
+                "id": int(aid),
+                "label": (request.POST.get(f"approval_label_{aid}", "") or "").strip(),
+                "sheets": int(request.POST.get(f"approval_sheets_{aid}", 1)),
+            }
+        )
+    return items
+
+
+def _save_approval_items(*, act: Act, request: HttpRequest) -> None:
+    """
+    Сохраняем "Доп. сведения" в таблицу ActApprovalItem.
+    """
+    approval_ids = _parse_int_list_from_post(request, "approvals")
+
+    # пересобираем полностью (проще и надёжнее для UI-таблицы)
+    ActApprovalItem.objects.filter(act=act).delete()
+
+    pos = 1
+    for approval_id in approval_ids:
+        ActApprovalItem.objects.create(
+            act=act,
+            approval_id=approval_id,
+            position=pos,
+            sheets_count=int(request.POST.get(f"approval_sheets_{approval_id}", 1)),
+            label_override=(request.POST.get(f"approval_label_{approval_id}", "") or "").strip(),
+        )
+        pos += 1
+
+    # если вдруг где-то ещё осталась старая m2m — чистим (не обязательно, но чтобы не путаться)
+    if hasattr(act, "approvals"):
+        act.approvals.clear()
+
+
 # -------------------------
 # NEW: projects ajax search
 # -------------------------
 
 class ProjectsSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """
-    GET /acts/projects/search/?q=...
-    - если q пустой: отдаём 5 проектов, которые последними использовались в актах
-    - если q задан: отдаём до 30 совпадений
-    Ответ: {"results":[{"id":..,"label":..}]}
-    """
-
-    # важно: и для create, и для edit
     permission_required = ("acts_app.add_act", "acts_app.change_act")
 
     def has_permission(self):
-        # PermissionRequiredMixin ожидает одно право, поэтому переопределяем
         user = self.request.user
         return user.has_perm("acts_app.add_act") or user.has_perm("acts_app.change_act")
 
@@ -280,11 +340,7 @@ class ProjectsSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         q = (request.GET.get("q") or "").strip()
 
-        # какие поля есть у Project (чтобы не падать на несуществующих)
-        project_fields = {
-            f.name for f in Project._meta.get_fields()
-            if getattr(f, "concrete", False)
-        }
+        project_fields = {f.name for f in Project._meta.get_fields() if getattr(f, "concrete", False)}
 
         def project_label(p) -> str:
             code = ""
@@ -305,9 +361,7 @@ class ProjectsSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 return f"{code} — {title}"
             return code or title or str(p)
 
-        # --- 1) q пустой => последние 5 использованных ---
         if not q:
-            # определяем поле даты в Act: updated_at -> created_at -> act_date -> id
             act_fields = {f.name for f in Act._meta.get_fields() if getattr(f, "concrete", False)}
             if "updated_at" in act_fields:
                 dt_field = "updated_at"
@@ -319,18 +373,15 @@ class ProjectsSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 dt_field = "id"
 
             qs = (
-                Project.objects
-                .filter(acts__isnull=False)
-                .annotate(last_used=Max(f"acts__{dt_field}"))
-                .order_by("-last_used", "-id")
-                .distinct()
-            )[:5]
+                     Project.objects.filter(acts__isnull=False)
+                     .annotate(last_used=Max(f"acts__{dt_field}"))
+                     .order_by("-last_used", "-id")
+                     .distinct()
+                 )[:5]
 
             return JsonResponse({"results": [{"id": p.id, "label": project_label(p)} for p in qs]})
 
-        # --- 2) q есть => обычный поиск ---
         qs = Project.objects.all()
-
         cond = Q()
         for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
             if fname in project_fields:
@@ -341,6 +392,70 @@ class ProjectsSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         qs = qs.order_by("id")[:30]
         return JsonResponse({"results": [{"id": p.id, "label": project_label(p)} for p in qs]})
+
+
+class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.add_act"
+
+    def get(self, request: HttpRequest) -> JsonResponse:
+        from approvals_app.models import Approval  # noqa: WPS433
+
+        draw = int(request.GET.get("draw") or 1)
+        start = int(request.GET.get("start") or 0)
+        length = int(request.GET.get("length") or 10)
+        length = min(max(length, 5), 50)
+
+        search = (request.GET.get("search[value]") or "").strip()
+
+        base_qs = Approval.objects.select_related("project").only(
+            "id",
+            "status",
+            "created_at",
+            "description",
+            "project__full_code",
+        )
+
+        records_total = base_qs.count()
+
+        qs = base_qs
+        if search:
+            qs = qs.filter(
+                Q(project__full_code__icontains=search)
+                | Q(description__icontains=search)
+                | Q(status__icontains=search)
+            )
+
+        records_filtered = qs.count()
+        qs = qs.order_by("-created_at", "-id")[start:start + length]
+
+        data = []
+        for a in qs:
+            proj = a.project.full_code if a.project_id and a.project else "Общее"
+            status = a.get_status_display() if hasattr(a, "get_status_display") else (a.status or "")
+            created = a.created_at.strftime("%d.%m.%Y") if a.created_at else "—"
+            desc_full = (a.description or "").strip()  # полный текст, без обрезки
+            desc_short = desc_full or "—"
+
+            data.append(
+                {
+                    "id": a.id,
+                    "project": proj,
+                    "status": status,
+                    "created_at": created,
+                    "description": desc_short,  # в таблицу (можно оставить коротко)
+                    "description_full": desc_full,  # ✅ то, что будем подставлять в textarea
+                    "label": _approval_label_short(a),
+                }
+            )
+
+        return JsonResponse(
+            {
+                "draw": draw,
+                "recordsTotal": records_total,
+                "recordsFiltered": records_filtered,
+                "data": data,
+            }
+        )
 
 
 # -------------------------
@@ -369,11 +484,7 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
                 filters |= Q(act_date__year=int(q))
 
             if Project is not None:
-                project_fields = {
-                    f.name
-                    for f in Project._meta.get_fields()
-                    if getattr(f, "concrete", False)
-                }
+                project_fields = {f.name for f in Project._meta.get_fields() if getattr(f, "concrete", False)}
 
                 proj_q = Q()
                 for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
@@ -412,6 +523,9 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
             "appendix_lines",
             "parties",
             "signatory_snapshots",
+            "approval_items",
+            "approval_items__approval",
+            "approval_items__approval__project",
         )
 
     def get_context_data(self, **kwargs):
@@ -446,7 +560,6 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
                         left = doc_name or doc_no or "—"
                         child_label = f"{left} от {_fmt_date(doc_date)}, {material_name}".strip().strip(",")
-
                     children.append({"label": child_label or "—", "sheets": int(mi.sheets_count or 0)})
 
                 row["children"] = children
@@ -459,6 +572,7 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                         AttachmentType.EXEC_SCHEME,
                         AttachmentType.MATERIALS_REGISTRY,
                         AttachmentType.DOCS_REGISTRY,
+                        getattr(AttachmentType, "APPROVALS_REGISTRY", "APPROVALS_REGISTRY"),
                     ]
                     children = []
                     for a in act.attachments.exclude(type__in=exclude_types).order_by("created_at"):
@@ -473,31 +587,25 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                     row["children"] = children
                     appendix_rows.append(row)
                     continue
+            if src is not None and hasattr(AttachmentType, "APPROVALS_REGISTRY"):
+                if getattr(src, "type", None) == AttachmentType.APPROVALS_REGISTRY:
+                    children = []
+                    for it in act.approval_items.all().order_by("position", "id"):
+                        # (label) что печатаем в раскрытии
+                        label = (it.label_override or "").strip()
+                        if not label and getattr(it, "approval", None) is not None:
+                            label = (getattr(it.approval, "description", "") or "").strip()
 
-            if label == "Материалы (паспорта/сертификаты качества)":
-                for mi in act.materials.all():
-                    if mi.passport_id and mi.passport:
-                        doc_name = (getattr(mi.passport, "document_name", "") or "").strip()
-                        doc_date = getattr(mi.passport, "document_date", None)
-                        material_name = ""
-                        material = getattr(mi.passport, "material", None)
-                        if material is not None:
-                            material_name = (getattr(material, "name", "") or "").strip()
+                        children.append(
+                            {
+                                "label": label or "—",
+                                "sheets": int(it.sheets_count or 0),
+                            }
+                        )
 
-                        date_str = _fmt_date(doc_date)
-                        expanded_label = f"{doc_name} от {date_str}, {material_name}".strip().strip(",")
-                    else:
-                        doc_name = (mi.note or "").strip()
-                        doc_no = (mi.manual_doc_no or "").strip()
-                        doc_date = mi.manual_doc_date
-                        material_name = (mi.manual_name or "").strip()
-                        left = doc_name or doc_no or "—"
-                        date_str = _fmt_date(doc_date)
-                        expanded_label = f"{left} от {date_str}, {material_name}".strip().strip(",")
-
-                    appendix_rows.append(
-                        {"label": expanded_label or "—", "sheets": int(mi.sheets_count), "children": []})
-                continue
+                    row["children"] = children
+                    appendix_rows.append(row)
+                    continue
 
             appendix_rows.append(row)
 
@@ -590,7 +698,6 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def get(self, request: HttpRequest) -> HttpResponse:
         projects_form = ActProjectsForm()
-        # NEW: не тянуть все проекты — queryset пустой (выбранных ещё нет)
         _set_projects_queryset_for_form(projects_form, selected_ids=[])
 
         act_form = ActForm()
@@ -608,6 +715,7 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "attachment_formset": attach_fs,
                 "mode": "create",
                 "selected_projects": [],
+                "approval_items": [],
             },
         )
 
@@ -616,7 +724,6 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         posted_ids = _parse_int_list(request.POST.getlist("projects"))
 
         projects_form = ActProjectsForm(request.POST)
-        # NEW: queryset поля = выбранные id, иначе form.is_valid() упадёт
         _set_projects_queryset_for_form(projects_form, selected_ids=posted_ids)
 
         act_form = ActForm(request.POST)
@@ -650,6 +757,7 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "attachment_formset": attach_fs,
                     "mode": "create",
                     "selected_projects": _selected_projects_for_render(posted_ids),
+                    "approval_items": _approval_items_from_post(request),
                 },
             )
 
@@ -660,6 +768,8 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             act.save(update_fields=["created_by"])
 
         act.projects.set(projects_form.cleaned_data["projects"])
+
+        _save_approval_items(act=act, request=request)
 
         ensure_default_parties_for_act(act=act, user=request.user)
 
@@ -692,7 +802,6 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         selected_ids = list(act.projects.values_list("id", flat=True))
 
         projects_form = ActProjectsForm(initial={"projects": act.projects.all()})
-        # NEW: queryset поля = только выбранные, чтобы не грузить всё
         _set_projects_queryset_for_form(projects_form, selected_ids=selected_ids)
 
         act_form = ActForm(instance=act)
@@ -708,6 +817,15 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         attach_fs = ActAttachmentFormSet(instance=act, prefix="att", act_number=act.number)
 
+        approval_items = [
+            {
+                "id": item.approval_id,
+                "label": (item.label_override or _approval_auto_label(item.approval)),
+                "sheets": int(item.sheets_count or 1),
+            }
+            for item in act.approval_items.select_related("approval", "approval__project").order_by("position", "id")
+        ]
+
         return render(
             request,
             self.template_name,
@@ -719,6 +837,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "attachment_formset": attach_fs,
                 "mode": "update",
                 "selected_projects": _selected_projects_for_render(selected_ids),
+                "approval_items": approval_items,
                 **_act_parties_context(act),
             },
         )
@@ -733,7 +852,6 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         posted_ids = _parse_int_list(request.POST.getlist("projects"))
 
         projects_form = ActProjectsForm(request.POST)
-        # NEW: queryset поля = выбранные id, чтобы валидация прошла
         _set_projects_queryset_for_form(projects_form, selected_ids=posted_ids)
 
         act_form = ActForm(request.POST, instance=act)
@@ -770,12 +888,15 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "attachment_formset": attach_fs,
                     "mode": "update",
                     "selected_projects": _selected_projects_for_render(posted_ids),
+                    "approval_items": _approval_items_from_post(request),
                     **_act_parties_context(act),
                 },
             )
 
         act = act_form.save()
         act.projects.set(projects_form.cleaned_data["projects"])
+
+        _save_approval_items(act=act, request=request)
 
         if act.act_date != old_date:
             reset_choices_for_act_on_date_change(act)
@@ -812,12 +933,6 @@ class ActPartiesTableView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 
 class ActPartiesPreviewByDateView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """
-    HTMX: виртуальный пересчёт подписантов по выбранной дате без сохранения акта.
-
-    GET params:
-      - date=YYYY-MM-DD  (из <input type="date">)
-    """
     permission_required = "acts_app.change_act"
 
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
@@ -827,7 +942,6 @@ class ActPartiesPreviewByDateView(LoginRequiredMixin, PermissionRequiredMixin, V
         date_param = request.GET.get("date")
         date_override = _parse_iso_date(date_param)
 
-        # если дата невалидна — просто показываем как обычно (по сохранённой)
         if not date_override:
             return render(
                 request,
@@ -869,8 +983,6 @@ class ActPartyToggleEnabledView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
         key = f"is_enabled_{party_uuid}"
         raw = (request.POST.get(key) or "").strip().lower()
-
-        # если чекбокс снят — браузер вообще не отправит key => считаем False
         is_enabled = raw in {"1", "true", "yes", "on"}
 
         party.is_enabled = is_enabled
@@ -895,13 +1007,12 @@ class ActPartySetOrganizationView(LoginRequiredMixin, PermissionRequiredMixin, V
 
         key = f"organization_id_{party_uuid}"
         org_id_raw = (request.POST.get(key) or "").strip()
-
         org_id = int(org_id_raw) if org_id_raw.isdigit() else None
 
         if org_id is None:
             party.organization = None
         else:
-            from orgs_app.models import Organization
+            from orgs_app.models import Organization  # noqa: WPS433
             party.organization = get_object_or_404(Organization, id=org_id)
 
         party.chosen_authorization = None

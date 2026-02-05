@@ -22,6 +22,7 @@ class AttachmentType(models.TextChoices):
     EXEC_SCHEME = "EXEC_SCHEME", "Исполнительная схема"
     MATERIALS_REGISTRY = "MATERIALS_REGISTRY", "Реестр материалов"
     DOCS_REGISTRY = "DOCS_REGISTRY", "Реестр документов соответствия"
+    APPROVALS_REGISTRY = "APPROVALS_REGISTRY", "Реестр согласований (П-8)"
     CONCRETE_SAMPLES_ACT = "CONCRETE_SAMPLES_ACT", "Акт контрольных образцов бетона"
     TEST_PROTOCOL = "TEST_PROTOCOL", "Протокол испытаний"
     OTHER_QUALITY_DOC = "OTHER_QUALITY_DOC", "Документ качества (прочее)"
@@ -54,13 +55,21 @@ class Act(models.Model):
         help_text="Позже подключим approvals_app + свободный текст.",
     )
 
+    approvals = models.ManyToManyField(
+        "approvals_app.Approval",
+        related_name="acts",
+        verbose_name="Согласования (Доп. сведения)",
+        blank=True,
+    )
+
     copies_count = models.PositiveSmallIntegerField(
         "Акт составлен в (экземплярах)",
         default=3,
         validators=[MinValueValidator(1)],
     )
 
-    status = models.CharField("Статус", max_length=16, choices=ActStatus.choices, default=ActStatus.DRAFT, db_index=True)
+    status = models.CharField("Статус", max_length=16, choices=ActStatus.choices, default=ActStatus.DRAFT,
+                              db_index=True)
 
     act_year = models.PositiveSmallIntegerField("Год акта", editable=False, db_index=True)
     act_month = models.PositiveSmallIntegerField("Месяц акта", editable=False, db_index=True)
@@ -211,7 +220,8 @@ class ActSignatorySnapshot(models.Model):
 
     # Для трассировки (не обязательны для печати)
     source_authorization_uuid = models.UUIDField("UUID полномочия (источник)", null=True, blank=True, db_index=True)
-    source_directive_uuid = models.UUIDField("UUID документа-основания (источник)", null=True, blank=True, db_index=True)
+    source_directive_uuid = models.UUIDField("UUID документа-основания (источник)", null=True, blank=True,
+                                             db_index=True)
 
     # То, что реально печатаем (строками)
     organization_name = models.CharField("Организация (как печатаем)", max_length=512)
@@ -346,3 +356,67 @@ class ActAppendixLine(models.Model):
 
     def __str__(self) -> str:
         return f"{self.position}. {self.label} ({self.sheets_count} л.)"
+
+
+class ActApprovalItem(models.Model):
+    """
+    Согласования (Доп. сведения) в акте, построчно.
+
+    Зачем:
+    - хранить "как отображать в приложении" (label_override)
+    - хранить sheets_count по каждой позиции
+    - хранить порядок
+    """
+    uuid = models.UUIDField("UUID", default=uuid.uuid4, editable=False, unique=True, db_index=True)
+
+    act = models.ForeignKey(
+        "acts_app.Act",
+        on_delete=models.CASCADE,
+        related_name="approval_items",
+        verbose_name="Акт",
+    )
+
+    approval = models.ForeignKey(
+        "approvals_app.Approval",
+        on_delete=models.PROTECT,
+        related_name="act_items",
+        verbose_name="Согласование",
+    )
+
+    position = models.PositiveIntegerField(
+        "Позиция",
+        validators=[MinValueValidator(1)],
+        default=1,
+    )
+
+    label_override = models.CharField(
+        "Текст для приложения (как печатаем)",
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Если пусто — используем авто-лейбл из Approval.",
+    )
+
+    sheets_count = models.PositiveIntegerField(
+        "Листов",
+        validators=[MinValueValidator(1)],
+        default=1,
+    )
+
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Согласование в акте"
+        verbose_name_plural = "Согласования в акте"
+        ordering = ("position", "id")
+        constraints = [
+            models.UniqueConstraint(fields=["act", "approval"], name="uniq_act_approval_item"),
+            models.UniqueConstraint(fields=["act", "position"], name="uniq_act_approval_item_pos"),
+        ]
+        indexes = [
+            models.Index(fields=["act", "position"], name="actappr_act_pos_idx"),
+            models.Index(fields=["approval"], name="actappr_approval_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.act} → {self.approval}"
