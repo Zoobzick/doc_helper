@@ -51,5 +51,6 @@ urlpatterns = [
     path("projects/search/", views.ProjectsSearchView.as_view(), name="projects_search"),
 
     path("approvals/datatable/", views.ApprovalsDatatableView.as_view(), name="approvals_datatable"),
+    path("acts/<uuid:uuid>/docx/", views.ActDocxDownloadView.as_view(), name="act_docx_download"),
 
 ]

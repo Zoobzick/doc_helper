@@ -251,6 +251,12 @@ class AppendixBuilder:
                 )
             else:
                 # < 5: каждое согласование отдельной строкой
+                def _lower_first(s: str) -> str:
+                    s = (s or "").strip()
+                    if not s:
+                        return ""
+                    return s[:1].lower() + s[1:]
+
                 for item in approval_items:
                     label = (item.label_override or "").strip()
 
@@ -258,7 +264,9 @@ class AppendixBuilder:
                         label = (item.approval.description or "").strip()
 
                     if not label:
-                        label = "Согласование"
+                        label = "согласование"  # сразу с маленькой
+
+                    label = _lower_first(label)  # ✅ ключевая строка
 
                     lines_plan.append(
                         _PlannedLine(

@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db import transaction
 from django.db.models import Q, Max
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
@@ -27,6 +27,7 @@ from acts_app.models import (
     ActParty,
     ActApprovalItem,
 )
+from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
 from acts_app.services.signatories import (
     resolve_act_parties,
@@ -1202,3 +1203,27 @@ class PassportsLabelsView(LoginRequiredMixin, PermissionRequiredMixin, View):
             labels[str(p.id)] = f"{material} — {doc_name} №{doc_no} от {doc_date}"
 
         return JsonResponse({"labels": labels})
+
+
+class ActDocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request, uuid):
+        act = get_object_or_404(Act, uuid=uuid)
+
+        try:
+            paths = generate_act_docx(act)  # ✅ теперь это list[Path]
+        except DocxRenderError as e:
+            return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
+
+        if not paths:
+            return HttpResponse("DOCX ERROR: файл не был создан.", status=500, content_type="text/plain; charset=utf-8")
+
+        first_path = paths[0]
+
+        return FileResponse(
+            open(first_path, "rb"),
+            as_attachment=True,
+            filename=first_path.name,
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )

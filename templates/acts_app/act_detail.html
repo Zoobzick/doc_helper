@@ -31,9 +31,16 @@
       <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">
         <i class="bi bi-arrow-left me-1"></i>К списку
       </a>
+
       <a class="btn btn-primary" href="{% url 'acts_app:act_update' act.uuid %}">
         <i class="bi bi-pencil me-1"></i>Редактировать
       </a>
+
+      {# ✅ НОВОЕ: скачать DOCX #}
+      <a class="btn btn-outline-success" href="{% url 'acts_app:act_docx_download' act.uuid %}">
+        <i class="bi bi-download me-1"></i>Скачать DOCX
+      </a>
+
       <form method="post" action="{% url 'acts_app:act_rebuild_appendix' act.uuid %}">
         {% csrf_token %}
         <button class="btn btn-outline-primary" type="submit">
@@ -94,7 +101,7 @@
           {% if appendix_rows %}
             <style>
               .appendix-table { table-layout: fixed; width: 100%; }
-              .appendix-col-pos { width: 4.2rem; }     /* чтобы 2.10 влезало */
+              .appendix-col-pos { width: 4.2rem; }
               .appendix-col-sheets { width: 5.2rem; }
 
               .appendix-label {
