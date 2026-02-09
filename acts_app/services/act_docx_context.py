@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from django.db.models import Q
 
 from acts_app.models import Act, AttachmentType
+from acts_app.services.date_format import fmt_date_g, fmt_date_range_g
+from acts_app.services.material_resolver import resolve_material_fields
 from directive_app.models import ActRole, Authorization
 from orgs_app.models import PersonNRS, SroKind
-from acts_app.services.date_format import fmt_date_g, fmt_date_range_g
 
 _MONTHS_RU_GENITIVE = {
     1: "января", 2: "февраля", 3: "марта", 4: "апреля", 5: "мая", 6: "июня",
@@ -89,7 +89,6 @@ def build_projects_text(act: Act) -> dict[str, str]:
         if code:
             codes.append(code)
 
-    # берём строго с ПЕРВОГО проекта
     project_line = _get_first_attr(first, ("project_line", "line", "construction_line", "object_line"), default="")
     project_stage = _get_first_attr(first, ("project_stage", "stage"), default="")
     project_address = _get_first_attr(first, ("project_address", "address", "addr", "location"), default="")
@@ -118,27 +117,14 @@ def _collect_material_rows(act: Act) -> list[_MaterialRow]:
     rows: list[_MaterialRow] = []
 
     for m in act.materials.select_related("passport", "passport__material").order_by("position", "id"):
-        if m.passport_id and m.passport:
-            p = m.passport
-            material_name = (getattr(getattr(p, "material", None), "name", "") or "").strip()
-            document_name = (getattr(p, "document_name", "") or "").strip()
-            document_no = (getattr(p, "document_number", "") or "").strip()
-            document_date_str = fmt_date_g(getattr(p, "document_date", None))
-        else:
-            material_name = (getattr(m, "manual_name", "") or "").strip()
-            document_name = (getattr(m, "note", "") or "").strip()
-            document_no = (getattr(m, "manual_doc_no", "") or "").strip()
-            document_date_str = fmt_date_g(getattr(m, "manual_doc_date", None))
-
-        material_name = material_name or "Материал"
-        document_name = document_name or "Документ"
+        data = resolve_material_fields(m)  # ✅ единый резолвер (override-first)
 
         rows.append(
             _MaterialRow(
-                material_name=material_name,
-                document_name=document_name,
-                document_no=document_no or "—",
-                document_date_str=document_date_str or "—",
+                material_name=(data["material_name"] or "Материал").strip(),
+                document_name=(data["document_name"] or "Документ").strip(),
+                document_no=(data["document_no"] or "—").strip(),
+                document_date_str=(data["document_date_str"] or "—").strip(),
             )
         )
 
@@ -199,14 +185,14 @@ def _format_attachment(att) -> str:
     title = (getattr(att, "title", "") or "").strip() or "Документ"
     doc_no = (getattr(att, "doc_no", "") or "").strip()
 
-    doc_date_from = getattr(att, "doc_date", None)  # (doc_date_from) дата "с"
-    doc_date_to = getattr(att, "doc_date_to", None)  # (doc_date_to) дата "по"
+    doc_date_from = getattr(att, "doc_date", None)
+    doc_date_to = getattr(att, "doc_date_to", None)
 
     parts = [title]
     if doc_no:
         parts.append(f"№{doc_no}")
 
-    date_str = fmt_date_range_g(doc_date_from, doc_date_to)  # (date_str) диапазон или одиночная дата
+    date_str = fmt_date_range_g(doc_date_from, doc_date_to)
     if date_str:
         parts.append(f"от {date_str}")
 
@@ -247,21 +233,12 @@ def _lower_first(s: str) -> str:
 
 
 def build_approvals_text(act: Act) -> str:
-    """
-    Источник согласований — ActApprovalItem (act.approval_items), потому что m2m act.approvals чистится.
-
-    Правило:
-    - если есть реестр П-8 (APPROVALS_REGISTRY) -> пишем его
-    - иначе если approval_items >= 5 -> пишем "реестр №П-8.<act.number> от <act_date>г."
-    - иначе (<5) -> перечисляем построчно (label_override или approval.description) через запятую, с маленькой буквы
-    """
     reg = act.attachments.filter(type=AttachmentType.APPROVALS_REGISTRY).order_by("-created_at", "-id").first()
     if reg:
         if getattr(reg, "doc_no", "") or getattr(reg, "doc_date", None) or getattr(reg, "doc_date_to", None):
             return _format_attachment(reg)
         return f"реестр №П-8.{act.number} от {fmt_date_g(act.act_date)}"
 
-    # ✅ берем из ActApprovalItem
     items_qs = act.approval_items.select_related("approval").order_by("position", "id")
     items_count = items_qs.count()
 
@@ -273,7 +250,6 @@ def build_approvals_text(act: Act) -> str:
         txt = (it.label_override or "").strip()
         if not txt:
             txt = (getattr(it.approval, "description", "") or "").strip()
-
         txt = _lower_first(txt)
         txt = _strip_trailing_commas(txt)
         if txt:
@@ -332,10 +308,6 @@ def _parties(act: Act, role: str):
 
 
 def _pick_sro_membership_only(org, kind: str, act_date):
-    """
-    ✅ ТОЛЬКО новый формат: org.sro_memberships(kind=BUILD/DESIGN).
-    Без fallback на старые поля.
-    """
     if not org:
         return {"name": "", "ogrn": "", "inn": ""}
 
@@ -358,7 +330,6 @@ def _pick_sro_membership_only(org, kind: str, act_date):
 def build_act_docx_context(act: Act) -> dict[str, str]:
     ctx: dict[str, str] = {}
 
-    # --- акт + даты под шаблон
     ctx["a_name"] = _safe_str(act.number)
 
     a = _date_parts_for_template(act.act_date)
@@ -370,23 +341,19 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
     e = _date_parts_for_template(act.work_end_date)
     ctx["e_dd"], ctx["e_mm"], ctx["e_yy"] = e["dd"], e["mm"], e["yy"]
 
-    # --- простые поля акта
     ctx["job_name"] = _strip_trailing_commas(_safe_str(act.work_name))
     ctx["copies_count"] = _safe_str(act.copies_count)
     ctx["work_norms_text"] = _strip_trailing_commas(_safe_str(act.work_norms_text))
     ctx["allow_next_works_text"] = _strip_trailing_commas(_safe_str(act.allow_next_works_text))
 
-    # --- проекты/объект
     ctx.update(build_projects_text(act))
 
-    # --- п.3 / п.4 / доп. сведения
     ctx["passports"] = build_passports_text(act)
     docs = build_docs_texts(act)
     ctx["exec_scheme"] = docs["exec_scheme"]
     ctx["other_docs"] = docs["other_docs"]
     ctx["approvals"] = build_approvals_text(act)
 
-    # --- builder_name (используется в п.2)
     builder_rep_party = _party(act, ActRole.BUILDER_REP)
     ctx["builder_name"] = (
         _safe_str(getattr(builder_rep_party.organization, "full_name", ""))
@@ -442,7 +409,6 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
             ctx[f"{prefix}_org_sro_design_ogrn"] = sro["ogrn"]
             ctx[f"{prefix}_org_sro_design_inn"] = sro["inn"]
 
-    # tech_customer отдельными ключами
     tc_party = _party(act, ActRole.TECH_CUSTOMER_CONTROL)
     tc_org = tc_party.organization if (tc_party and tc_party.organization_id) else None
 
@@ -455,7 +421,7 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
 
     tc_sro = _pick_sro_membership_only(tc_org, SroKind.BUILD, act.act_date)
     ctx["tech_customer_org_sro_builder"] = _strip_trailing_commas(tc_sro["name"])
-    ctx["tech_customer__org_sro_ogrn"] = tc_sro["ogrn"]  # двойное _ как в шаблоне
+    ctx["tech_customer__org_sro_ogrn"] = tc_sro["ogrn"]
     ctx["tech_customer_org_sro_inn"] = tc_sro["inn"]
 
     tc_auth = _resolve_authorization(
@@ -476,22 +442,15 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
     ctx["tech_customer_directive_date"] = fmt_date_g(getattr(tc_dir, "date", None))
     ctx["tech_customer_directive_note"] = _strip_trailing_commas(_safe_str(getattr(tc_dir, "note", "")))
 
-    # builder_rep: NRS + BUILD+DESIGN SRO
     fill_role("builder_rep", ActRole.BUILDER_REP, include_nrs=True, sro_build=True, sro_design=True)
-
-    # builder_control: NRS
     fill_role("builder_control", ActRole.BUILDER_CONTROL, include_nrs=True)
-
-    # design_rep
     fill_role("design_rep", ActRole.DESIGN_REP, include_nrs=False)
-
-    # contractor_rep + опечатка org_orgn
     fill_role("contractor_rep", ActRole.CONTRACTOR_REP, include_nrs=False)
+
     contractor_party = _party(act, ActRole.CONTRACTOR_REP)
     contractor_org = contractor_party.organization if (contractor_party and contractor_party.organization_id) else None
     ctx["contractor_rep_org_orgn"] = _safe_str(getattr(contractor_org, "ogrn", ""))
 
-    # other_rep: склейка
     others = list(_parties(act, ActRole.OTHER_REP))
     if others:
         fio_list, pos_list, org_list, note_list = [], [], [], []
@@ -525,7 +484,6 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
         ctx["other_rep_directive_date"] = ""
         ctx["other_rep_directive_note"] = ""
 
-    # финальная нормализация
     for k, v in list(ctx.items()):
         ctx[k] = _strip_trailing_commas("" if v is None else str(v))
 

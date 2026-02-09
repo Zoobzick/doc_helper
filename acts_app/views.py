@@ -1,4 +1,3 @@
-# acts_app/views.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -30,6 +29,7 @@ from acts_app.models import (
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
 from acts_app.services.date_format import fmt_date_range_g
+from acts_app.services.material_resolver import resolve_material_fields
 from acts_app.services.signatories import (
     resolve_act_parties,
     resolve_party,
@@ -285,9 +285,6 @@ def _act_parties_context_for_date(act: Act, date_override) -> dict:
 
 
 def _approval_items_from_post(request: HttpRequest) -> list[dict]:
-    """
-    Для возврата в шаблон при ошибках валидации.
-    """
     items = []
     for aid in _parse_int_list_from_post(request, "approvals"):
         items.append(
@@ -301,12 +298,8 @@ def _approval_items_from_post(request: HttpRequest) -> list[dict]:
 
 
 def _save_approval_items(*, act: Act, request: HttpRequest) -> None:
-    """
-    Сохраняем "Доп. сведения" в таблицу ActApprovalItem.
-    """
     approval_ids = _parse_int_list_from_post(request, "approvals")
 
-    # пересобираем полностью (проще и надёжнее для UI-таблицы)
     ActApprovalItem.objects.filter(act=act).delete()
 
     pos = 1
@@ -320,7 +313,6 @@ def _save_approval_items(*, act: Act, request: HttpRequest) -> None:
         )
         pos += 1
 
-    # если вдруг где-то ещё осталась старая m2m — чистим (не обязательно, но чтобы не путаться)
     if hasattr(act, "approvals"):
         act.approvals.clear()
 
@@ -521,6 +513,8 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
         return Act.objects.prefetch_related(
             "projects",
             "materials",
+            "materials__passport",
+            "materials__passport__material",
             "attachments",
             "appendix_lines",
             "parties",
@@ -542,32 +536,33 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
             row: dict = {"label": label, "sheets": sheets, "children": []}
 
             src = getattr(line, "source_attachment", None)
+
+            # ✅ MATERIALS_REGISTRY: дети строим через resolve_material_fields(mi)
             if src is not None and getattr(src, "type", None) == AttachmentType.MATERIALS_REGISTRY:
                 children = []
-                for mi in act.materials.all():
-                    if mi.passport_id and mi.passport:
-                        doc_name = (getattr(mi.passport, "document_name", "") or "").strip()
-                        doc_date = getattr(mi.passport, "document_date", None)
-                        material_name = ""
-                        material = getattr(mi.passport, "material", None)
-                        if material is not None:
-                            material_name = (getattr(material, "name", "") or "").strip()
+                for mi in act.materials.all().order_by("position", "id"):
+                    data = resolve_material_fields(mi)
 
-                        child_label = f"{doc_name} от {_fmt_date(doc_date)}, {material_name}".strip().strip(",")
-                    else:
-                        doc_name = (mi.note or "").strip()
-                        doc_no = (mi.manual_doc_no or "").strip()
-                        doc_date = mi.manual_doc_date
-                        material_name = (mi.manual_name or "").strip()
+                    parts = [data["document_name"]]
 
-                        left = doc_name or doc_no or "—"
-                        child_label = f"{left} от {_fmt_date(doc_date)}, {material_name}".strip().strip(",")
+                    if data["document_no"]:
+                        parts.append(f"№{data['document_no']}")
+
+                    if data["document_date_str"] and data["document_date_str"] != "—":
+                        parts.append(f"от {data['document_date_str']}")
+
+                    base = " ".join(parts).strip()
+                    mat = (data["material_name"] or "").strip()
+
+                    child_label = f"{base}, {mat}".strip().strip(",")
+
                     children.append({"label": child_label or "—", "sheets": int(mi.sheets_count or 0)})
 
                 row["children"] = children
                 appendix_rows.append(row)
                 continue
 
+            # DOCS_REGISTRY
             if src is not None and hasattr(AttachmentType, "DOCS_REGISTRY"):
                 if getattr(src, "type", None) == AttachmentType.DOCS_REGISTRY:
                     exclude_types = [
@@ -580,23 +575,25 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                     for a in act.attachments.exclude(type__in=exclude_types).order_by("created_at"):
                         title = (a.title or "").strip() or "—"
                         doc_no = (a.doc_no or "").strip()
-                        doc_date = a.doc_date
                         parts = [title]
                         if doc_no:
                             parts.append(f"№{doc_no}")
+
                         date_str = fmt_date_range_g(a.doc_date, getattr(a, "doc_date_to", None))
                         if date_str:
                             parts.append(f"от {date_str}")
 
                         children.append({"label": " ".join(parts), "sheets": int(a.sheets_count or 0)})
+
                     row["children"] = children
                     appendix_rows.append(row)
                     continue
+
+            # APPROVALS_REGISTRY
             if src is not None and hasattr(AttachmentType, "APPROVALS_REGISTRY"):
                 if getattr(src, "type", None) == AttachmentType.APPROVALS_REGISTRY:
                     children = []
                     for it in act.approval_items.all().order_by("position", "id"):
-                        # (label) что печатаем в раскрытии
                         label = (it.label_override or "").strip()
                         if not label and getattr(it, "approval", None) is not None:
                             label = (getattr(it.approval, "description", "") or "").strip()

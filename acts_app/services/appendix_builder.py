@@ -1,4 +1,3 @@
-# acts_app/services/appendix_builder.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ from acts_app.models import (
     AttachmentType,
 )
 from acts_app.services.date_format import fmt_date_range_g
+from acts_app.services.material_resolver import resolve_material_fields
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class AppendixBuilder:
     Правила:
     1) Исполнительная схема (ВСЕГДА первая) — минимум 1 документ.
     2) Материалы:
-       - если материалов < 5 → одна VIRTUAL-строка "Материалы …" (листов = сумма листов материалов)
+       - если материалов < 5 → расписываем каждый материал отдельной строкой (VIRTUAL)
        - если материалов >= 5 → создаём/обновляем attachment MATERIALS_REGISTRY и
          в приложениях одна строка-реестр:
          label = "реестр №П-3.<act_number> от <work_end_date>"
@@ -93,8 +93,7 @@ class AppendixBuilder:
         # 2) документы соответствия (все attachments, кроме схемы и реестров)
         compliance_docs_qs = act.attachments.exclude(type__in=self._registry_and_exec_types())
         compliance_docs_count = compliance_docs_qs.count()  # (compliance_docs_count) кол-во документов
-        compliance_docs_sheets = self._sum_attachments_sheets(
-            compliance_docs_qs)  # (compliance_docs_sheets) сумма листов
+        compliance_docs_sheets = self._sum_attachments_sheets(compliance_docs_qs)  # (compliance_docs_sheets) сумма листов
 
         docs_registry = self._ensure_docs_registry(
             act=act,
@@ -119,9 +118,7 @@ class AppendixBuilder:
             act.approval_items.select_related("approval", "approval__project").order_by("position", "id")
         )
         approvals_count = len(approval_items)  # (approvals_count) кол-во согласований
-
-        # (approvals_items_sheets) сумма листов по самим согласованиям
-        approvals_items_sheets = sum(int(i.sheets_count or 0) for i in approval_items)
+        approvals_items_sheets = sum(int(i.sheets_count or 0) for i in approval_items)  # сумма листов по согласованиям
 
         need_approvals_registry = (approvals_count >= self.REGISTRY_THRESHOLD) and (approvals_count > 0)
         approvals_registry = self._ensure_approvals_registry(
@@ -144,7 +141,7 @@ class AppendixBuilder:
                 )
             )
 
-        # 2) Материалы: либо поштучно (<5), либо реестр П-3 (>=5)
+        # 2) Материалы
         if materials_count > 0:
             if materials_count >= self.REGISTRY_THRESHOLD:
                 if not materials_registry:
@@ -162,8 +159,8 @@ class AppendixBuilder:
                     )
                 )
             else:
-                # ✅ НОВОЕ: расписываем каждый материал отдельной строкой
-                for m in act.materials.select_related("passport").order_by("position", "id"):
+                # <5: каждый материал отдельной строкой (VIRTUAL)
+                for m in act.materials.select_related("passport", "passport__material").order_by("position", "id"):
                     label = self._format_material_label(m)
                     lines_plan.append(
                         _PlannedLine(
@@ -174,7 +171,7 @@ class AppendixBuilder:
                         )
                     )
 
-        # 3) Документы соответствия: либо один реестр П-4, либо подробное перечисление как раньше
+        # 3) Документы соответствия
         if compliance_docs_count > 0:
             if compliance_docs_count >= self.REGISTRY_THRESHOLD:
                 if not docs_registry:
@@ -191,7 +188,6 @@ class AppendixBuilder:
                     )
                 )
             else:
-                # как раньше: бетон → протоколы → прочее
                 if concrete_samples_act:
                     label = self._format_attachment_label(
                         concrete_samples_act,
@@ -231,16 +227,13 @@ class AppendixBuilder:
                         )
                     )
 
-        # 4) Согласования (Доп. сведения) — ВСЕГДА В САМЫЙ КОНЕЦ приложений
+        # 4) Согласования — в конец
         if approvals_count > 0:
             if approvals_count >= self.REGISTRY_THRESHOLD:
                 if not approvals_registry:
                     raise AppendixBuilderError("Не удалось создать реестр согласований (П-8).")
 
-                # ✅ ВОТ ИСПРАВЛЕНИЕ:
-                # (total) = листы согласований + листы самого реестра П-8
                 total = int(approvals_items_sheets) + int(approvals_registry.sheets_count or 0)
-
                 label = self._format_registry_label(approvals_registry)
                 lines_plan.append(
                     _PlannedLine(
@@ -251,7 +244,6 @@ class AppendixBuilder:
                     )
                 )
             else:
-                # < 5: каждое согласование отдельной строкой
                 def _lower_first(s: str) -> str:
                     s = (s or "").strip()
                     if not s:
@@ -260,14 +252,11 @@ class AppendixBuilder:
 
                 for item in approval_items:
                     label = (item.label_override or "").strip()
-
                     if not label:
                         label = (item.approval.description or "").strip()
-
                     if not label:
-                        label = "согласование"  # сразу с маленькой
-
-                    label = _lower_first(label)  # ✅ ключевая строка
+                        label = "согласование"
+                    label = _lower_first(label)
 
                     lines_plan.append(
                         _PlannedLine(
@@ -277,19 +266,16 @@ class AppendixBuilder:
                             source_attachment=None,
                         )
                     )
-
         else:
-            # 0 согласований — гарантируем, что реестр П-8 не висит "хвостом"
             self._ensure_approvals_registry(act=act, need=False)
 
-        # --- применяем план: позиции 1..N ---
+        # --- применяем план ---
         existing_by_pos = {
             line.position: line for line in act.appendix_lines.select_for_update().all()
         }
 
         new_size = len(lines_plan)
 
-        # удалить "лишние" старые строки
         for pos, old_line in list(existing_by_pos.items()):
             if pos > new_size:
                 old_line.delete()
@@ -333,13 +319,6 @@ class AppendixBuilder:
     # ---------------- helpers ----------------
 
     def _registry_and_exec_types(self) -> list[str]:
-        """
-        Типы, которые НЕ считаем "документами соответствия":
-        - исполнительная схема
-        - реестр материалов
-        - реестр документов (если есть)
-        - реестр согласований (если есть)
-        """
         types = [
             AttachmentType.EXEC_SCHEME,
             AttachmentType.MATERIALS_REGISTRY,
@@ -364,12 +343,6 @@ class AppendixBuilder:
         return int(res["total"] or 0)
 
     def _ensure_materials_registry(self, *, act: Act, need: bool) -> Optional[ActAttachment]:
-        """
-        Создаёт/обновляет/удаляет реестр материалов (П-3).
-        title строго "реестр"
-        doc_no: "П-3.<act.number>"
-        doc_date: act.work_end_date (если пусто — ошибка)
-        """
         qs = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY)
 
         if not need:
@@ -395,13 +368,6 @@ class AppendixBuilder:
         return obj
 
     def _ensure_docs_registry(self, *, act: Act, need: bool) -> Optional[ActAttachment]:
-        """
-        Создаёт/обновляет/удаляет реестр документов соответствия (П-4).
-        Требует наличие AttachmentType.DOCS_REGISTRY в models.py + миграцию.
-        title строго "реестр"
-        doc_no: "П-4.<act.number>"
-        doc_date: act.act_date
-        """
         docs_reg_type = getattr(AttachmentType, "DOCS_REGISTRY", None)
         if not need:
             if docs_reg_type:
@@ -411,8 +377,7 @@ class AppendixBuilder:
         if not docs_reg_type:
             raise AppendixBuilderError(
                 "Документов соответствия >= 5: нужен реестр документов (П-4), "
-                "но в AttachmentType нет значения DOCS_REGISTRY. "
-                "Добавь AttachmentType.DOCS_REGISTRY и сделай миграцию."
+                "но в AttachmentType нет значения DOCS_REGISTRY."
             )
 
         qs = act.attachments.filter(type=docs_reg_type)
@@ -429,22 +394,13 @@ class AppendixBuilder:
         return obj
 
     def _ensure_approvals_registry(self, *, act: Act, need: bool) -> Optional[ActAttachment]:
-        """
-        Создаёт/обновляет/удаляет реестр согласований (П-8).
-
-        title строго "реестр"
-        doc_no: "П-8.<act.number>"
-        doc_date: act.act_date
-        """
         approvals_reg_type = getattr(AttachmentType, "APPROVALS_REGISTRY", None)
 
-        # если типа нет — просто не умеем с П-8 (но и создавать/удалять нечего)
         if not approvals_reg_type:
             if need:
                 raise AppendixBuilderError(
                     "Согласований >= 5: нужен реестр согласований (П-8), "
-                    "но в AttachmentType нет значения APPROVALS_REGISTRY. "
-                    "Добавь AttachmentType.APPROVALS_REGISTRY и сделай миграцию."
+                    "но в AttachmentType нет значения APPROVALS_REGISTRY."
                 )
             return None
 
@@ -485,55 +441,24 @@ class AppendixBuilder:
     def _format_material_label(self, m) -> str:
         """
         Формат для материалов (<5):
-        document_name №document_number от document_date, material
+        document_name №document_no от document_date, material
 
-        (m) ActMaterialItem
+        Источник истины: resolve_material_fields(m)
         """
-        # Паспорт из БД
-        if getattr(m, "passport_id", None) and getattr(m, "passport", None) is not None:
-            p = m.passport  # (p) Passport
+        data = resolve_material_fields(m)  # (data) итоговые поля с учётом override
 
-            document_name = (getattr(p, "document_name", "") or "").strip()  # (document_name) название документа
-            document_number = (getattr(p, "document_number", "") or "").strip()  # (document_number) номер документа
-            document_date = getattr(p, "document_date", None)  # (document_date) дата документа
+        parts = [data["document_name"]]
 
-            material = getattr(p, "material", None)  # (material) связанный материал
-            material_name = (getattr(material, "name",
-                                     "") or "").strip() if material else ""  # (material_name) имя материала
+        if data["document_no"]:
+            parts.append(f"№{data['document_no']}")
 
-            parts = []
-            if document_name:
-                parts.append(document_name)
-            else:
-                parts.append("Документ")
+        if data["document_date_str"] and data["document_date_str"] != "—":
+            parts.append(f"от {data['document_date_str']}")
 
-            if document_number:
-                parts.append(f"№{document_number}")
+        base = " ".join(parts).strip()
+        material_name = (data["material_name"] or "").strip()
 
-            # дата должна быть всегда в формате "от dd.mm.yyyy" (если пусто — просто не добавляем)
-            if document_date:
-                parts.append(f"от {document_date:%d.%m.%Y}")
-
-            # после основной части добавляем ", material"
-            base = " ".join(parts)
-            if material_name:
-                return f"{base}, {material_name}"
-            return base
-
-        # Ручной материал (если не выбран паспорт)
-        # Здесь логично держать похожий стиль, но у тебя нет material из справочника, поэтому берём manual_name
-        manual_name = (getattr(m, "manual_name", "") or "").strip() or "Материал"
-        doc_no = (getattr(m, "manual_doc_no", "") or "").strip()
-        doc_date = getattr(m, "manual_doc_date", None)
-
-        parts = [(getattr(m, "note", "") or "").strip() or "Документ"]
-        if doc_no:
-            parts.append(f"№{doc_no}")
-        if doc_date:
-            parts.append(f"от {doc_date:%d.%m.%Y}")
-
-        base = " ".join(parts)
-        return f"{base}, {manual_name}" if manual_name else base
+        return f"{base}, {material_name}".strip().strip(",")
 
 
 @dataclass(frozen=True)
