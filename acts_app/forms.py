@@ -267,22 +267,31 @@ ActMaterialFormSet = inlineformset_factory(
 class ActAttachmentForm(forms.ModelForm):
     class Meta:
         model = ActAttachment
-        fields = ("title", "doc_no", "doc_date", "sheets_count", "file")
-        widgets = {"doc_date": iso_date_widget()}
+        fields = ("title", "doc_no", "doc_date", "doc_date_to", "sheets_count", "file")
+        widgets = {"doc_date": iso_date_widget(), "doc_date_to": iso_date_widget()}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         if "doc_date" in self.fields:
             force_iso_date_field(self.fields["doc_date"])
+        if "doc_date_to" in self.fields:
+            force_iso_date_field(self.fields["doc_date_to"])
 
         _bootstrapify(self)
 
     def clean(self):
         cleaned = super().clean()
+
         sheets = cleaned.get("sheets_count")
         if sheets in (None, ""):
             cleaned["sheets_count"] = 1
+
+        d_from = cleaned.get("doc_date")         # (d_from) дата начала
+        d_to = cleaned.get("doc_date_to")        # (d_to) дата конца
+        if d_from and d_to and d_to < d_from:
+            self.add_error("doc_date_to", "Дата (по) не может быть раньше Даты (с).")
+
         return cleaned
 
 

@@ -29,6 +29,7 @@ from acts_app.models import (
 )
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
+from acts_app.services.date_format import fmt_date_range_g
 from acts_app.services.signatories import (
     resolve_act_parties,
     resolve_party,
@@ -583,7 +584,10 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                         parts = [title]
                         if doc_no:
                             parts.append(f"№{doc_no}")
-                        parts.append(f"от {_fmt_date(doc_date)}")
+                        date_str = fmt_date_range_g(a.doc_date, getattr(a, "doc_date_to", None))
+                        if date_str:
+                            parts.append(f"от {date_str}")
+
                         children.append({"label": " ".join(parts), "sheets": int(a.sheets_count or 0)})
                     row["children"] = children
                     appendix_rows.append(row)

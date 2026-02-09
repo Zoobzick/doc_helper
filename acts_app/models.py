@@ -306,7 +306,9 @@ class ActAttachment(models.Model):
 
     title = models.CharField("Наименование", max_length=255, blank=True, default="")
     doc_no = models.CharField("№", max_length=255, blank=True, default="")
-    doc_date = models.DateField("Дата", null=True, blank=True)
+    doc_date = models.DateField("Дата (с)", null=True, blank=True)  # (doc_date) начало периода
+    doc_date_to = models.DateField("Дата (по)", null=True,
+                                   blank=True)  # (doc_date_to) конец периода (может быть пустым)
 
     sheets_count = models.PositiveIntegerField("Листов", validators=[MinValueValidator(1)])
 
@@ -325,7 +327,11 @@ class ActAttachment(models.Model):
         if self.doc_no:
             parts.append(f"№{self.doc_no}")
         if self.doc_date:
-            parts.append(f"от {self.doc_date:%d.%m.%Y}")
+            if self.doc_date_to and self.doc_date_to != self.doc_date:
+                parts.append(f"от {self.doc_date:%d.%m.%Y} по {self.doc_date_to:%d.%m.%Y}")
+            else:
+                parts.append(f"от {self.doc_date:%d.%m.%Y}")
+
         return " ".join(parts)
 
 

@@ -253,6 +253,8 @@
 
 
 
+
+
                                                            {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
@@ -477,11 +479,20 @@
                                         </td>
 
                                         <td>
-                                            {{ f.doc_date }}
+                                            <div class="d-flex gap-2 align-items-center">
+                                                {{ f.doc_date }}
+                                                <span class="text-muted">—</span>
+                                                {{ f.doc_date_to }}
+                                            </div>
+
                                             {% if f.doc_date.errors %}
                                                 <div class="invalid-feedback d-block">{{ f.doc_date.errors }}</div>
                                             {% endif %}
+                                            {% if f.doc_date_to.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.doc_date_to.errors }}</div>
+                                            {% endif %}
                                         </td>
+
 
                                         <td>
                                             {{ f.sheets_count }}
@@ -520,7 +531,13 @@
                             <tr class="attachment-row">
                                 <td>{{ attachment_formset.empty_form.title }}</td>
                                 <td>{{ attachment_formset.empty_form.doc_no }}</td>
-                                <td>{{ attachment_formset.empty_form.doc_date }}</td>
+                                <td>
+                                    <div class="d-flex gap-2 align-items-center">
+                                        {{ attachment_formset.empty_form.doc_date }}
+                                        <span class="text-muted">—</span>
+                                        {{ attachment_formset.empty_form.doc_date_to }}
+                                    </div>
+                                </td>
                                 <td>{{ attachment_formset.empty_form.sheets_count }}</td>
                                 <td>{{ attachment_formset.empty_form.file }}</td>
                                 <td class="text-end">

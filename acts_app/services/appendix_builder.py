@@ -13,6 +13,7 @@ from acts_app.models import (
     ActAttachment,
     AttachmentType,
 )
+from acts_app.services.date_format import fmt_date_range_g
 
 
 @dataclass(frozen=True)
@@ -471,10 +472,14 @@ class AppendixBuilder:
     def _format_attachment_label(self, att: ActAttachment, default_title: str) -> str:
         title = (att.title or "").strip() or default_title
         parts = [title]
+
         if att.doc_no:
             parts.append(f"№{att.doc_no}")
-        if att.doc_date:
-            parts.append(f"от {att.doc_date:%d.%m.%Y}")
+
+        date_str = fmt_date_range_g(att.doc_date, getattr(att, "doc_date_to", None))
+        if date_str:
+            parts.append(f"от {date_str}")
+
         return " ".join(parts)
 
     def _format_material_label(self, m) -> str:

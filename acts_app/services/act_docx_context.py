@@ -1,16 +1,16 @@
-# acts_app/services/act_docx_context.py
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable
+from datetime import date
+from typing import Any, Iterable, Optional
 
 from django.db.models import Q
 
 from acts_app.models import Act, AttachmentType
 from directive_app.models import ActRole, Authorization
 from orgs_app.models import PersonNRS, SroKind
-
+from acts_app.services.date_format import fmt_date_g, fmt_date_range_g
 
 _MONTHS_RU_GENITIVE = {
     1: "января", 2: "февраля", 3: "марта", 4: "апреля", 5: "мая", 6: "июня",
@@ -45,11 +45,6 @@ def _normalize_fio_short(s: str) -> str:
     s = (s or "").strip()
     s = re.sub(r"([А-ЯЁ])\.\s+([А-ЯЁ])\.", r"\1.\2.", s)
     return s
-
-
-def _fmt_date_g(d) -> str:
-    """dd.mm.yyyyг."""
-    return d.strftime("%d.%m.%Yг.") if d else ""
 
 
 def _date_parts_for_template(d) -> dict[str, str]:
@@ -128,12 +123,12 @@ def _collect_material_rows(act: Act) -> list[_MaterialRow]:
             material_name = (getattr(getattr(p, "material", None), "name", "") or "").strip()
             document_name = (getattr(p, "document_name", "") or "").strip()
             document_no = (getattr(p, "document_number", "") or "").strip()
-            document_date_str = _fmt_date_g(getattr(p, "document_date", None))
+            document_date_str = fmt_date_g(getattr(p, "document_date", None))
         else:
             material_name = (getattr(m, "manual_name", "") or "").strip()
             document_name = (getattr(m, "note", "") or "").strip()
             document_no = (getattr(m, "manual_doc_no", "") or "").strip()
-            document_date_str = _fmt_date_g(getattr(m, "manual_doc_date", None))
+            document_date_str = fmt_date_g(getattr(m, "manual_doc_date", None))
 
         material_name = material_name or "Материал"
         document_name = document_name or "Документ"
@@ -157,7 +152,7 @@ def build_passports_text(act: Act) -> str:
 
     if count >= 5:
         if act.work_end_date:
-            return f"реестр №П-3.{act.number} от {_fmt_date_g(act.work_end_date)}"
+            return f"реестр №П-3.{act.number} от {fmt_date_g(act.work_end_date)}"
         return f"реестр №П-3.{act.number}"
 
     rows = _collect_material_rows(act)
@@ -203,13 +198,17 @@ def build_passports_text(act: Act) -> str:
 def _format_attachment(att) -> str:
     title = (getattr(att, "title", "") or "").strip() or "Документ"
     doc_no = (getattr(att, "doc_no", "") or "").strip()
-    doc_date = getattr(att, "doc_date", None)
+
+    doc_date_from = getattr(att, "doc_date", None)  # (doc_date_from) дата "с"
+    doc_date_to = getattr(att, "doc_date_to", None)  # (doc_date_to) дата "по"
 
     parts = [title]
     if doc_no:
         parts.append(f"№{doc_no}")
-    if doc_date:
-        parts.append(f"от {_fmt_date_g(doc_date)}")
+
+    date_str = fmt_date_range_g(doc_date_from, doc_date_to)  # (date_str) диапазон или одиночная дата
+    if date_str:
+        parts.append(f"от {date_str}")
 
     return _strip_trailing_commas(" ".join(parts))
 
@@ -258,16 +257,16 @@ def build_approvals_text(act: Act) -> str:
     """
     reg = act.attachments.filter(type=AttachmentType.APPROVALS_REGISTRY).order_by("-created_at", "-id").first()
     if reg:
-        if getattr(reg, "doc_no", "") or getattr(reg, "doc_date", None):
+        if getattr(reg, "doc_no", "") or getattr(reg, "doc_date", None) or getattr(reg, "doc_date_to", None):
             return _format_attachment(reg)
-        return f"реестр №П-8.{act.number} от {_fmt_date_g(act.act_date)}"
+        return f"реестр №П-8.{act.number} от {fmt_date_g(act.act_date)}"
 
     # ✅ берем из ActApprovalItem
     items_qs = act.approval_items.select_related("approval").order_by("position", "id")
     items_count = items_qs.count()
 
     if items_count >= 5:
-        return f"реестр №П-8.{act.number} от {_fmt_date_g(act.act_date)}"
+        return f"реестр №П-8.{act.number} от {fmt_date_g(act.act_date)}"
 
     descs = []
     for it in items_qs:
@@ -298,7 +297,7 @@ def _pick_nrs(person, act_date) -> tuple[str, str]:
     )
     if not rec:
         return "", ""
-    return _safe_str(rec.nrs_id), _fmt_date_g(rec.valid_from)
+    return _safe_str(rec.nrs_id), fmt_date_g(rec.valid_from)
 
 
 def _resolve_authorization(act: Act, role: str, org_id: int | None, chosen: Authorization | None):
@@ -428,7 +427,7 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
             ctx[f"{prefix}_nrs_date"] = ""
 
         ctx[f"{prefix}_directive_number"] = _safe_str(getattr(directive, "number", ""))
-        ctx[f"{prefix}_directive_date"] = _fmt_date_g(getattr(directive, "date", None))
+        ctx[f"{prefix}_directive_date"] = fmt_date_g(getattr(directive, "date", None))
         ctx[f"{prefix}_directive_note"] = _strip_trailing_commas(_safe_str(getattr(directive, "note", "")))
 
         if sro_build:
@@ -474,7 +473,7 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
     ctx["tech_customer_nrs_number"] = nrs_num
     ctx["tech_customer_nrs_date"] = nrs_date
     ctx["tech_customer_directive_number"] = _safe_str(getattr(tc_dir, "number", ""))
-    ctx["tech_customer_directive_date"] = _fmt_date_g(getattr(tc_dir, "date", None))
+    ctx["tech_customer_directive_date"] = fmt_date_g(getattr(tc_dir, "date", None))
     ctx["tech_customer_directive_note"] = _strip_trailing_commas(_safe_str(getattr(tc_dir, "note", "")))
 
     # builder_rep: NRS + BUILD+DESIGN SRO
@@ -509,7 +508,7 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
             org_list.append(_strip_trailing_commas(_safe_str(getattr(org, "full_name", ""))))
             if not first_dir_num:
                 first_dir_num = _safe_str(getattr(directive, "number", ""))
-                first_dir_date = _fmt_date_g(getattr(directive, "date", None))
+                first_dir_date = fmt_date_g(getattr(directive, "date", None))
             note_list.append(_strip_trailing_commas(_safe_str(getattr(directive, "note", ""))))
 
         ctx["other_rep_fio"] = _strip_trailing_commas(_join_non_empty(fio_list, sep=", "))
