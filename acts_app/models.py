@@ -68,8 +68,13 @@ class Act(models.Model):
         validators=[MinValueValidator(1)],
     )
 
-    status = models.CharField("Статус", max_length=16, choices=ActStatus.choices, default=ActStatus.DRAFT,
-                              db_index=True)
+    status = models.CharField(
+        "Статус",
+        max_length=16,
+        choices=ActStatus.choices,
+        default=ActStatus.DRAFT,
+        db_index=True,
+    )
 
     act_year = models.PositiveSmallIntegerField("Год акта", editable=False, db_index=True)
     act_month = models.PositiveSmallIntegerField("Месяц акта", editable=False, db_index=True)
@@ -172,7 +177,6 @@ class ActParty(models.Model):
             models.Index(fields=["act", "is_enabled"], name="actparty_act_enabled_idx"),
         ]
         constraints = [
-            # Уникальность ролей в акте, кроме OTHER_REP (их может быть несколько)
             models.UniqueConstraint(
                 fields=["act", "role"],
                 condition=~Q(role=ActRole.OTHER_REP),
@@ -218,12 +222,14 @@ class ActSignatorySnapshot(models.Model):
         help_text="Порядок строк в печати (важно для нескольких OTHER_REP).",
     )
 
-    # Для трассировки (не обязательны для печати)
     source_authorization_uuid = models.UUIDField("UUID полномочия (источник)", null=True, blank=True, db_index=True)
-    source_directive_uuid = models.UUIDField("UUID документа-основания (источник)", null=True, blank=True,
-                                             db_index=True)
+    source_directive_uuid = models.UUIDField(
+        "UUID документа-основания (источник)",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
 
-    # То, что реально печатаем (строками)
     organization_name = models.CharField("Организация (как печатаем)", max_length=512)
     person_fio = models.CharField("Подписант (ФИО)", max_length=255)
     position_text = models.CharField("Должность", max_length=255, blank=True, default="")
@@ -248,6 +254,10 @@ class ActMaterialItem(models.Model):
     Материалы:
     - либо ссылка на Passport из БД
     - либо ручной ввод (material_name + document_name + document_date)
+
+    ВАЖНО:
+    manual_doc_date_text — "как печатаем" (поддерживает мм.гггг и любые диапазоны),
+    manual_doc_date — нормальная дата (для случаев dd.mm.yyyy).
     """
     act = models.ForeignKey("acts_app.Act", on_delete=models.CASCADE, related_name="materials", verbose_name="Акт")
 
@@ -263,11 +273,22 @@ class ActMaterialItem(models.Model):
     )
 
     manual_name = models.CharField("Наименование материала (ручной ввод)", max_length=255, blank=True, default="")
+    manual_doc_name = models.CharField("Наименование документа (ручной ввод)", max_length=255, blank=True, default="")
+
     manual_doc_no = models.CharField("Наименование/№ документа (ручной ввод)", max_length=255, blank=True, default="")
+
     manual_doc_date = models.DateField("Дата документа (ручной ввод)", null=True, blank=True)
 
+    # ✅ НОВОЕ: поддержка "02.2026", "26-27.01.2026" и т.п.
+    manual_doc_date_text = models.CharField(
+        "Дата документа (как печатаем)",
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Можно вводить: 02.2026 или 26-27.01.2026. Если заполнено — оно важнее даты dd.mm.yyyy.",
+    )
+
     sheets_count = models.PositiveIntegerField("Листов", validators=[MinValueValidator(1)])
-    note = models.CharField("Примечание", max_length=255, blank=True, default="")
 
     created_at = models.DateTimeField("Создан", auto_now_add=True)
 

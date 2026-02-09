@@ -2,6 +2,13 @@
 {% extends "base.html" %}
 {% load static %}
 
+{% block extra_css %}
+
+    <link href="{% static 'assets/css/act_form.css' %}" rel="stylesheet">
+
+{% endblock %}
+
+
 {% block title %}
     {% if mode == "create" %}Создать акт{% else %}Редактировать акт{% endif %}
 {% endblock %}
@@ -255,6 +262,12 @@
 
 
 
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
                                                            {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
@@ -302,7 +315,8 @@
                                     <th style="min-width: 220px;">Материал</th>
                                     <th style="min-width: 260px;">Наименование документа</th>
                                     <th style="min-width: 180px;">Номер документа</th>
-                                    <th style="width: 170px;">Дата документа</th>
+                                    <th style="width: 170px;">Дата (dd.mm.yyyy)</th>
+                                    <th style="min-width: 200px;">Дата (как в документе)</th>
                                     <th style="width: 120px;">Листов</th>
                                     <th style="width: 190px;"></th>
                                 </tr>
@@ -322,9 +336,9 @@
                                         </td>
 
                                         <td>
-                                            {{ f.note }}
-                                            {% if f.note.errors %}
-                                                <div class="invalid-feedback d-block">{{ f.note.errors }}</div>
+                                            {{ f.manual_doc_name }}
+                                            {% if f.manual_doc_name.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_doc_name.errors }}</div>
                                             {% endif %}
                                         </td>
 
@@ -340,6 +354,16 @@
                                             {% if f.manual_doc_date.errors %}
                                                 <div class="invalid-feedback d-block">{{ f.manual_doc_date.errors }}</div>
                                             {% endif %}
+                                            <div class="form-text">Если заполнено поле справа — оно важнее.</div>
+                                        </td>
+
+                                        <td>
+                                            {{ f.manual_doc_date_text }}
+                                            {% if f.manual_doc_date_text.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_doc_date_text.errors }}</div>
+                                            {% endif %}
+                                            <div class="form-text">Пример: <code>02.2026</code> или
+                                                <code>26-27.01.2026</code></div>
                                         </td>
 
                                         <td>
@@ -381,7 +405,7 @@
 
                                     {% if f.non_field_errors %}
                                         <tr>
-                                            <td colspan="6">
+                                            <td colspan="7">
                                                 <div class="alert alert-danger mb-2">{{ f.non_field_errors }}</div>
                                             </td>
                                         </tr>
@@ -397,9 +421,10 @@
                                 {{ material_formset.empty_form.id }}
 
                                 <td>{{ material_formset.empty_form.manual_name }}</td>
-                                <td>{{ material_formset.empty_form.note }}</td>
+                                <td>{{ material_formset.empty_form.manual_doc_name }}</td>
                                 <td>{{ material_formset.empty_form.manual_doc_no }}</td>
                                 <td>{{ material_formset.empty_form.manual_doc_date }}</td>
+                                <td>{{ material_formset.empty_form.manual_doc_date_text }}</td>
                                 <td>{{ material_formset.empty_form.sheets_count }}</td>
 
                                 <td class="text-end">
@@ -1165,7 +1190,7 @@
                 if (hidden) hidden.value = payload.id || "";
 
                 const inpMaterial = row.querySelector('input[name$="-manual_name"]');
-                const inpDocName = row.querySelector('input[name$="-note"]');
+                const inpDocName = row.querySelector('input[name$="-manual_doc_name"]');
                 const inpDocNo = row.querySelector('input[name$="-manual_doc_no"]');
                 const inpDocDate = row.querySelector('input[name$="-manual_doc_date"]');
 
@@ -1174,6 +1199,8 @@
                 if (inpDocNo) inpDocNo.value = payload.doc_no || "";
 
                 let iso = payload.doc_date_iso || "";
+                const inpDocDateText = row.querySelector('input[name$="-manual_doc_date_text"]');
+                if (inpDocDateText) inpDocDateText.value = "";
                 if (!iso && payload.doc_date) iso = ddmmyyyyToIso(payload.doc_date);
                 if (inpDocDate) inpDocDate.value = iso || "";
             }
@@ -1428,6 +1455,224 @@
             ensureEmptyRow();
         })();
     </script>
+    <script>
+        (function () {
+            // ---------- helpers ----------
+            function isFilled(input) {
+                if (!input) return false;
+
+                // file input
+                if (input.type === "file") return (input.files && input.files.length > 0);
+
+                if (input.type === "checkbox") return input.checked;
+                return (input.value || "").trim() !== "";
+            }
+
+            function setState(input, state) {
+                if (!input) return;
+                input.classList.remove("input-required", "input-valid", "input-error");
+                if (state) input.classList.add(state);
+            }
+
+            function markRequired(input) {
+                if (!input) return;
+                input.classList.add("js-required");
+            }
+
+            // ---------- 1) tag required fields (by selectors) ----------
+            function tagRequiredFields() {
+                // ОСНОВНОЕ (твои required)
+                [
+                    "#id_number",
+                    "#id_act_date",
+                    "#id_work_start_date",
+                    "#id_work_end_date",
+                    "#id_allow_next_works_text",
+                    "#id_work_name",
+                ].forEach((sel) => markRequired(document.querySelector(sel)));
+
+                // МАТЕРИАЛЫ: помечаем все "кандидаты", а логику required решаем по row (паспорт/ручной)
+                document.querySelectorAll('#materials-table tbody tr.material-row').forEach((row) => {
+                    markRequired(row.querySelector('input[name$="-manual_name"]'));
+                    markRequired(row.querySelector('input[name$="-manual_doc_name"]'));
+                    markRequired(row.querySelector('input[name$="-manual_doc_no"]'));
+                    markRequired(row.querySelector('input[name$="-manual_doc_date"]'));
+                    markRequired(row.querySelector('input[name$="-manual_doc_date_text"]'));
+                    markRequired(row.querySelector('input[name$="-sheets_count"]'));
+                });
+
+                // ДОКУМЕНТЫ
+                document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach((row) => {
+                    const isScheme = row.classList.contains("scheme-row");
+
+                    if (isScheme) {
+                        // только дата+листы
+                        markRequired(row.querySelector('input[name$="-doc_date"]'));
+                        markRequired(row.querySelector('input[name$="-sheets_count"]'));
+                        return;
+                    }
+
+                    // остальные документы — всё кроме doc_date_to
+                    markRequired(row.querySelector('input[name$="-title"]'));
+                    markRequired(row.querySelector('input[name$="-doc_no"]'));
+                    markRequired(row.querySelector('input[name$="-doc_date"]'));
+                    markRequired(row.querySelector('input[name$="-sheets_count"]'));
+                    markRequired(row.querySelector('input[name$="-file"]'));
+                });
+
+                // СОГЛАСОВАНИЯ (из БД) — делаем “зелёное как заполненное”
+                document.querySelectorAll('#approvalsTable tbody tr[data-approval-id]').forEach((row) => {
+                    const ta = row.querySelector("textarea");
+                    const sheets = row.querySelector('input[type="number"]');
+                    if (ta) setState(ta, "input-valid");
+                    if (sheets) setState(sheets, "input-valid");
+                });
+            }
+
+            // ---------- 2) update states ----------
+            function updateSimpleRequired(input) {
+                if (!input || !input.classList.contains("js-required")) return;
+
+                if (isFilled(input)) setState(input, "input-valid");
+                else setState(input, "input-required");
+            }
+
+            function updateMaterialRow(row) {
+                if (!row) return;
+
+                const passport = row.querySelector('input[type="hidden"][id$="-passport"]');
+                const hasPassport = (passport && (passport.value || "").trim() !== "");
+
+                const name = row.querySelector('input[name$="-manual_name"]');
+                const docName = row.querySelector('input[name$="-manual_doc_name"]');
+                const docNo = row.querySelector('input[name$="-manual_doc_no"]');
+                const date = row.querySelector('input[name$="-manual_doc_date"]');
+                const dateText = row.querySelector('input[name$="-manual_doc_date_text"]');
+                const sheets = row.querySelector('input[name$="-sheets_count"]');
+
+                if (hasPassport) {
+                    // из БД: всё считается готовым (зелёное), dateText тоже зелёным (пусть пустое)
+                    [name, docName, docNo, date, dateText, sheets].forEach((el) => setState(el, "input-valid"));
+                    return;
+                }
+
+                // ручной ввод:
+                [name, docName, docNo, sheets].forEach((el) => {
+                    if (isFilled(el)) setState(el, "input-valid");
+                    else setState(el, "input-required");
+                });
+
+                // дата: достаточно одного из двух
+                const dateOk = isFilled(date) || isFilled(dateText);
+                if (dateOk) {
+                    if (isFilled(date)) setState(date, "input-valid"); else setState(date, "input-required");
+                    if (isFilled(dateText)) setState(dateText, "input-valid"); else setState(dateText, "input-required");
+                } else {
+                    setState(date, "input-required");
+                    setState(dateText, "input-required");
+                }
+
+                // если ввели dateText — очищаем обычную дату (как ты хотел ранее)
+                if (isFilled(dateText) && date) {
+                    date.value = "";
+                    setState(date, "input-required");
+                }
+            }
+
+            function updateAttachmentRow(row) {
+                if (!row) return;
+                const isScheme = row.classList.contains("scheme-row");
+
+                const title = row.querySelector('input[name$="-title"]');
+                const docNo = row.querySelector('input[name$="-doc_no"]');
+                const dFrom = row.querySelector('input[name$="-doc_date"]');
+                const dTo = row.querySelector('input[name$="-doc_date_to"]');
+                const sheets = row.querySelector('input[name$="-sheets_count"]');
+                const file = row.querySelector('input[name$="-file"]');
+
+                if (isScheme) {
+                    // только дата+листы
+                    [dFrom, sheets].forEach((el) => {
+                        if (isFilled(el)) setState(el, "input-valid");
+                        else setState(el, "input-required");
+                    });
+                    // остальные не трогаем
+                    return;
+                }
+
+                // обычные строки: required всё кроме dTo
+                [title, docNo, dFrom, sheets, file].forEach((el) => {
+                    if (isFilled(el)) setState(el, "input-valid");
+                    else setState(el, "input-required");
+                });
+
+                // dTo (вторая дата) — не обязательна, но если заполнена, можно сделать зелёной
+                if (dTo) {
+                    if (isFilled(dTo)) setState(dTo, "input-valid");
+                    else dTo.classList.remove("input-required", "input-valid", "input-error");
+                }
+            }
+
+            function refreshAll() {
+                tagRequiredFields();
+
+                // простые поля (основное)
+                document.querySelectorAll(".js-required").forEach(updateSimpleRequired);
+
+                // материалы/документы — по строкам
+                document.querySelectorAll('#materials-table tbody tr.material-row').forEach(updateMaterialRow);
+                document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach(updateAttachmentRow);
+            }
+
+            // init
+            refreshAll();
+
+            // live updates
+            document.addEventListener("input", function (e) {
+                const el = e.target;
+                if (!el) return;
+
+                // простые required
+                updateSimpleRequired(el);
+
+                // row logic
+                const matRow = el.closest && el.closest('#materials-table tr.material-row');
+                if (matRow) updateMaterialRow(matRow);
+
+                const attRow = el.closest && el.closest('#attachments-table tr.attachment-row');
+                if (attRow) updateAttachmentRow(attRow);
+            });
+
+            document.addEventListener("change", function (e) {
+                const el = e.target;
+                if (!el) return;
+
+                // file/date change тоже считаем
+                const matRow = el.closest && el.closest('#materials-table tr.material-row');
+                if (matRow) updateMaterialRow(matRow);
+
+                const attRow = el.closest && el.closest('#attachments-table tr.attachment-row');
+                if (attRow) updateAttachmentRow(attRow);
+            });
+
+            // after submit: красим ошибки
+            document.getElementById("act-form")?.addEventListener("submit", function () {
+                document.querySelectorAll(".is-invalid, .soft-invalid").forEach(function (el) {
+                    el.classList.remove("input-required", "input-valid");
+                    el.classList.add("input-error");
+                });
+            });
+
+            // после добавления строк (материалы/документы) — обновляем подсветку
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest("#add-material, #add-material-from-db, #add-attachment, #btnPickPassports");
+                if (!btn) return;
+                setTimeout(refreshAll, 0);
+            });
+        })();
+    </script>
+
+
 
 
 {% endblock %}

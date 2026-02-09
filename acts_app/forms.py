@@ -13,16 +13,10 @@ ISO_DATE_FORMAT = "%Y-%m-%d"
 
 
 def iso_date_widget():
-    # ВАЖНО: format задаёт value для type="date" как YYYY-MM-DD
     return forms.DateInput(attrs={"type": "date"}, format=ISO_DATE_FORMAT)
 
 
 def force_iso_date_field(field: forms.Field):
-    """
-    Гарантирует, что:
-    1) input type=date рендерит value как YYYY-MM-DD
-    2) форма принимает YYYY-MM-DD при POST
-    """
     if isinstance(field, forms.DateField):
         if isinstance(field.widget, forms.DateInput):
             field.widget.format = ISO_DATE_FORMAT
@@ -80,7 +74,6 @@ class ActForm(forms.ModelForm):
             "work_norms_text",
             "allow_next_works_text",
             "copies_count",
-            # status УБРАЛИ из UI и из формы (реально не используете)
         )
         widgets = {
             "act_date": iso_date_widget(),
@@ -89,18 +82,15 @@ class ActForm(forms.ModelForm):
             "work_name": forms.Textarea(attrs={"rows": 3}),
             "work_norms_text": forms.Textarea(attrs={"rows": 3}),
             "allow_next_works_text": forms.Textarea(attrs={"rows": 3}),
-            # copies_count -> настроим в __init__ (чтобы гарантированно применилось)
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Даты — строго ISO (type=date)
         for name in ("act_date", "work_start_date", "work_end_date"):
             if name in self.fields:
                 force_iso_date_field(self.fields[name])
 
-        # copies_count: только 1..9 и узкое поле
         if "copies_count" in self.fields:
             w = self.fields["copies_count"].widget
             if not isinstance(w, forms.NumberInput):
@@ -109,7 +99,6 @@ class ActForm(forms.ModelForm):
 
             w.attrs.setdefault("min", "1")
             w.attrs.setdefault("max", "9")
-            # ширина под 1 цифру (+ стрелки)
             w.attrs.setdefault("style", "max-width: 4.2rem;")
             w.attrs.setdefault("inputmode", "numeric")
 
@@ -147,11 +136,13 @@ class ActMaterialItemForm(forms.ModelForm):
             "manual_name",
             "manual_doc_no",
             "manual_doc_date",
+            "manual_doc_date_text",  # ✅ новое
             "sheets_count",
-            "note",
+            "manual_doc_name",
         )
         widgets = {
             "manual_doc_date": iso_date_widget(),
+            "manual_doc_date_text": forms.TextInput(attrs={"placeholder": "например: 02.2026 или 26-27.01.2026"}),
         }
 
     def __init__(self, *args, project_id: Optional[int] = None, **kwargs):
@@ -161,7 +152,6 @@ class ActMaterialItemForm(forms.ModelForm):
 
         self.fields["passport"].queryset = Passport.objects.all().order_by("-id")
 
-        # sheets_count дефолт 1 (чтобы не улетал NULL)
         self.fields["sheets_count"].required = False
         if self.initial.get("sheets_count") in (None, ""):
             self.initial["sheets_count"] = 1
@@ -171,11 +161,12 @@ class ActMaterialItemForm(forms.ModelForm):
         if "manual_doc_date" in self.fields:
             force_iso_date_field(self.fields["manual_doc_date"])
 
-        # UI: используем note как "Наименование документа"
         self.fields["manual_name"].label = "Материал"
-        self.fields["note"].label = "Наименование документа"
+        self.fields["manual_doc_name"].label = "Наименование документа"
         self.fields["manual_doc_no"].label = "Номер документа"
-        self.fields["manual_doc_date"].label = "Дата документа"
+        self.fields["manual_doc_date"].label = "Дата документа (dd.mm.yyyy)"
+        self.fields["manual_doc_date_text"].label = "Дата документа (как в документе)"
+        self.fields["manual_doc_date_text"].help_text = "Если заполнено — оно печатается вместо dd.mm.yyyy."
 
         _bootstrapify(self)
 
@@ -185,6 +176,7 @@ class ActMaterialItemForm(forms.ModelForm):
         passport = cleaned.get("passport")
         manual_name = (cleaned.get("manual_name") or "").strip()
 
+        # sheets_count
         sheets = cleaned.get("sheets_count")
         if sheets in (None, ""):
             cleaned["sheets_count"] = 1
@@ -199,6 +191,10 @@ class ActMaterialItemForm(forms.ModelForm):
 
         if not passport and not manual_name:
             raise ValidationError("Выбери паспорт из БД или заполни наименование материала вручную.")
+
+        # manual_doc_date_text: если заполнено — manual_doc_date можно не заполнять (и наоборот)
+        date_text = (cleaned.get("manual_doc_date_text") or "").strip()
+        cleaned["manual_doc_date_text"] = date_text
 
         return cleaned
 
@@ -308,7 +304,6 @@ class BaseActAttachmentFormSet(BaseInlineFormSet):
         self.act_number = (act_number or "").strip()
         super().__init__(*args, **kwargs)
 
-        # ✅ исключаем все системные реестры, чтобы пользователь их не видел/не трогал
         exclude_types = [AttachmentType.MATERIALS_REGISTRY]
 
         if hasattr(AttachmentType, "DOCS_REGISTRY"):
