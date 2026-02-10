@@ -369,41 +369,65 @@ def fill_appendix_table(doc: Document, act: Act) -> None:
 # main
 # -------------------------
 
-def generate_act_docx(act: Act, *, template_path: Optional[Path] = None) -> List[Path]:
-    template_path = template_path or (settings.DOCX_TEMPLATES_DIR / "act_template.docx")
-    if not template_path.exists():
-        raise DocxRenderError(f"Не найден DOCX-шаблон: {template_path}")
+from pathlib import Path
+from typing import Optional, List
 
-    AppendixBuilder(act).rebuild()
+from django.conf import settings
+from docx import Document
 
-    doc = Document(str(template_path))
+# ... (остальные импорты и код файла остаются как у тебя)
 
-    ctx = build_act_docx_context(act)
-
-    replace_tokens(doc, ctx)
-    fill_appendix_table(doc, act)
-
-    # ✅ запятая после exec_scheme (когда other_docs пустой) — убираем без потери стилей
-    # В шаблоне: "{{exec_scheme}}, {{other_docs}}" :contentReference[oaicite:2]{index=2}
-    fix_exec_scheme_comma_in_document(doc)
-
-    # ✅ approvals добиваем максимально надёжно (у тебя: "Дополнительные сведения: {{approvals}}") :contentReference[oaicite:3]{index=3}
-    force_approvals_everywhere(doc, ctx.get("approvals", ""))
-
+def get_act_docx_paths(act: Act) -> list[Path]:
+    """
+    Ожидаемые пути, куда должен быть сохранён docx, без сохранения.
+    Формат:
+      ACTS_DIR / year / month_folder / project_full_code / "Акт №... от dd.mm.yyyy.docx"
+    """
     year_dir = Path(settings.ACTS_DIR) / f"{act.act_date.year}"
     month_dir = year_dir / _month_folder_name(act)
-    month_dir.mkdir(parents=True, exist_ok=True)
 
     project_codes = _project_codes(act) or ["Без проекта"]
     file_name = _safe_filename(f"Акт №{act.number} от {act.act_date:%d.%m.%Y}") + ".docx"
 
-    saved: list[Path] = []
-    for code in project_codes:
-        proj_dir = month_dir / _safe_filename(code)
-        proj_dir.mkdir(parents=True, exist_ok=True)
+    return [(month_dir / _safe_filename(code) / file_name) for code in project_codes]
 
-        out_path = proj_dir / file_name
+
+def generate_act_docx(act: Act, *, template_path: Optional[Path] = None) -> list[Path]:
+    """
+    Генерирует docx и сохраняет его в вычисленные пути (перезаписывает если существует).
+    Возвращает список путей.
+    """
+    template_path = template_path or (Path(settings.DOCX_TEMPLATES_DIR) / "act_template.docx")
+    if not template_path.exists():
+        raise DocxRenderError(f"Не найден DOCX-шаблон: {template_path}")
+
+    # пересобираем приложения каждый раз перед генерацией
+    AppendixBuilder(act).rebuild()
+
+    # грузим шаблон
+    doc = Document(str(template_path))
+
+    # собираем контекст
+    ctx = build_act_docx_context(act)
+
+    # ✅ ВАЖНО: у тебя в проекте это называется replace_tokens, а не _fill_tokens
+    replace_tokens(doc, ctx)
+
+    # приложения внутри docx
+    fill_appendix_table(doc, act)
+
+    # твои фиксы
+    fix_exec_scheme_comma_in_document(doc)
+    force_approvals_everywhere(doc, ctx.get("approvals", ""))
+
+    # путь с year/ в начале
+    paths = get_act_docx_paths(act)
+
+    saved: list[Path] = []
+    for out_path in paths:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         doc.save(str(out_path))
         saved.append(out_path)
 
     return saved
+

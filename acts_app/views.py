@@ -26,7 +26,7 @@ from acts_app.models import (
     ActParty,
     ActApprovalItem,
 )
-from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError
+from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError, get_act_docx_paths
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
 from acts_app.services.date_format import fmt_date_range_g
 from acts_app.services.material_resolver import resolve_material_fields
@@ -782,12 +782,15 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         try:
             AppendixBuilder(act).rebuild()
-            messages.success(request, "Акт сохранён. Приложения пересобраны.")
+            generate_act_docx(act)  # ✅ создаём/перезаписываем docx при сохранении
+            messages.success(request, "Акт сохранён. Приложения пересобраны. DOCX обновлён.")
         except AppendixBuilderError as e:
             messages.warning(request, f"Акт сохранён, но приложения не пересобраны: {e}")
+        except DocxRenderError as e:
+            messages.warning(request, f"Акт сохранён, но DOCX не собран: {e}")
 
-        url = reverse("acts_app:act_update", kwargs={"uuid": str(act.uuid)})
-        return redirect(f"{url}#act-parties-block")
+        url = reverse("acts_app:act_detail", kwargs={"uuid": str(act.uuid)})
+        return redirect(url)
 
 
 class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -908,12 +911,15 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         try:
             AppendixBuilder(act).rebuild()
-            messages.success(request, "Изменения сохранены. Приложения пересобраны.")
+            generate_act_docx(act)  # ✅ создаём/перезаписываем docx при сохранении
+            messages.success(request, "Изменения сохранены. Приложения пересобраны. DOCX обновлён.")
         except AppendixBuilderError as e:
             messages.warning(request, f"Изменения сохранены, но приложения не пересобраны: {e}")
+        except DocxRenderError as e:
+            messages.warning(request, f"Изменения сохранены, но DOCX не собран: {e}")
 
-        url = reverse("acts_app:act_update", kwargs={"uuid": str(act.uuid)})
-        return redirect(f"{url}#act-parties-block")
+        url = reverse("acts_app:act_detail", kwargs={"uuid": str(act.uuid)})
+        return redirect(url)
 
 
 # -------------------------
@@ -1209,22 +1215,33 @@ class PassportsLabelsView(LoginRequiredMixin, PermissionRequiredMixin, View):
 class ActDocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "acts_app.view_act"
 
-    def get(self, request, uuid):
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         act = get_object_or_404(Act, uuid=uuid)
 
+        # 1) пробуем отдать уже сохранённый файл
+        paths = get_act_docx_paths(act)
+        for p in paths:
+            if p.exists():
+                return FileResponse(
+                    open(p, "rb"),
+                    as_attachment=True,
+                    filename=p.name,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+
+        # 2) если файла нет — генерим и отдаём
         try:
-            paths = generate_act_docx(act)  # ✅ теперь это list[Path]
+            paths = generate_act_docx(act)
         except DocxRenderError as e:
             return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
 
         if not paths:
             return HttpResponse("DOCX ERROR: файл не был создан.", status=500, content_type="text/plain; charset=utf-8")
 
-        first_path = paths[0]
-
+        p = paths[0]
         return FileResponse(
-            open(first_path, "rb"),
+            open(p, "rb"),
             as_attachment=True,
-            filename=first_path.name,
+            filename=p.name,
             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
