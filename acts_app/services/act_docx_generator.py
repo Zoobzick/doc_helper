@@ -390,7 +390,8 @@ def generate_act_docx(act: Act, *, template_path: Optional[Path] = None) -> List
     # ✅ approvals добиваем максимально надёжно (у тебя: "Дополнительные сведения: {{approvals}}") :contentReference[oaicite:3]{index=3}
     force_approvals_everywhere(doc, ctx.get("approvals", ""))
 
-    month_dir = Path(settings.ACTS_DIR) / _month_folder_name(act)
+    year_dir = Path(settings.ACTS_DIR) / f"{act.act_date.year}"
+    month_dir = year_dir / _month_folder_name(act)
     month_dir.mkdir(parents=True, exist_ok=True)
 
     project_codes = _project_codes(act) or ["Без проекта"]

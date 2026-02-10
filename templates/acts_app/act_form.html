@@ -209,7 +209,7 @@
                 <div class="card mt-3">
                     <div class="card-body pt-3">
                         <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2">
-                            <h5 class="card-title p-0 m-0">Согласования (доп. сведения)</h5>
+                            <h5 class="card-title p-0 m-0">Согласования</h5>
 
                             <button type="button"
                                     class="btn btn-outline-primary btn-sm"
@@ -223,7 +223,7 @@
                             <table class="table table-sm align-middle w-100" id="approvalsTable">
                                 <thead>
                                 <tr>
-                                    <th>Согласование (текст для приложения)</th>
+                                    <th>Согласование (отображение)</th>
                                     <th style="width: 140px;">Листов</th>
                                 </tr>
                                 </thead>
@@ -268,6 +268,13 @@
                                                            
                                                            
                                                            
+
+
+
+
+
+
+
                                                            {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
@@ -315,10 +322,10 @@
                                     <th style="min-width: 220px;">Материал</th>
                                     <th style="min-width: 260px;">Наименование документа</th>
                                     <th style="min-width: 180px;">Номер документа</th>
-                                    <th style="width: 170px;">Дата (dd.mm.yyyy)</th>
-                                    <th style="min-width: 200px;">Дата (как в документе)</th>
+                                    <th style="width: 170px;">Дата</th>
+                                    <th style="min-width: 200px;">Отображение</th>
                                     <th style="width: 120px;">Листов</th>
-                                    <th style="width: 190px;"></th>
+                                    <th style="width: 70px;"></th>
                                 </tr>
                                 </thead>
 
@@ -354,7 +361,6 @@
                                             {% if f.manual_doc_date.errors %}
                                                 <div class="invalid-feedback d-block">{{ f.manual_doc_date.errors }}</div>
                                             {% endif %}
-                                            <div class="form-text">Если заполнено поле справа — оно важнее.</div>
                                         </td>
 
                                         <td>
@@ -362,8 +368,6 @@
                                             {% if f.manual_doc_date_text.errors %}
                                                 <div class="invalid-feedback d-block">{{ f.manual_doc_date_text.errors }}</div>
                                             {% endif %}
-                                            <div class="form-text">Пример: <code>02.2026</code> или
-                                                <code>26-27.01.2026</code></div>
                                         </td>
 
                                         <td>
@@ -374,32 +378,16 @@
                                         </td>
 
                                         <td class="text-end">
-                                            <div class="btn-group btn-group-sm" role="group">
-                                                <button type="button"
-                                                        class="btn btn-outline-primary js-open-passport-modal"
-                                                        data-target-hidden-id="{{ f.passport.auto_id }}">
-                                                    Паспорт
-                                                </button>
-                                                <button type="button"
-                                                        class="btn btn-outline-secondary js-clear-passport"
-                                                        data-target-hidden-id="{{ f.passport.auto_id }}">
-                                                    Очистить
-                                                </button>
-                                            </div>
+                                            {# Для сохранённых строк сохраняем DELETE, но не показываем #}
+                                            {% if f.instance.pk %}
+                                                <div style="display:none;">{{ f.DELETE }}</div>
+                                            {% endif %}
 
-                                            <div class="mt-2">
-                                                {% if f.instance.pk %}
-                                                    <div class="form-check d-inline-flex align-items-center">
-                                                        {{ f.DELETE }}
-                                                        <label class="form-check-label small ms-1">Удалить</label>
-                                                    </div>
-                                                {% else %}
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-danger js-remove-row">
-                                                        <i class="bi bi-x-lg"></i>
-                                                    </button>
-                                                {% endif %}
-                                            </div>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-danger js-remove-row"
+                                                    title="Удалить строку">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
                                         </td>
                                     </tr>
 
@@ -428,24 +416,11 @@
                                 <td>{{ material_formset.empty_form.sheets_count }}</td>
 
                                 <td class="text-end">
-                                    <div class="btn-group btn-group-sm" role="group">
-                                        <button type="button"
-                                                class="btn btn-outline-primary js-open-passport-modal"
-                                                data-target-hidden-id="{{ material_formset.empty_form.passport.auto_id }}">
-                                            Паспорт
-                                        </button>
-                                        <button type="button"
-                                                class="btn btn-outline-secondary js-clear-passport"
-                                                data-target-hidden-id="{{ material_formset.empty_form.passport.auto_id }}">
-                                            Очистить
-                                        </button>
-                                    </div>
-
-                                    <div class="mt-2">
-                                        <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
-                                            <i class="bi bi-x-lg"></i>
-                                        </button>
-                                    </div>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-danger js-remove-row"
+                                            title="Удалить строку">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
                                 </td>
                             </tr>
                         </template>
@@ -476,7 +451,6 @@
                                     <th style="min-width: 220px;">№</th>
                                     <th style="width: 170px;">Дата</th>
                                     <th style="width: 120px;">Листов</th>
-                                    <th style="min-width: 220px;">Файл</th>
                                     <th style="width: 90px;"></th>
                                 </tr>
                                 </thead>
@@ -526,11 +500,9 @@
                                             {% endif %}
                                         </td>
 
-                                        <td>{{ f.file }}</td>
-
                                         <td class="text-end">
                                             {% if forloop.first %}
-                                                <span class="text-muted small">обяз.</span>
+                                                <span class="text-muted small"></span>
                                             {% else %}
                                                 {% if f.instance.pk %}
                                                     <div class="form-check">
@@ -564,7 +536,6 @@
                                     </div>
                                 </td>
                                 <td>{{ attachment_formset.empty_form.sheets_count }}</td>
-                                <td>{{ attachment_formset.empty_form.file }}</td>
                                 <td class="text-end">
                                     <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
                                         <i class="bi bi-x-lg"></i>
@@ -1260,21 +1231,6 @@
                 bsModal.show();
             }
 
-            document.addEventListener("click", function (e) {
-                const btn = e.target.closest(".js-open-passport-modal");
-                if (!btn) return;
-                openPassportModal(btn.dataset.targetHiddenId);
-            });
-
-            document.addEventListener("click", function (e) {
-                const btn = e.target.closest(".js-clear-passport");
-                if (!btn) return;
-
-                const hiddenId = btn.dataset.targetHiddenId;
-                const hidden = getHiddenInputById(hiddenId);
-                if (hidden) hidden.value = "";
-            });
-
             btnPickMany?.addEventListener("click", function () {
                 const picked = [];
                 document.querySelectorAll('#passportPickTable input.passport-pick-cb:checked').forEach(cb => {
@@ -1517,7 +1473,6 @@
                     markRequired(row.querySelector('input[name$="-doc_no"]'));
                     markRequired(row.querySelector('input[name$="-doc_date"]'));
                     markRequired(row.querySelector('input[name$="-sheets_count"]'));
-                    markRequired(row.querySelector('input[name$="-file"]'));
                 });
 
                 // СОГЛАСОВАНИЯ (из БД) — делаем “зелёное как заполненное”
@@ -1588,7 +1543,6 @@
                 const dFrom = row.querySelector('input[name$="-doc_date"]');
                 const dTo = row.querySelector('input[name$="-doc_date_to"]');
                 const sheets = row.querySelector('input[name$="-sheets_count"]');
-                const file = row.querySelector('input[name$="-file"]');
 
                 if (isScheme) {
                     // только дата+листы
@@ -1601,7 +1555,7 @@
                 }
 
                 // обычные строки: required всё кроме dTo
-                [title, docNo, dFrom, sheets, file].forEach((el) => {
+                [title, docNo, dFrom, sheets].forEach((el) => {
                     if (isFilled(el)) setState(el, "input-valid");
                     else setState(el, "input-required");
                 });

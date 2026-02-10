@@ -221,9 +221,16 @@ class BaseActMaterialFormSet(BaseInlineFormSet):
                 seen.add(p.pk)
 
     def save(self, commit=True):
+        # 1. СНАЧАЛА удаляем помеченные формы
+        if commit:
+            for form in self.deleted_forms:
+                if form.instance and form.instance.pk:
+                    form.instance.delete()
+
         objs = []
         pos = 1
 
+        # 2. Потом сохраняем оставшиеся, с НОВЫМИ position
         for form in self.forms:
             if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
                 continue
@@ -241,11 +248,6 @@ class BaseActMaterialFormSet(BaseInlineFormSet):
                 form.save_m2m()
 
             objs.append(obj)
-
-        if commit:
-            for form in self.deleted_forms:
-                if form.instance and form.instance.pk:
-                    form.instance.delete()
 
         return objs
 
@@ -283,8 +285,8 @@ class ActAttachmentForm(forms.ModelForm):
         if sheets in (None, ""):
             cleaned["sheets_count"] = 1
 
-        d_from = cleaned.get("doc_date")         # (d_from) дата начала
-        d_to = cleaned.get("doc_date_to")        # (d_to) дата конца
+        d_from = cleaned.get("doc_date")  # (d_from) дата начала
+        d_to = cleaned.get("doc_date_to")  # (d_to) дата конца
         if d_from and d_to and d_to < d_from:
             self.add_error("doc_date_to", "Дата (по) не может быть раньше Даты (с).")
 
