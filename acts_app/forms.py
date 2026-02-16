@@ -46,6 +46,18 @@ def _bootstrapify(form: forms.Form):
             w.attrs.setdefault("min", "1")
 
 
+def _is_concrete_or_mortar(material_name: str) -> bool:
+    """
+    (material_name) строка, введённая пользователем.
+    Ловим "бетон"/"бетонная смесь"/"раствор".
+    """
+    s = (material_name or "").strip().lower()
+    if not s:
+        return False
+    keywords = ("бетон", "бетонн", "раствор")
+    return any(k in s for k in keywords)
+
+
 class ActProjectsForm(forms.Form):
     projects = forms.ModelMultipleChoiceField(
         queryset=None,
@@ -136,13 +148,15 @@ class ActMaterialItemForm(forms.ModelForm):
             "manual_name",
             "manual_doc_no",
             "manual_doc_date",
-            "manual_doc_date_text",  # ✅ новое
+            "manual_doc_date_text",
+            "concrete_volume_m3",  # ✅ ШАГ 1
             "sheets_count",
             "manual_doc_name",
         )
         widgets = {
             "manual_doc_date": iso_date_widget(),
             "manual_doc_date_text": forms.TextInput(attrs={"placeholder": "например: 02.2026 или 26-27.01.2026"}),
+            "concrete_volume_m3": forms.NumberInput(attrs={"min": "0", "step": "1", "inputmode": "numeric"}),
         }
 
     def __init__(self, *args, project_id: Optional[int] = None, **kwargs):
@@ -158,6 +172,8 @@ class ActMaterialItemForm(forms.ModelForm):
         if getattr(self.instance, "sheets_count", None) in (None, ""):
             self.initial["sheets_count"] = 1
 
+        self.fields["concrete_volume_m3"].required = False  # условно (по названию материала)
+
         if "manual_doc_date" in self.fields:
             force_iso_date_field(self.fields["manual_doc_date"])
 
@@ -167,14 +183,18 @@ class ActMaterialItemForm(forms.ModelForm):
         self.fields["manual_doc_date"].label = "Дата документа (dd.mm.yyyy)"
         self.fields["manual_doc_date_text"].label = "Дата документа (как в документе)"
         self.fields["manual_doc_date_text"].help_text = "Если заполнено — оно печатается вместо dd.mm.yyyy."
+        self.fields["concrete_volume_m3"].label = "Объём, м3"
 
         _bootstrapify(self)
 
     def clean(self):
         cleaned = super().clean()
 
-        passport = cleaned.get("passport")
+        passport = cleaned.get("passport")  # (passport) паспорт из БД
         manual_name = (cleaned.get("manual_name") or "").strip()
+
+        if passport:
+            cleaned["concrete_volume_m3"] = None
 
         # sheets_count
         sheets = cleaned.get("sheets_count")
@@ -196,13 +216,28 @@ class ActMaterialItemForm(forms.ModelForm):
         date_text = (cleaned.get("manual_doc_date_text") or "").strip()
         cleaned["manual_doc_date_text"] = date_text
 
+        # ✅ ШАГ 1: объём обязателен только для ручных "бетон/раствор"
+        if not passport and _is_concrete_or_mortar(manual_name):
+            v = cleaned.get("concrete_volume_m3")  # (v) объём, м3
+            if v in (None, ""):
+                self.add_error("concrete_volume_m3", "Для бетонной смеси/раствора нужно указать объём (целое число).")
+            else:
+                try:
+                    v_int = int(v)
+                except (TypeError, ValueError):
+                    self.add_error("concrete_volume_m3", "Объём должен быть целым числом.")
+                else:
+                    if v_int < 0:
+                        self.add_error("concrete_volume_m3", "Объём не может быть отрицательным.")
+                    cleaned["concrete_volume_m3"] = v_int
+
         return cleaned
 
 
 class BaseActMaterialFormSet(BaseInlineFormSet):
     """
     1) не даём дублировать один и тот же passport
-    2) position проставляем автоматически 1..N
+    2) position проставляем автоматически 1.N
     3) sheets_count никогда не NULL
     """
 
@@ -221,7 +256,6 @@ class BaseActMaterialFormSet(BaseInlineFormSet):
                 seen.add(p.pk)
 
     def save(self, commit=True):
-        # 1. СНАЧАЛА удаляем помеченные формы
         if commit:
             for form in self.deleted_forms:
                 if form.instance and form.instance.pk:
@@ -230,7 +264,6 @@ class BaseActMaterialFormSet(BaseInlineFormSet):
         objs = []
         pos = 1
 
-        # 2. Потом сохраняем оставшиеся, с НОВЫМИ position
         for form in self.forms:
             if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
                 continue
@@ -285,8 +318,8 @@ class ActAttachmentForm(forms.ModelForm):
         if sheets in (None, ""):
             cleaned["sheets_count"] = 1
 
-        d_from = cleaned.get("doc_date")  # (d_from) дата начала
-        d_to = cleaned.get("doc_date_to")  # (d_to) дата конца
+        d_from = cleaned.get("doc_date")
+        d_to = cleaned.get("doc_date_to")
         if d_from and d_to and d_to < d_from:
             self.add_error("doc_date_to", "Дата (по) не может быть раньше Даты (с).")
 

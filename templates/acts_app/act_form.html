@@ -275,6 +275,23 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                                                            {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
@@ -324,6 +341,7 @@
                                     <th style="min-width: 180px;">Номер документа</th>
                                     <th style="width: 170px;">Дата</th>
                                     <th style="min-width: 200px;">Отображение</th>
+                                    <th style="width: 120px;">Объём, м3</th>   <!-- ✅ ШАГ 1 -->
                                     <th style="width: 120px;">Листов</th>
                                     <th style="width: 70px;"></th>
                                 </tr>
@@ -371,6 +389,13 @@
                                         </td>
 
                                         <td>
+                                            {{ f.concrete_volume_m3 }}   <!-- ✅ ШАГ 1 -->
+                                            {% if f.concrete_volume_m3.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.concrete_volume_m3.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
                                             {{ f.sheets_count }}
                                             {% if f.sheets_count.errors %}
                                                 <div class="invalid-feedback d-block">{{ f.sheets_count.errors }}</div>
@@ -383,11 +408,19 @@
                                                 <div style="display:none;">{{ f.DELETE }}</div>
                                             {% endif %}
 
-                                            <button type="button"
-                                                    class="btn btn-sm btn-outline-danger js-remove-row"
-                                                    title="Удалить строку">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary js-duplicate-material"
+                                                        title="Дублировать строку (только для ручных материалов)">
+                                                    <i class="bi bi-files"></i>
+                                                </button>
+
+                                                <button type="button"
+                                                        class="btn btn-outline-danger js-remove-row"
+                                                        title="Удалить строку">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
 
@@ -413,14 +446,23 @@
                                 <td>{{ material_formset.empty_form.manual_doc_no }}</td>
                                 <td>{{ material_formset.empty_form.manual_doc_date }}</td>
                                 <td>{{ material_formset.empty_form.manual_doc_date_text }}</td>
+                                <td>{{ material_formset.empty_form.concrete_volume_m3 }}</td> <!-- ✅ -->
                                 <td>{{ material_formset.empty_form.sheets_count }}</td>
 
                                 <td class="text-end">
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-danger js-remove-row"
-                                            title="Удалить строку">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button"
+                                                class="btn btn-outline-secondary js-duplicate-material"
+                                                title="Дублировать строку (только для ручных материалов)">
+                                            <i class="bi bi-files"></i>
+                                        </button>
+
+                                        <button type="button"
+                                                class="btn btn-outline-danger js-remove-row"
+                                                title="Удалить строку">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         </template>
@@ -732,6 +774,18 @@
         }
     </style>
 
+    <style>
+        .is-disabled {
+            background-color: #f8f9fa !important;
+            cursor: not-allowed;
+        }
+
+        .is-strike {
+            text-decoration: line-through;
+        }
+    </style>
+
+
 
     <script>
         (function () {
@@ -977,6 +1031,9 @@
 
                 return row;
             }
+
+            window.__actsAddRow = addRow;
+
 
             // ---------- REMOVE ROWS CORRECTLY (formsets) ----------
             function markFormDeleted(row, prefix) {
@@ -1435,6 +1492,17 @@
                 input.classList.add("js-required");
             }
 
+            function setDisabled(input, disabled) {
+                if (!input) return;
+                input.disabled = !!disabled;
+                input.classList.toggle("is-disabled", !!disabled);
+            }
+
+            function setStrike(input, strike) {
+                if (!input) return;
+                input.classList.toggle("is-strike", !!strike);
+            }
+
             // ---------- 1) tag required fields (by selectors) ----------
             function tagRequiredFields() {
                 // ОСНОВНОЕ (твои required)
@@ -1455,6 +1523,7 @@
                     markRequired(row.querySelector('input[name$="-manual_doc_date"]'));
                     markRequired(row.querySelector('input[name$="-manual_doc_date_text"]'));
                     markRequired(row.querySelector('input[name$="-sheets_count"]'));
+                    markRequired(row.querySelector('input[name$="-concrete_volume_m3"]'));
                 });
 
                 // ДОКУМЕНТЫ
@@ -1492,6 +1561,7 @@
                 else setState(input, "input-required");
             }
 
+
             function updateMaterialRow(row) {
                 if (!row) return;
 
@@ -1504,14 +1574,60 @@
                 const date = row.querySelector('input[name$="-manual_doc_date"]');
                 const dateText = row.querySelector('input[name$="-manual_doc_date_text"]');
                 const sheets = row.querySelector('input[name$="-sheets_count"]');
+                const v = row.querySelector('input[name$="-concrete_volume_m3"]');
+                const dupBtn = row.querySelector(".js-duplicate-material");
+                if (dupBtn) dupBtn.style.display = hasPassport ? "none" : "";
 
+
+                function isConcreteOrMortar(materialName) {
+                    const s = (materialName || "").trim().toLowerCase();
+                    if (!s) return false;
+                    return (s.includes("бетон") || s.includes("бетонн") || s.includes("раствор"));
+                }
+
+                function setDisabled(input, disabled) {
+                    if (!input) return;
+                    input.disabled = !!disabled;
+                    input.classList.toggle("is-disabled", !!disabled);
+                }
+
+                function setStrike(input, strike) {
+                    if (!input) return;
+                    input.classList.toggle("is-strike", !!strike);
+                }
+
+                // 1) Паспорт из БД: V всегда запрещён
                 if (hasPassport) {
-                    // из БД: всё считается готовым (зелёное), dateText тоже зелёным (пусть пустое)
+                    if (v) {
+                        v.value = "";
+                        setDisabled(v, true);
+                        setStrike(v, true);
+                        v.classList.remove("input-required", "input-error");
+                        setState(v, "input-valid");
+                    }
                     [name, docName, docNo, date, dateText, sheets].forEach((el) => setState(el, "input-valid"));
                     return;
                 }
 
-                // ручной ввод:
+                // 2) Ручной ввод: V включаем ТОЛЬКО если бетон/раствор, иначе блокируем
+                const needV = isConcreteOrMortar(name?.value || "");
+
+                if (v) {
+                    setStrike(v, false); // для ручных не перечёркиваем
+
+                    if (!needV) {
+                        // по умолчанию как у БД: disabled + очищаем
+                        v.value = "";
+                        setDisabled(v, true);
+                        v.classList.remove("input-required", "input-valid", "input-error");
+                    } else {
+                        setDisabled(v, false);
+                        if (isFilled(v)) setState(v, "input-valid");
+                        else setState(v, "input-required");
+                    }
+                }
+
+                // ручной ввод: обязательные колонки
                 [name, docName, docNo, sheets].forEach((el) => {
                     if (isFilled(el)) setState(el, "input-valid");
                     else setState(el, "input-required");
@@ -1527,7 +1643,7 @@
                     setState(dateText, "input-required");
                 }
 
-                // если ввели dateText — очищаем обычную дату (как ты хотел ранее)
+                // если ввели dateText — очищаем обычную дату
                 if (isFilled(dateText) && date) {
                     date.value = "";
                     setState(date, "input-required");
@@ -1623,6 +1739,64 @@
                 if (!btn) return;
                 setTimeout(refreshAll, 0);
             });
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-duplicate-material");
+                if (!btn) return;
+
+                const srcRow = btn.closest('#materials-table tr.material-row');
+                if (!srcRow) return;
+
+                if (srcRow.style.display === "none") return;
+
+                const passport = srcRow.querySelector('input[type="hidden"][id$="-passport"]');
+                const hasPassport = (passport && (passport.value || "").trim() !== "");
+                if (hasPassport) return; // ✅ только ручные
+
+                const addRowFn = window.__actsAddRow;
+                if (typeof addRowFn !== "function") return;
+
+                const newRow = addRowFn("materials-table", "material-empty-form", "mat");
+                if (!newRow) return;
+
+                const get = (row, sel) => row.querySelector(sel);
+                const copyVal = (sel) => {
+                    const from = get(srcRow, sel);
+                    const to = get(newRow, sel);
+                    if (from && to) to.value = from.value || "";
+                };
+
+                // ✅ Копируем ВСЕ нужные данные:
+                copyVal('input[name$="-manual_name"]');            // material_name
+                copyVal('input[name$="-manual_doc_name"]');        // document_name
+                copyVal('input[name$="-manual_doc_no"]');          // document_number
+                copyVal('input[name$="-manual_doc_date"]');        // document_date (dd.mm.yyyy)
+                copyVal('input[name$="-manual_doc_date_text"]');   // если у тебя вместо даты используется текст
+                copyVal('input[name$="-concrete_volume_m3"]');     // V
+                copyVal('input[name$="-sheets_count"]');           // sheets_count
+
+                // Применяем правила строки (включит/выключит V; разрулит date/dateText)
+                updateMaterialRow(newRow);
+
+                // ✅ Помечаем как "требует редактирования", но НЕ очищаем значения
+                const docNo = get(newRow, 'input[name$="-manual_doc_no"]');
+                const date = get(newRow, 'input[name$="-manual_doc_date"]');
+                const dateText = get(newRow, 'input[name$="-manual_doc_date_text"]');
+                const v = get(newRow, 'input[name$="-concrete_volume_m3"]');
+
+                if (docNo) setState(docNo, "input-required");
+
+                // у тебя правило: достаточно одного из date/dateText
+                // пометим оба как "нужно", чтобы человек точно обратил внимание
+                if (date) setState(date, "input-required");
+                if (dateText) setState(dateText, "input-required");
+
+                // V подсвечиваем только если поле активно (бетон/раствор)
+                if (v && !v.disabled) setState(v, "input-required");
+
+                docNo?.focus();
+                setTimeout(refreshAll, 0);
+            });
+
         })();
     </script>
 

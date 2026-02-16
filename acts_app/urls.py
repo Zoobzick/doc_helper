@@ -52,5 +52,6 @@ urlpatterns = [
 
     path("approvals/datatable/", views.ApprovalsDatatableView.as_view(), name="approvals_datatable"),
     path("acts/<uuid:uuid>/docx/", views.ActDocxDownloadView.as_view(), name="act_docx_download"),
-
+    path("acts/<uuid:uuid>/registry/p3/docx/", views.ActRegistryP3DocxDownloadView.as_view(),
+         name="act_registry_p3_docx_download"),
 ]

@@ -26,6 +26,9 @@ from acts_app.models import (
     ActParty,
     ActApprovalItem,
 )
+
+from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx
+
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError, get_act_docx_paths
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
 from acts_app.services.date_format import fmt_date_range_g
@@ -619,7 +622,7 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
         else:
             ctx["signatories_source"] = "resolved"
             ctx["resolved_parties"] = resolve_act_parties(act)
-
+        ctx["has_p3_registry"] = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).exists()
         return ctx
 
 
@@ -783,6 +786,9 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         try:
             AppendixBuilder(act).rebuild()
             generate_act_docx(act)  # ✅ создаём/перезаписываем docx при сохранении
+            reg = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).order_by("-created_at", "-id").first()
+            if reg:
+                generate_and_save_registry_p3_docx(act=act, registry=reg)
             messages.success(request, "Акт сохранён. Приложения пересобраны. DOCX обновлён.")
         except AppendixBuilderError as e:
             messages.warning(request, f"Акт сохранён, но приложения не пересобраны: {e}")
@@ -912,6 +918,9 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         try:
             AppendixBuilder(act).rebuild()
             generate_act_docx(act)  # ✅ создаём/перезаписываем docx при сохранении
+            reg = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).order_by("-created_at", "-id").first()
+            if reg:
+                generate_and_save_registry_p3_docx(act=act, registry=reg)
             messages.success(request, "Изменения сохранены. Приложения пересобраны. DOCX обновлён.")
         except AppendixBuilderError as e:
             messages.warning(request, f"Изменения сохранены, но приложения не пересобраны: {e}")
@@ -1245,3 +1254,53 @@ class ActDocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
             filename=p.name,
             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
+
+class ActRegistryP3DocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+
+        registry = (
+            act.attachments
+            .filter(type=AttachmentType.MATERIALS_REGISTRY)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if not registry:
+            return HttpResponse("Реестр П-3 не создан (материалов меньше 5 или приложения не пересобраны).", status=404)
+
+        from acts_app.services.registry_p3_docx_generator import (
+            get_registry_p3_docx_paths,
+            generate_and_save_registry_p3_docx,
+        )
+
+        # 1) пробуем отдать уже сохранённый файл
+        paths = get_registry_p3_docx_paths(act=act, registry=registry)
+        for p in paths:
+            if p.exists():
+                return FileResponse(
+                    open(p, "rb"),
+                    as_attachment=True,
+                    filename=p.name,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+
+        # 2) если файла нет — генерим и отдаём
+        try:
+            paths = generate_and_save_registry_p3_docx(act=act, registry=registry)
+        except DocxRenderError as e:
+            return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
+
+        if not paths:
+            return HttpResponse("DOCX ERROR: файл не был создан.", status=500, content_type="text/plain; charset=utf-8")
+
+        p = paths[0]
+        return FileResponse(
+            open(p, "rb"),
+            as_attachment=True,
+            filename=p.name,
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+

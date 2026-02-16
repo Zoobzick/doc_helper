@@ -4,262 +4,304 @@
 {% block title %}Акт №{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}{% endblock %}
 
 {% block content %}
-<div class="pagetitle">
-  <h1>Акт №{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}</h1>
-  <nav>
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="/">Главная</a></li>
-      <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
-      <li class="breadcrumb-item active">№{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}</li>
-    </ol>
-  </nav>
-</div>
-
-<section class="section">
-  <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
-    <div class="d-flex flex-wrap gap-2 align-items-center">
-      {% if act.status == "FINAL" %}
-        <span class="badge bg-success">Финальный</span>
-      {% else %}
-        <span class="badge bg-secondary">Черновик</span>
-      {% endif %}
-      <span class="text-muted">Дата: {{ act.act_date|date:"d.m.Y" }}</span>
-      <span class="text-muted">Листов: {{ act.sheets_total }}</span>
+    <div class="pagetitle">
+        <h1>Акт №{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}</h1>
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
+                <li class="breadcrumb-item active">№{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}</li>
+            </ol>
+        </nav>
     </div>
 
-    <div class="d-flex flex-wrap gap-2">
-      <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">
-        <i class="bi bi-arrow-left me-1"></i>К списку
-      </a>
-
-      <a class="btn btn-primary" href="{% url 'acts_app:act_update' act.uuid %}">
-        <i class="bi bi-pencil me-1"></i>Редактировать
-      </a>
-
-      {# ✅ НОВОЕ: скачать DOCX #}
-      <a class="btn btn-outline-success" href="{% url 'acts_app:act_docx_download' act.uuid %}">
-        <i class="bi bi-download me-1"></i>Скачать DOCX
-      </a>
-
-      <form method="post" action="{% url 'acts_app:act_rebuild_appendix' act.uuid %}">
-        {% csrf_token %}
-        <button class="btn btn-outline-primary" type="submit">
-          <i class="bi bi-arrow-repeat me-1"></i>Пересобрать приложения
-        </button>
-      </form>
-    </div>
-  </div>
-
-  {# --- В ОДНУ КОЛОНКУ: СНАЧАЛА "ОСНОВНОЕ", НИЖЕ "ПРИЛОЖЕНИЯ" --- #}
-  <div class="row g-3">
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body pt-3">
-          <h5 class="card-title">Основное</h5>
-
-          <dl class="row mb-0">
-            <dt class="col-sm-3 text-muted">Шифры проектов</dt>
-            <dd class="col-sm-9">
-              {% with projects=act.projects.all %}
-                {% if projects %}
-                  {% for p in projects %}
-                    <a href="{% url 'projects:project_detail' p.id %}" class="text-decoration-none">{{ p }}</a>{% if not forloop.last %}, {% endif %}
-                  {% endfor %}
+    <section class="section">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                {% if act.status == "FINAL" %}
+                    <span class="badge bg-success">Финальный</span>
                 {% else %}
-                  <span class="text-muted">—</span>
+                    <span class="badge bg-secondary">Черновик</span>
                 {% endif %}
-              {% endwith %}
-            </dd>
+                <span class="text-muted">Дата: {{ act.act_date|date:"d.m.Y" }}</span>
+                <span class="text-muted">Листов: {{ act.sheets_total }}</span>
+            </div>
 
-            <dt class="col-sm-3 text-muted">Работы</dt>
-            <dd class="col-sm-9">{{ act.work_name }}</dd>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">
+                    <i class="bi bi-arrow-left me-1"></i>К списку
+                </a>
 
-            <dt class="col-sm-3 text-muted">Начало</dt>
-            <dd class="col-sm-9">
-              {% if act.work_start_date %}{{ act.work_start_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
-            </dd>
+                <a class="btn btn-primary" href="{% url 'acts_app:act_update' act.uuid %}">
+                    <i class="bi bi-pencil me-1"></i>Редактировать
+                </a>
 
-            <dt class="col-sm-3 text-muted">Окончание</dt>
-            <dd class="col-sm-9">
-              {% if act.work_end_date %}{{ act.work_end_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
-            </dd>
+                {# ✅ НОВОЕ: скачать DOCX #}
+                {# ✅ Скачать: Акт #}
+                <a class="btn btn-outline-success" href="{% url 'acts_app:act_docx_download' act.uuid %}">
+                    <i class="bi bi-download me-1"></i>Акт
+                </a>
 
-            <dt class="col-sm-3 text-muted">Последующие</dt>
-            <dd class="col-sm-9">
-              {% if act.allow_next_works_text %}{{ act.allow_next_works_text|linebreaksbr }}{% else %}<span class="text-muted">—</span>{% endif %}
-            </dd>
-          </dl>
+                {# ✅ Скачать: Реестр (П-3) #}
+                {% if has_p3_registry %}
+                    <a class="btn btn-outline-success"
+                       href="{% url 'acts_app:act_registry_p3_docx_download' act.uuid %}">
+                        <i class="bi bi-download me-1"></i>Реестр
+                    </a>
+                {% else %}
+                    <button class="btn btn-outline-success" type="button" disabled>
+                        <i class="bi bi-download me-1"></i>Реестр
+                    </button>
+                {% endif %}
+
+                <form method="post" action="{% url 'acts_app:act_rebuild_appendix' act.uuid %}">
+                    {% csrf_token %}
+                    <button class="btn btn-outline-primary" type="submit">
+                        <i class="bi bi-arrow-repeat me-1"></i>Пересобрать приложения
+                    </button>
+                </form>
+            </div>
         </div>
-      </div>
-    </div>
 
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body pt-3">
-          <h5 class="card-title">Приложения</h5>
+        {# --- В ОДНУ КОЛОНКУ: СНАЧАЛА "ОСНОВНОЕ", НИЖЕ "ПРИЛОЖЕНИЯ" --- #}
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body pt-3">
+                        <h5 class="card-title">Основное</h5>
 
-          {% if appendix_rows %}
-            <style>
-              .appendix-table { table-layout: fixed; width: 100%; }
-              .appendix-col-pos { width: 4.2rem; }
-              .appendix-col-sheets { width: 5.2rem; }
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3 text-muted">Шифры проектов</dt>
+                            <dd class="col-sm-9">
+                                {% with projects=act.projects.all %}
+                                    {% if projects %}
+                                        {% for p in projects %}
+                                            <a href="{% url 'projects:project_detail' p.id %}"
+                                               class="text-decoration-none">{{ p }}</a>{% if not forloop.last %},
+                                        {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                {% endwith %}
+                            </dd>
 
-              .appendix-label {
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                display: block;
-                width: 100%;
-              }
+                            <dt class="col-sm-3 text-muted">Работы</dt>
+                            <dd class="col-sm-9">{{ act.work_name }}</dd>
 
-              .registry-row { cursor: pointer; }
-              .registry-chevron { transition: transform .15s ease; }
-              .registry-row.is-open .registry-chevron { transform: rotate(180deg); }
+                            <dt class="col-sm-3 text-muted">Начало</dt>
+                            <dd class="col-sm-9">
+                                {% if act.work_start_date %}{{ act.work_start_date|date:"d.m.Y" }}{% else %}
+                                    <span class="text-muted">—</span>{% endif %}
+                            </dd>
 
-              .registry-child-row td {
-                padding-top: .35rem;
-                padding-bottom: .35rem;
-              }
-              .registry-child-row td:first-child { color: #6c757d; }
-              .registry-child-row .appendix-label { padding-left: .75rem; }
-            </style>
+                            <dt class="col-sm-3 text-muted">Окончание</dt>
+                            <dd class="col-sm-9">
+                                {% if act.work_end_date %}{{ act.work_end_date|date:"d.m.Y" }}{% else %}
+                                    <span class="text-muted">—</span>{% endif %}
+                            </dd>
 
-            <div class="table-responsive">
-              <table class="table table-sm align-middle appendix-table">
-                <colgroup>
-                  <col class="appendix-col-pos">
-                  <col>
-                  <col class="appendix-col-sheets">
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>№</th>
-                    <th>Наименование</th>
-                    <th class="text-end">Листов</th>
-                  </tr>
-                </thead>
+                            <dt class="col-sm-3 text-muted">Последующие</dt>
+                            <dd class="col-sm-9">
+                                {% if act.allow_next_works_text %}{{ act.allow_next_works_text|linebreaksbr }}{% else %}
+                                    <span class="text-muted">—</span>{% endif %}
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
 
-                <tbody id="appendix-accordion">
-                  {% for row in appendix_rows %}
-                    <tr
-                      {% if row.children %}
-                        class="registry-row js-registry-row"
-                        data-registry-pos="{{ row.pos }}"
-                        aria-expanded="false"
-                        role="button"
-                        tabindex="0"
-                      {% endif %}
-                    >
-                      <td>{{ row.pos }}</td>
-                      <td>
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body pt-3">
+                        <h5 class="card-title">Приложения</h5>
+
+                        {% if appendix_rows %}
+                            <style>
+                                .appendix-table {
+                                    table-layout: fixed;
+                                    width: 100%;
+                                }
+
+                                .appendix-col-pos {
+                                    width: 4.2rem;
+                                }
+
+                                .appendix-col-sheets {
+                                    width: 5.2rem;
+                                }
+
+                                .appendix-label {
+                                    white-space: nowrap;
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    display: block;
+                                    width: 100%;
+                                }
+
+                                .registry-row {
+                                    cursor: pointer;
+                                }
+
+                                .registry-chevron {
+                                    transition: transform .15s ease;
+                                }
+
+                                .registry-row.is-open .registry-chevron {
+                                    transform: rotate(180deg);
+                                }
+
+                                .registry-child-row td {
+                                    padding-top: .35rem;
+                                    padding-bottom: .35rem;
+                                }
+
+                                .registry-child-row td:first-child {
+                                    color: #6c757d;
+                                }
+
+                                .registry-child-row .appendix-label {
+                                    padding-left: .75rem;
+                                }
+                            </style>
+
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle appendix-table">
+                                    <colgroup>
+                                        <col class="appendix-col-pos">
+                                        <col>
+                                        <col class="appendix-col-sheets">
+                                    </colgroup>
+                                    <thead>
+                                    <tr>
+                                        <th>№</th>
+                                        <th>Наименование</th>
+                                        <th class="text-end">Листов</th>
+                                    </tr>
+                                    </thead>
+
+                                    <tbody id="appendix-accordion">
+                                    {% for row in appendix_rows %}
+                                        <tr
+                                                {% if row.children %}
+                                                    class="registry-row js-registry-row"
+                                                    data-registry-pos="{{ row.pos }}"
+                                                    aria-expanded="false"
+                                                    role="button"
+                                                    tabindex="0"
+                                                {% endif %}
+                                        >
+                                            <td>{{ row.pos }}</td>
+                                            <td>
                         <span class="appendix-label">
                           {{ row.label }}
-                          {% if row.children %}
-                            <i class="bi bi-chevron-down ms-1 text-muted small registry-chevron"></i>
-                          {% endif %}
+                            {% if row.children %}
+                                <i class="bi bi-chevron-down ms-1 text-muted small registry-chevron"></i>
+                            {% endif %}
                         </span>
-                      </td>
-                      <td class="text-end">
+                                            </td>
+                                            <td class="text-end">
                         <span
-                          {% if row.children %}
-                            class="js-registry-sheets"
-                            data-registry-pos="{{ row.pos }}"
-                          {% endif %}
+                                {% if row.children %}
+                                    class="js-registry-sheets"
+                                    data-registry-pos="{{ row.pos }}"
+                                {% endif %}
                         >
                           {{ row.sheets }}
                         </span>
-                      </td>
-                    </tr>
+                                            </td>
+                                        </tr>
 
-                    {% if row.children %}
-                      {% for ch in row.children %}
-                        <tr class="registry-child-row js-registry-child d-none" data-registry-pos="{{ row.pos }}">
-                          <td>{{ row.pos }}.{{ forloop.counter }}</td>
-                          <td><span class="appendix-label">{{ ch.label }}</span></td>
-                          <td class="text-end">{{ ch.sheets }}</td>
-                        </tr>
-                      {% endfor %}
-                    {% endif %}
-                  {% endfor %}
-                </tbody>
-              </table>
+                                        {% if row.children %}
+                                            {% for ch in row.children %}
+                                                <tr class="registry-child-row js-registry-child d-none"
+                                                    data-registry-pos="{{ row.pos }}">
+                                                    <td>{{ row.pos }}.{{ forloop.counter }}</td>
+                                                    <td><span class="appendix-label">{{ ch.label }}</span></td>
+                                                    <td class="text-end">{{ ch.sheets }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <script>
+                                document.addEventListener("DOMContentLoaded", function () {
+                                    const rows = Array.from(document.querySelectorAll(".js-registry-row"));
+
+                                    function closeRegistry(pos) {
+                                        const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
+                                        if (!row) return;
+
+                                        row.classList.remove("is-open");
+                                        row.setAttribute("aria-expanded", "false");
+
+                                        document
+                                            .querySelectorAll('.js-registry-child[data-registry-pos="' + pos + '"]')
+                                            .forEach(tr => tr.classList.add("d-none"));
+
+                                        const sheets = document.querySelector('.js-registry-sheets[data-registry-pos="' + pos + '"]');
+                                        if (sheets) sheets.classList.remove("d-none");
+                                    }
+
+                                    function openRegistry(pos) {
+                                        const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
+                                        if (!row) return;
+
+                                        rows.forEach(r => {
+                                            const p = r.getAttribute("data-registry-pos");
+                                            if (p !== pos) closeRegistry(p);
+                                        });
+
+                                        row.classList.add("is-open");
+                                        row.setAttribute("aria-expanded", "true");
+
+                                        document
+                                            .querySelectorAll('.js-registry-child[data-registry-pos="' + pos + '"]')
+                                            .forEach(tr => tr.classList.remove("d-none"));
+
+                                        const sheets = document.querySelector('.js-registry-sheets[data-registry-pos="' + pos + '"]');
+                                        if (sheets) sheets.classList.add("d-none");
+                                    }
+
+                                    function toggleRegistry(pos) {
+                                        const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
+                                        if (!row) return;
+
+                                        const isOpen = row.classList.contains("is-open");
+                                        if (isOpen) closeRegistry(pos);
+                                        else openRegistry(pos);
+                                    }
+
+                                    rows.forEach(row => {
+                                        row.addEventListener("click", function () {
+                                            const pos = row.getAttribute("data-registry-pos");
+                                            toggleRegistry(pos);
+                                        });
+
+                                        row.addEventListener("keydown", function (e) {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                const pos = row.getAttribute("data-registry-pos");
+                                                toggleRegistry(pos);
+                                            }
+                                        });
+                                    });
+                                });
+                            </script>
+
+                        {% else %}
+                            <div class="text-muted mb-2">Приложения ещё не собраны.</div>
+                            <div class="small text-muted">
+                                Это отдельная витрина (ActAppendixLine), она формируется сервисом пересборки.
+                                Нажми “Пересобрать приложения”.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
-
-            <script>
-              document.addEventListener("DOMContentLoaded", function () {
-                const rows = Array.from(document.querySelectorAll(".js-registry-row"));
-
-                function closeRegistry(pos) {
-                  const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
-                  if (!row) return;
-
-                  row.classList.remove("is-open");
-                  row.setAttribute("aria-expanded", "false");
-
-                  document
-                    .querySelectorAll('.js-registry-child[data-registry-pos="' + pos + '"]')
-                    .forEach(tr => tr.classList.add("d-none"));
-
-                  const sheets = document.querySelector('.js-registry-sheets[data-registry-pos="' + pos + '"]');
-                  if (sheets) sheets.classList.remove("d-none");
-                }
-
-                function openRegistry(pos) {
-                  const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
-                  if (!row) return;
-
-                  rows.forEach(r => {
-                    const p = r.getAttribute("data-registry-pos");
-                    if (p !== pos) closeRegistry(p);
-                  });
-
-                  row.classList.add("is-open");
-                  row.setAttribute("aria-expanded", "true");
-
-                  document
-                    .querySelectorAll('.js-registry-child[data-registry-pos="' + pos + '"]')
-                    .forEach(tr => tr.classList.remove("d-none"));
-
-                  const sheets = document.querySelector('.js-registry-sheets[data-registry-pos="' + pos + '"]');
-                  if (sheets) sheets.classList.add("d-none");
-                }
-
-                function toggleRegistry(pos) {
-                  const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
-                  if (!row) return;
-
-                  const isOpen = row.classList.contains("is-open");
-                  if (isOpen) closeRegistry(pos);
-                  else openRegistry(pos);
-                }
-
-                rows.forEach(row => {
-                  row.addEventListener("click", function () {
-                    const pos = row.getAttribute("data-registry-pos");
-                    toggleRegistry(pos);
-                  });
-
-                  row.addEventListener("keydown", function (e) {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      const pos = row.getAttribute("data-registry-pos");
-                      toggleRegistry(pos);
-                    }
-                  });
-                });
-              });
-            </script>
-
-          {% else %}
-            <div class="text-muted mb-2">Приложения ещё не собраны.</div>
-            <div class="small text-muted">
-              Это отдельная витрина (ActAppendixLine), она формируется сервисом пересборки.
-              Нажми “Пересобрать приложения”.
-            </div>
-          {% endif %}
         </div>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 {% endblock %}

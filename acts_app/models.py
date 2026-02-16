@@ -288,6 +288,13 @@ class ActMaterialItem(models.Model):
         help_text="Можно вводить: 02.2026 или 26-27.01.2026. Если заполнено — оно важнее даты dd.mm.yyyy.",
     )
 
+    concrete_volume_m3 = models.PositiveIntegerField(
+        "Объём, м3",
+        null=True,
+        blank=True,
+        help_text="Заполняется для бетонной смеси/раствора (ручной ввод).",
+    )
+
     sheets_count = models.PositiveIntegerField("Листов", validators=[MinValueValidator(1)])
 
     created_at = models.DateTimeField("Создан", auto_now_add=True)
