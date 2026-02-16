@@ -1,26 +1,60 @@
 from __future__ import annotations
 
 import os
+import re
+
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.utils import timezone
+
 from projects_app.models import Project
+
+
+# (approvals_storage) — корень хранения именно для approvals:
+# физически: <BASE_ID_DIR>/Согласования/...
+approvals_storage = FileSystemStorage(
+    location=str(settings.APPROVALS_DIR),
+    base_url=None,  # обычно файлы согласований не должны раздаваться как MEDIA
+)
+
+_INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*\n\r\t]')
+
+
+def _safe_segment(value: str, fallback: str = "_unparsed") -> str:
+    """
+    value (str) — название папки (например full_code проекта)
+    fallback (str) — что вернуть, если value пустое/плохое
+
+    Делает строку безопасной для имени папки (Windows/Linux).
+    """
+    s = " ".join((value or "").strip().split())
+    if not s:
+        return fallback
+    s = _INVALID_CHARS_RE.sub("_", s).strip(" .")
+    return s or fallback
+
+
+def _safe_filename(filename: str) -> str:
+    """
+    filename (str) — имя файла от клиента
+    Берём только basename, чтобы исключить подмешивание путей.
+    """
+    return os.path.basename(filename)
 
 
 def approval_upload_to(instance: "Approval", filename: str) -> str:
     """
-    Возвращает ОТНОСИТЕЛЬНЫЙ путь внутри MEDIA_ROOT.
-    ВАЖНО: никаких абсолютных путей и FileSystemStorage(location=...) в модели,
-    иначе миграции будут зависеть от ОС (Windows/Linux) и окружения.
+    Возвращает ОТНОСИТЕЛЬНЫЙ путь внутри approvals_storage (storage/Согласования).
     """
-    # (status_dir) — папка для "на согласовании"
-    status_dir = "На согласовании" if instance.status == Approval.Status.PENDING else ""
+    # (status_dir) — папка статуса
+    status_dir = "На согласовании" if instance.status == Approval.Status.PENDING else "Согласовано"
 
     # (project_dir) — папка проекта или "Общие"
-    project_dir = instance.project.full_code if instance.project else "Общие"
-    project_dir = project_dir.replace("/", "_").replace("\\", "_").strip()
+    project_code = instance.project.full_code if instance.project else "Общие"
+    project_dir = _safe_segment(project_code, fallback="Общие")
 
-    # итог: "На согласовании/<шифр>/file.pdf" или "<шифр>/file.pdf"
-    return os.path.join(status_dir, project_dir, filename)
+    return os.path.join(status_dir, project_dir, _safe_filename(filename))
 
 
 class Approval(models.Model):
@@ -42,7 +76,7 @@ class Approval(models.Model):
     file = models.FileField(
         "PDF файл",
         upload_to=approval_upload_to,
-        # storage НЕ указываем — используется DEFAULT_FILE_STORAGE / MEDIA_ROOT
+        storage=approvals_storage,  # <-- ключевое изменение
     )
 
     status = models.CharField(
