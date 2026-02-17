@@ -30,4 +30,5 @@ urlpatterns = [
     path("orgs/", include("orgs_app.urls", namespace="orgs_app")),
 
     path("", include("health_app.urls")),
+    path("acts/", include("acts_app.urls", namespace="acts")),
 ]

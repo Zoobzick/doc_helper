@@ -115,6 +115,13 @@ class Project(models.Model):
     )
 
     construction = models.TextField(blank=True, default="")
+    address = models.CharField(
+        "Адрес объекта",
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Адрес объекта строительства (как печатаем в шапке акта)",
+    )
     needs_review = models.BooleanField(default=True)
 
     designer = models.ForeignKey(Designer, on_delete=models.PROTECT, null=True, blank=True)

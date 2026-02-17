@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Акты скрытых работ{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <h1>Акты скрытых работ</h1>
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item active">Акты</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section">
+        <div class="card">
+            <div class="card-body pt-3">
+
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+                    <form class="d-flex gap-2 align-items-center" method="get">
+                        {# ✅ input-group остаётся стабильным по ширине #}
+                        <div class="input-group" style="min-width: 360px; max-width: 900px;">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input
+                                    type="text"
+                                    class="form-control"
+                                    name="q"
+                                    value="{{ request.GET.q|default:'' }}"
+                                    placeholder="Поиск: № акта / дата (дд.мм.гггг) / шифр проекта…"
+                            >
+                            <button class="btn btn-primary" type="submit">Искать</button>
+                        </div>
+
+                        {# ✅ Сбросить отдельно (не влияет на ширину поля) #}
+                        {% if request.GET.q %}
+                            <a class="btn btn-outline-secondary ms-1" href="{% url 'acts_app:act_list' %}">
+                                Сбросить
+                            </a>
+                        {% endif %}
+                    </form>
+
+                    <a class="btn btn-sm btn-success" href="{% url 'acts_app:act_create' %}">
+                        <i class="bi bi-plus-circle me-1"></i>Создать акт
+                    </a>
+                </div>
+
+                <style>
+                    .acts-table {
+                        table-layout: fixed;
+                        width: 100%;
+                    }
+
+                    .acts-col-num {
+                        width: 18%;
+                    }
+
+                    .acts-col-date {
+                        width: 10%;
+                    }
+
+                    .acts-col-works {
+                        width: 34%;
+                    }
+
+                    .acts-col-project {
+                        width: 30%;
+                    }
+
+                    .acts-col-actions {
+                        width: 8%;
+                    }
+
+                    .act-number-full {
+                        display: block;
+                        white-space: normal;
+                        overflow-wrap: anywhere;
+                        word-break: break-word;
+                        line-height: 1.2;
+                    }
+
+                    .works-clip {
+                        display: -webkit-box;
+                        -webkit-line-clamp: 1;
+                        -webkit-box-orient: vertical;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: normal;
+                        max-width: 100%;
+                        cursor: text;
+                    }
+
+                    .projects-stack {
+                        display: flex;
+                        flex-direction: column;
+                        gap: .25rem;
+                        line-height: 1.15;
+                        font-size: .78rem;
+                    }
+
+                    .projects-stack .project-item {
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: clip;
+                    }
+
+                    .icon-action {
+                        width: 34px;
+                        height: 34px;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 0;
+                    }
+                </style>
+
+                <table class="table table-striped table-bordered align-middle acts-table">
+                    <colgroup>
+                        <col class="acts-col-num">
+                        <col class="acts-col-date">
+                        <col class="acts-col-works">
+                        <col class="acts-col-project">
+                        <col class="acts-col-actions">
+                    </colgroup>
+
+                    <thead>
+                    <tr>
+                        <th class="text-center text-nowrap">№ акта</th>
+                        <th class="text-center text-nowrap">Дата</th>
+                        <th class="text-center">Работы</th>
+                        <th class="text-center text-nowrap">Шифр проекта</th>
+                        <th class="text-center text-nowrap">Действия</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    {% for act in acts %}
+                        <tr>
+                            <td>
+                                <span class="fw-semibold act-number-full">{{ act.number }}</span>
+                            </td>
+
+                            <td class="text-nowrap">
+                                {{ act.act_date|date:"d.m.Y" }}
+                            </td>
+
+                            <td>
+                <span
+                        class="works-clip js-work-name"
+                        title="{{ act.work_name }}"
+                        data-full="{{ act.work_name }}"
+                >
+                  {{ act.work_name }}
+                </span>
+                            </td>
+
+                            <td>
+                                {% with projects=act.projects.all %}
+                                    {% if projects %}
+                                        <div class="projects-stack">
+                                            {% for p in projects %}
+                                                <div class="project-item" title="{{ p }}">{{ p }}</div>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+
+                            <td class="text-center text-nowrap">
+                                <a class="btn btn-sm btn-outline-primary icon-action"
+                                   href="{% url 'acts_app:act_detail' act.uuid %}"
+                                   title="Открыть"
+                                   aria-label="Открыть">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+
+                                <a class="btn btn-sm btn-outline-secondary icon-action ms-1"
+                                   href="{% url 'acts_app:act_update' act.uuid %}"
+                                   title="Редактировать"
+                                   aria-label="Редактировать">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">
+                                Ничего не найдено.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+
+                {% if is_paginated %}
+                    <nav class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link"
+                                       href="?page=
+                                               {{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">
+                                        Назад
+                                    </a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">Назад</span></li>
+                            {% endif %}
+
+                            <li class="page-item disabled">
+              <span class="page-link">
+                Стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
+              </span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link"
+                                       href="?page=
+                                               {{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">
+                                        Вперёд
+                                    </a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">Вперёд</span></li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+
+                <script>
+                    document.addEventListener("dblclick", function (e) {
+                        const el = e.target.closest(".js-work-name");
+                        if (!el) return;
+
+                        const sel = window.getSelection();
+                        if (!sel) return;
+
+                        const range = document.createRange();
+                        range.selectNodeContents(el);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    });
+
+                    document.addEventListener("copy", function (e) {
+                        const sel = window.getSelection();
+                        if (!sel || sel.rangeCount === 0) return;
+
+                        const anchorNode = sel.anchorNode;
+                        if (!anchorNode) return;
+
+                        const el = (anchorNode.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode.parentElement)
+                            ?.closest(".js-work-name");
+
+                        if (!el) return;
+
+                        const full = el.getAttribute("data-full") || "";
+                        if (!full) return;
+
+                        e.clipboardData.setData("text/plain", full);
+                        e.preventDefault();
+                    });
+                </script>
+
+            </div>
+        </div>
+    </section>
+{% endblock %}

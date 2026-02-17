@@ -132,7 +132,7 @@ class BoxLabelGenerateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             ctx[f"kit_{i}"] = kits[i - 1] if i <= len(kits) else ""
             ctx[f"work_{i}"] = works[i - 1] if i <= len(works) else ""
 
-        template_path = str(settings.DOCX_TEMPLATES_DIR / "шаблон_наклейка_коробка.docx")
+        template_path = str(settings.DOCX_TEMPLATES_DIR / "lable_template.docx")
         docx_buf = render_box_label_docx(template_path, ctx)
 
         resp = HttpResponse(

@@ -64,6 +64,7 @@ DIRECTIVE_DIR = BASE_ID_DIR / "Приказы"
 APPROVALS_DIR = BASE_ID_DIR / "Согласования"
 PROJECTS_DIR = BASE_ID_DIR / "Проекты"
 PROJECTS_JSON = PROJECTS_DIR / "projects.json"
+ACTS_DIR = BASE_ID_DIR / "Акты"
 
 # Templates Документов
 DOCUMENT_TEMPLATES_DIR = BASE_DIR / "document_templates"
@@ -76,7 +77,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760
 
 # Путь для медиа файлов
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_ID_DIR / "media"
+MEDIA_ROOT = BASE_ID_DIR
 
 # Разрешенные типы файлов (опционально в валидаторе формы)
 ALLOWED_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
@@ -141,6 +142,7 @@ INSTALLED_APPS = [
     'documents_app',
     'health_app',
     'orgs_app',
+    'acts_app'
 ]
 
 MIDDLEWARE = [

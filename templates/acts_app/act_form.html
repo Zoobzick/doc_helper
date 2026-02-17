@@ -1,0 +1,1809 @@
+{# acts_app/templates/acts_app/act_form.html #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_css %}
+
+    <link href="{% static 'assets/css/act_form.css' %}" rel="stylesheet">
+
+{% endblock %}
+
+
+{% block title %}
+    {% if mode == "create" %}Создать акт{% else %}Редактировать акт{% endif %}
+{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <h1>{% if mode == "create" %}Создать акт{% else %}Редактировать акт{% endif %}</h1>
+
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{% url 'authapp:home' %}">Главная</a>
+                </li>
+                <li class="breadcrumb-item">
+                    <a href="{% url 'acts_app:act_list' %}">Акты</a>
+                </li>
+
+                {% if mode == "create" %}
+                    <li class="breadcrumb-item active">Создание</li>
+                {% else %}
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'acts_app:act_detail' act.uuid %}">Акт №{{ act.number }}</a>
+                    </li>
+                {% endif %}
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section">
+        <form method="post" enctype="multipart/form-data" id="act-form">
+            {% csrf_token %}
+
+            {% if projects_form.non_field_errors %}
+                <div class="alert alert-danger">{{ projects_form.non_field_errors }}</div>
+            {% endif %}
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <!-- ВЫБОР ПРОЕКТОВ -->
+            <div class="card mb-3">
+                <div class="card-body pt-3">
+                    <div class="d-flex flex-wrap gap-2 justify-content-between align-items-start">
+                        <div>
+                            <h5 class="card-title mb-0">Выбор проектов</h5>
+                        </div>
+
+                        {# единый “инстанс” выбранных проектов (будем переносить в rest-form) #}
+                        <div id="selected-projects-box" class="text-end">
+                            <div class="small text-muted">Шифры проектов:</div>
+                            <div class="fw-semibold" id="selected-projects-label">—</div>
+                        </div>
+                    </div>
+
+                    {% if projects_form.projects.errors %}
+                        <div class="alert alert-danger mt-3">{{ projects_form.projects.errors }}</div>
+                    {% endif %}
+
+                    <div class="row g-2 mt-3">
+                        <div class="col-12 col-lg-6">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text"
+                                       class="form-control"
+                                       id="project-search"
+                                       placeholder="Поиск проекта…">
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-lg-6">
+                            <div class="d-flex flex-wrap gap-2 justify-content-lg-end align-items-center">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-clear-projects">
+                                    Очистить
+                                </button>
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-continue">
+                                    Продолжить
+                                </button>
+                                <a class="btn btn-outline-secondary btn-sm" href="{% url 'acts_app:act_list' %}">
+                                    Назад
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3" id="selected-project-chips">
+                        {% if selected_projects %}
+                            {% for p in selected_projects %}
+                                <span class="badge bg-light text-dark border me-1 mb-1 project-chip"
+                                      data-id="{{ p.id }}"
+                                      data-label="{{ p.label }}"
+                                      style="cursor:pointer;">
+                                    {{ p.label }} ×
+                                </span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted small">Проекты не выбраны.</span>
+                        {% endif %}
+                    </div>
+
+                    {# скрытые inputs, которые реально отправляются в POST #}
+                    <div id="projects-hidden-inputs">
+                        {% for p in selected_projects %}
+                            <input type="hidden" name="projects" value="{{ p.id }}">
+                        {% endfor %}
+                    </div>
+
+                    <div class="mt-3 border rounded p-2" style="max-height: 360px; overflow:auto;">
+                        <div class="row g-2" id="projects-grid"></div>
+
+                        <div class="text-muted small mt-2" id="projects-loading" style="display:none;">
+                            Загрузка…
+                        </div>
+
+                        <div class="text-muted small mt-2" id="projects-empty" style="display:none;">
+                            Ничего не найдено.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ОСТАЛЬНАЯ ФОРМА -->
+            <div id="rest-form" style="display:none;">
+
+                {# сюда переносим единственный блок “Шифры проектов” #}
+                <div class="mb-3" id="selected-projects-box-placeholder"></div>
+
+                <!-- ОСНОВНОЕ -->
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <h5 class="card-title mb-3">Основное</h5>
+
+                        <div class="row g-3 align-items-start">
+                            <div class="col-12 col-lg-6">
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="form-label">{{ form.number.label }}</label>
+                                        {{ form.number }}
+                                        {% if form.number.errors %}
+                                            <div class="invalid-feedback d-block">{{ form.number.errors }}</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="col-6">
+                                        <label class="form-label">{{ form.act_date.label }}</label>
+                                        {{ form.act_date }}
+                                        {% if form.act_date.errors %}
+                                            <div class="invalid-feedback d-block">{{ form.act_date.errors }}</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="col-12">
+                                        <label class="form-label">{{ form.work_name.label }}</label>
+                                        {{ form.work_name }}
+                                        {% if form.work_name.errors %}
+                                            <div class="invalid-feedback d-block">{{ form.work_name.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {# В 1 столбец: дата начала / дата окончания / экземпляры #}
+                            <div class="col-12 col-lg-3">
+                                <div class="mb-2">
+                                    <label class="form-label">{{ form.work_start_date.label }}</label>
+                                    {{ form.work_start_date }}
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label">{{ form.work_end_date.label }}</label>
+                                    {{ form.work_end_date }}
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label">{{ form.copies_count.label }}</label>
+                                    {{ form.copies_count }}
+                                    <div class="form-text">По умолчанию 3.</div>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">{{ form.allow_next_works_text.label }}</label>
+                                {{ form.allow_next_works_text }}
+                            </div>
+
+
+                            <div class="col-12">
+                                <label class="form-label">{{ form.work_norms_text.label }}</label>
+                                {{ form.work_norms_text }}
+                                {% if form.work_norms_text.errors %}
+                                    <div class="invalid-feedback d-block">{{ form.work_norms_text.errors }}</div>
+                                {% endif %}
+                            </div>
+
+
+                        </div>
+                    </div>
+                </div>
+                <div class="card mt-3">
+                    <div class="card-body pt-3">
+                        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2">
+                            <h5 class="card-title p-0 m-0">Согласования</h5>
+
+                            <button type="button"
+                                    class="btn btn-outline-primary btn-sm"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#approvalsChooseModal">
+                                <i class="bi bi-database me-1"></i>Добавить из БД
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle w-100" id="approvalsTable">
+                                <thead>
+                                <tr>
+                                    <th>Согласование (отображение)</th>
+                                    <th style="width: 140px;">Листов</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for item in approval_items %}
+                                    <tr data-approval-id="{{ item.id }}">
+                                        <td>
+                                            <input type="hidden" name="approvals" value="{{ item.id }}">
+
+                                            <div class="d-flex gap-2">
+                  <textarea class="form-control form-control-sm"
+                            name="approval_label_{% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
+                            rows="2">{{ item.label }}</textarea>
+
+                                                <button type="button"
+                                                        class="btn btn-outline-danger btn-sm js-approval-remove"
+                                                        title="Удалить">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+
+                                            <div class="form-text">
+                                                Можно переписать текст — так он и будет отображаться в
+                                                приложении.
+                                            </div>
+                                        </td>
+
+                                        <td>
+                                            <input type="number"
+                                                   class="form-control form-control-sm"
+                                                   name="approval_sheets_
+
+
+
+
+
+
+
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                           {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
+                                                   value="{{ item.sheets|default:1 }}"
+                                                   min="1">
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr class="js-approvals-empty">
+                                        <td colspan="2" class="text-muted">Согласования не выбраны</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- МАТЕРИАЛЫ -->
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <h5 class="card-title mb-0">Материалы</h5>
+
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="add-material-from-db">
+                                    <i class="bi bi-database-add me-1"></i>Добавить из БД
+                                </button>
+
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="add-material">
+                                    <i class="bi bi-plus-lg me-1"></i>Добавить материал
+                                </button>
+                            </div>
+                        </div>
+
+                        {% if material_formset.non_form_errors %}
+                            <div class="alert alert-danger mt-3">{{ material_formset.non_form_errors }}</div>
+                        {% endif %}
+
+                        {{ material_formset.management_form }}
+
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm align-middle" id="materials-table">
+                                <thead>
+                                <tr>
+                                    <th style="min-width: 220px;">Материал</th>
+                                    <th style="min-width: 260px;">Наименование документа</th>
+                                    <th style="min-width: 180px;">Номер документа</th>
+                                    <th style="width: 170px;">Дата</th>
+                                    <th style="min-width: 200px;">Отображение</th>
+                                    <th style="width: 120px;">Объём, м3</th>   <!-- ✅ ШАГ 1 -->
+                                    <th style="width: 120px;">Листов</th>
+                                    <th style="width: 70px;"></th>
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                {% for f in material_formset.forms %}
+                                    <tr class="material-row">
+                                        {{ f.passport }}
+                                        {{ f.id }}
+
+                                        <td>
+                                            {{ f.manual_name }}
+                                            {% if f.manual_name.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_name.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.manual_doc_name }}
+                                            {% if f.manual_doc_name.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_doc_name.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.manual_doc_no }}
+                                            {% if f.manual_doc_no.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_doc_no.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.manual_doc_date }}
+                                            {% if f.manual_doc_date.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_doc_date.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.manual_doc_date_text }}
+                                            {% if f.manual_doc_date_text.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.manual_doc_date_text.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.concrete_volume_m3 }}   <!-- ✅ ШАГ 1 -->
+                                            {% if f.concrete_volume_m3.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.concrete_volume_m3.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ f.sheets_count }}
+                                            {% if f.sheets_count.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.sheets_count.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td class="text-end">
+                                            {# Для сохранённых строк сохраняем DELETE, но не показываем #}
+                                            {% if f.instance.pk %}
+                                                <div style="display:none;">{{ f.DELETE }}</div>
+                                            {% endif %}
+
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary js-duplicate-material"
+                                                        title="Дублировать строку (только для ручных материалов)">
+                                                    <i class="bi bi-files"></i>
+                                                </button>
+
+                                                <button type="button"
+                                                        class="btn btn-outline-danger js-remove-row"
+                                                        title="Удалить строку">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+
+                                    {% if f.non_field_errors %}
+                                        <tr>
+                                            <td colspan="7">
+                                                <div class="alert alert-danger mb-2">{{ f.non_field_errors }}</div>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <template id="material-empty-form">
+                            <tr class="material-row">
+                                {{ material_formset.empty_form.passport }}
+                                {{ material_formset.empty_form.id }}
+
+                                <td>{{ material_formset.empty_form.manual_name }}</td>
+                                <td>{{ material_formset.empty_form.manual_doc_name }}</td>
+                                <td>{{ material_formset.empty_form.manual_doc_no }}</td>
+                                <td>{{ material_formset.empty_form.manual_doc_date }}</td>
+                                <td>{{ material_formset.empty_form.manual_doc_date_text }}</td>
+                                <td>{{ material_formset.empty_form.concrete_volume_m3 }}</td> <!-- ✅ -->
+                                <td>{{ material_formset.empty_form.sheets_count }}</td>
+
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button"
+                                                class="btn btn-outline-secondary js-duplicate-material"
+                                                title="Дублировать строку (только для ручных материалов)">
+                                            <i class="bi bi-files"></i>
+                                        </button>
+
+                                        <button type="button"
+                                                class="btn btn-outline-danger js-remove-row"
+                                                title="Удалить строку">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- ДОКУМЕНТЫ -->
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Предъявлены документы, подтверждающие соответствие работ</h5>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="add-attachment">
+                                <i class="bi bi-plus-lg me-1"></i>Добавить документ
+                            </button>
+                        </div>
+
+                        {% if attachment_formset.non_form_errors %}
+                            <div class="alert alert-danger mt-3">{{ attachment_formset.non_form_errors }}</div>
+                        {% endif %}
+
+                        {{ attachment_formset.management_form }}
+
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm align-middle" id="attachments-table">
+                                <thead>
+                                <tr>
+                                    <th style="min-width: 260px;">Наименование</th>
+                                    <th style="min-width: 220px;">№</th>
+                                    <th style="width: 170px;">Дата</th>
+                                    <th style="width: 120px;">Листов</th>
+                                    <th style="width: 90px;"></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for f in attachment_formset.forms %}
+                                    <tr class="attachment-row {% if forloop.first %}scheme-row{% endif %}">
+                                        <td>
+                                            {% if forloop.first %}
+                                                <input type="text" class="form-control" value="исполнительная схема"
+                                                       readonly>
+                                                {{ f.title.as_hidden }}
+                                            {% else %}
+                                                {{ f.title }}
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {% if forloop.first %}
+                                                <input type="text" class="form-control" id="scheme-doc-no" value=""
+                                                       readonly>
+                                                {{ f.doc_no.as_hidden }}
+                                            {% else %}
+                                                {{ f.doc_no }}
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            <div class="d-flex gap-2 align-items-center">
+                                                {{ f.doc_date }}
+                                                <span class="text-muted">—</span>
+                                                {{ f.doc_date_to }}
+                                            </div>
+
+                                            {% if f.doc_date.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.doc_date.errors }}</div>
+                                            {% endif %}
+                                            {% if f.doc_date_to.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.doc_date_to.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+
+                                        <td>
+                                            {{ f.sheets_count }}
+                                            {% if f.sheets_count.errors %}
+                                                <div class="invalid-feedback d-block">{{ f.sheets_count.errors }}</div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td class="text-end">
+                                            {% if forloop.first %}
+                                                <span class="text-muted small"></span>
+                                            {% else %}
+                                                {% if f.instance.pk %}
+                                                    <div class="form-check">
+                                                        {{ f.DELETE }}
+                                                        <label class="form-check-label small">Удалить</label>
+                                                    </div>
+                                                {% else %}
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-danger js-remove-row">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                {% endif %}
+                                            {% endif %}
+                                            {{ f.id }}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <template id="attachment-empty-form">
+                            <tr class="attachment-row">
+                                <td>{{ attachment_formset.empty_form.title }}</td>
+                                <td>{{ attachment_formset.empty_form.doc_no }}</td>
+                                <td>
+                                    <div class="d-flex gap-2 align-items-center">
+                                        {{ attachment_formset.empty_form.doc_date }}
+                                        <span class="text-muted">—</span>
+                                        {{ attachment_formset.empty_form.doc_date_to }}
+                                    </div>
+                                </td>
+                                <td>{{ attachment_formset.empty_form.sheets_count }}</td>
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                    {{ attachment_formset.empty_form.id }}
+                                </td>
+                            </tr>
+                        </template>
+                    </div>
+                </div>
+
+                {# --- ПОДПИСАНТЫ (якорь) --- #}
+                <div id="act-parties-block">
+                    {% if mode != "create" and act %}
+                        <script>
+                            (function () {
+                                const actDateInput = document.getElementById("id_act_date");
+                                const partiesBlock = document.getElementById("act-parties-block");
+                                if (!actDateInput || !partiesBlock) return;
+
+                                const previewUrlBase = "{% url 'acts_app:act_parties_preview_by_date' act.uuid %}";
+
+                                function refreshPartiesPreview() {
+                                    const dateVal = (actDateInput.value || "").trim(); // YYYY-MM-DD
+                                    const url = dateVal ? (previewUrlBase + "?date=" + encodeURIComponent(dateVal)) : previewUrlBase;
+                                    htmx.ajax("GET", url, {target: "#act-parties-block", swap: "outerHTML"});
+                                }
+
+                                actDateInput.addEventListener("change", refreshPartiesPreview);
+                            })();
+                        </script>
+
+                        {% include "acts_app/partials/act_parties_table.html" %}
+                    {% else %}
+                        <div class="alert alert-secondary">
+                            Блок подписантов появится после создания акта.
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <button class="btn btn-success" type="submit">
+                        {% if mode == "create" %}Создать{% else %}Сохранить{% endif %}
+                    </button>
+
+                    {% if mode != "create" and act %}
+                        <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_detail' act.uuid %}">
+                            К деталям
+                        </a>
+                    {% endif %}
+
+                    <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">Отмена</a>
+                </div>
+            </div>
+        </form>
+    </section>
+
+    <!-- МОДАЛКА ВЫБОРА ПАСПОРТА -->
+    <div class="modal fade" id="passportModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Выбор паспорта из БД</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table id="passportPickTable" class="table table-striped table-bordered align-middle w-100">
+                            <thead>
+                            <tr>
+                                <th style="width: 40px;"></th>
+                                <th>Материал</th>
+                                <th>Документ</th>
+                                <th>№</th>
+                                <th>Дата</th>
+                            </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="text-muted small mt-2">
+                        Поиск в таблице: материал / наименование документа / номер.
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="btnPickPassports">Добавить выбранные</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- Modal: choose authorization --- #}
+    <div class="modal fade" id="authChooseModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Выбор полномочия</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+
+                <div class="modal-body" id="authChooseModalBody">
+                    <div class="text-muted small">Загрузка…</div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        Закрыть
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="approvalsChooseModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Выбор согласований</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle w-100" id="approvalsDatatable">
+                            <thead>
+                            <tr>
+                                <th style="width:1%;">Выбрать</th>
+                                <th>Проект</th>
+                                <th>Статус</th>
+                                <th>Дата</th>
+                                <th>Описание</th>
+                            </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    {# HTMX (нужен для блока подписантов) #}
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script>
+        document.body.addEventListener('htmx:configRequest', function (event) {
+            const token = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value;
+            if (token) event.detail.headers['X-CSRFToken'] = token;
+        });
+    </script>
+
+    <!-- DataTables CDN (если у тебя уже подключено в base.html — можешь удалить эти строки) -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+
+    <style>
+        .soft-invalid {
+            box-shadow: 0 0 0 .2rem rgba(220, 53, 69, .15);
+            border-color: rgba(220, 53, 69, .6);
+        }
+
+        .soft-hint {
+            color: #dc3545;
+            font-size: .85rem;
+            margin-top: .25rem;
+        }
+    </style>
+
+    <style>
+        /* чипы выбранных проектов */
+        .project-chip {
+            font-size: 0.85rem;
+            white-space: nowrap;
+            max-width: 100%;
+        }
+
+        /* шифры в карточках выдачи */
+        .project-card-title {
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+
+    <style>
+        .is-disabled {
+            background-color: #f8f9fa !important;
+            cursor: not-allowed;
+        }
+
+        .is-strike {
+            text-decoration: line-through;
+        }
+    </style>
+
+
+
+    <script>
+        (function () {
+            const restForm = document.getElementById("rest-form");
+
+            const searchUrl = "{% url 'acts_app:projects_search' %}";
+            const searchInput = document.getElementById("project-search");
+            const grid = document.getElementById("projects-grid");
+            const empty = document.getElementById("projects-empty");
+            const loading = document.getElementById("projects-loading");
+
+            const chipsBox = document.getElementById("selected-project-chips");
+            const hiddenBox = document.getElementById("projects-hidden-inputs");
+
+            const btnContinue = document.getElementById("btn-continue");
+            const btnClear = document.getElementById("btn-clear-projects");
+
+            const selectedBox = document.getElementById("selected-projects-box");
+            const selectedBoxPlaceholder = document.getElementById("selected-projects-box-placeholder");
+            const labelTop = document.getElementById("selected-projects-label");
+
+            // id -> label (главное: сохраняем подписи, чтобы чипы не превращались в "×")
+            const selectedLabels = new Map();
+
+            function getSelectedIds() {
+                return new Set(
+                    Array.from(hiddenBox.querySelectorAll('input[name="projects"]'))
+                        .map(i => String(i.value).trim())
+                        .filter(Boolean)
+                );
+            }
+
+            function setSelectedIds(idsSet) {
+                hiddenBox.querySelectorAll('input[name="projects"]').forEach(n => n.remove());
+                for (const id of idsSet) {
+                    const inp = document.createElement("input");
+                    inp.type = "hidden";
+                    inp.name = "projects";
+                    inp.value = String(id);
+                    hiddenBox.appendChild(inp);
+                }
+            }
+
+            function refreshTopLabel() {
+                const ids = Array.from(getSelectedIds());
+                const labels = ids.map(id => selectedLabels.get(id)).filter(Boolean);
+                labelTop.textContent = labels.length ? labels.join(", ") : "—";
+            }
+
+            function renderChips() {
+                const selected = getSelectedIds();
+                chipsBox.innerHTML = "";
+
+                if (!selected.size) {
+                    chipsBox.innerHTML = '<span class="text-muted small">Проекты не выбраны.</span>';
+                    refreshTopLabel();
+                    return;
+                }
+
+                for (const id of selected) {
+                    const label = selectedLabels.get(id) || ("Проект #" + id);
+
+                    const chip = document.createElement("span");
+                    chip.className = "badge bg-light text-dark border me-1 mb-1 project-chip";
+                    chip.style.cursor = "pointer";
+                    chip.dataset.id = id;
+                    chip.dataset.label = label;
+                    chip.textContent = label + " ×";
+
+                    chip.addEventListener("click", () => {
+                        const s = getSelectedIds();
+                        s.delete(id);
+                        setSelectedIds(s);
+
+                        const cb = document.querySelector('.project-checkbox[value="' + CSS.escape(id) + '"]');
+                        if (cb) cb.checked = false;
+
+                        renderChips();
+                    });
+
+                    chipsBox.appendChild(chip);
+                }
+
+                refreshTopLabel();
+            }
+
+            function canOpenRest() {
+                return getSelectedIds().size > 0;
+            }
+
+            function openRestIfPossible() {
+                if (!canOpenRest()) return;
+
+                if (selectedBox && selectedBoxPlaceholder && selectedBox.parentElement !== selectedBoxPlaceholder) {
+                    selectedBoxPlaceholder.appendChild(selectedBox);
+                }
+
+                restForm.style.display = "";
+                restForm.scrollIntoView({behavior: "smooth", block: "start"});
+            }
+
+            function renderResults(results) {
+                const selected = getSelectedIds();
+                grid.innerHTML = "";
+
+                let shown = 0;
+
+                for (const r of (results || [])) {
+                    const id = String(r.id);
+                    const label = String(r.label || ("Проект #" + id));
+
+                    // обновляем кеш подписи
+                    selectedLabels.set(id, label);
+
+                    const col = document.createElement("div");
+                    col.className = "col-12 col-md-6 col-xl-4";
+
+                    // ID скрыт полностью (никакой строки ID:)
+                    col.innerHTML = `
+        <label class="d-flex gap-2 align-items-start border rounded p-2 w-100">
+          <input class="form-check-input mt-1 project-checkbox" type="checkbox" value="${id}">
+          <div class="project-card-title"></div>
+        </label>
+      `;
+
+                    col.querySelector(".project-card-title").textContent = label;
+
+                    const cb = col.querySelector(".project-checkbox");
+                    if (selected.has(id)) cb.checked = true;
+
+                    cb.addEventListener("change", () => {
+                        const s = getSelectedIds();
+                        if (cb.checked) s.add(id);
+                        else s.delete(id);
+
+                        setSelectedIds(s);
+
+                        // если выбрали — гарантируем label
+                        if (cb.checked) selectedLabels.set(id, label);
+
+                        renderChips();
+                    });
+
+                    grid.appendChild(col);
+                    shown += 1;
+                }
+
+                empty.style.display = shown ? "none" : "";
+                renderChips();
+            }
+
+            let timer = null;
+
+            async function loadProjects(q) {
+                const query = (q || "").trim();
+
+                loading.style.display = "";
+                empty.style.display = "none";
+
+                try {
+                    const url = query ? (searchUrl + "?q=" + encodeURIComponent(query)) : searchUrl;
+                    const resp = await fetch(url, {headers: {"X-Requested-With": "XMLHttpRequest"}});
+                    const data = await resp.json();
+                    renderResults(data.results || []);
+                } catch (e) {
+                    grid.innerHTML = "";
+                    empty.style.display = "";
+                    empty.textContent = "Ошибка загрузки.";
+                } finally {
+                    loading.style.display = "none";
+                }
+            }
+
+            function debounceLoad() {
+                const q = (searchInput.value || "").trim();
+                clearTimeout(timer);
+                timer = setTimeout(() => loadProjects(q), 250);
+            }
+
+            btnClear.addEventListener("click", () => {
+                setSelectedIds(new Set());
+                renderChips();
+                loadProjects((searchInput.value || "").trim());
+            });
+
+            btnContinue.addEventListener("click", openRestIfPossible);
+            searchInput.addEventListener("input", debounceLoad);
+
+            // --- init: читаем label выбранных из HTML (если ты их рендеришь в шаблоне на edit) ---
+            document.querySelectorAll(".project-chip").forEach(ch => {
+                const id = String(ch.dataset.id || "").trim();
+                const label = String(ch.dataset.label || "").trim();
+                if (id && label) selectedLabels.set(id, label);
+            });
+
+            renderChips();
+
+            // если уже выбран проект (edit) — показываем форму сразу
+            if (canOpenRest()) restForm.style.display = "";
+
+            // стартовая выдача: последние 5 использованных (сервер вернёт 5)
+            loadProjects("");
+        })();
+    </script>
+
+    {# дальше оставлен твой текущий JS (схема=номер акта, formsets, datatables, паспорта) #}
+    {{ block.super }}
+    <script>
+        (function () {
+
+            // ---------- SCHEME DOC NO = ACT NUMBER ----------
+            const actNumberInput = document.getElementById("id_number");
+            const schemeDocNo = document.getElementById("scheme-doc-no");
+
+            function syncSchemeNo() {
+                const v = (actNumberInput?.value || "").trim();
+                if (schemeDocNo) schemeDocNo.value = v;
+                const hidden = document.getElementById("id_att-0-doc_no");
+                if (hidden) hidden.value = v;
+            }
+
+            actNumberInput?.addEventListener("input", syncSchemeNo);
+            syncSchemeNo();
+
+            // ---------- ADD ROWS (materials/docs) ----------
+            function addRow(tableId, tplId, prefix) {
+                const table = document.getElementById(tableId);
+                const tpl = document.getElementById(tplId);
+                if (!table || !tpl) return null;
+
+                const totalInput = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
+                const total = parseInt(totalInput.value, 10);
+
+                const html = tpl.innerHTML.replaceAll("__prefix__", total);
+                table.querySelector("tbody").insertAdjacentHTML("beforeend", html);
+                totalInput.value = String(total + 1);
+
+                const row = table.querySelector("tbody tr:last-child");
+
+                // sheets_count default = 1
+                const sheets = row?.querySelector(`input[name="${prefix}-${total}-sheets_count"]`);
+                if (sheets && !String(sheets.value || "").trim()) sheets.value = "1";
+
+                return row;
+            }
+
+            window.__actsAddRow = addRow;
+
+
+            // ---------- REMOVE ROWS CORRECTLY (formsets) ----------
+            function markFormDeleted(row, prefix) {
+                const delCb = row.querySelector(`input[type="checkbox"][name^="${prefix}-"][name$="-DELETE"]`);
+                if (delCb) {
+                    delCb.checked = true;
+                    row.style.display = "none";
+                    return;
+                }
+
+                const anyNamed = row.querySelector(`[name^="${prefix}-"][name*="-"]`);
+                if (!anyNamed) {
+                    row.remove();
+                    return;
+                }
+
+                const m = anyNamed.getAttribute("name").match(new RegExp(`^${prefix}-(\\d+)-`));
+                if (!m) {
+                    row.remove();
+                    return;
+                }
+
+                const idx = m[1];
+                const hiddenName = `${prefix}-${idx}-DELETE`;
+
+                let hidden = row.querySelector(`input[type="hidden"][name="${hiddenName}"]`);
+                if (!hidden) {
+                    hidden = document.createElement("input");
+                    hidden.type = "hidden";
+                    hidden.name = hiddenName;
+                    row.appendChild(hidden);
+                }
+                hidden.value = "on";
+
+                row.style.display = "none";
+            }
+
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-remove-row");
+                if (!btn) return;
+
+                const row = btn.closest("tr");
+                if (!row) return;
+
+                const table = btn.closest("table");
+                if (!table) return;
+
+                if (table.id === "materials-table") {
+                    markFormDeleted(row, "mat");
+                } else if (table.id === "attachments-table") {
+                    markFormDeleted(row, "att");
+                } else {
+                    row.remove();
+                }
+            });
+
+            // ---------- SOFT VALIDATION (attachments) ----------
+            function isRowHiddenOrDeleted(row) {
+                if (!row) return true;
+                if (row.style.display === "none") return true;
+                const delCb = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+                return !!(delCb && delCb.checked);
+            }
+
+            function softMarkInvalid(input, message) {
+                if (!input) return;
+                input.classList.add("soft-invalid");
+                let hint = input.closest("td")?.querySelector(".soft-hint");
+                if (!hint) {
+                    hint = document.createElement("div");
+                    hint.className = "soft-hint";
+                    input.closest("td")?.appendChild(hint);
+                }
+                hint.textContent = message;
+            }
+
+            function softClearInvalid(input) {
+                if (!input) return;
+                input.classList.remove("soft-invalid");
+                const hint = input.closest("td")?.querySelector(".soft-hint");
+                if (hint) hint.remove();
+            }
+
+            function validateAttachmentRow(row) {
+                if (!row || row.classList.contains("scheme-row")) return true;
+                if (isRowHiddenOrDeleted(row)) return true;
+
+                const title = row.querySelector('input[name$="-title"], textarea[name$="-title"], select[name$="-title"]');
+                const date = row.querySelector('input[name$="-doc_date"]');
+
+                const titleVal = (title?.value || "").trim();
+                const dateVal = (date?.value || "").trim();
+
+                let ok = true;
+                softClearInvalid(title);
+                softClearInvalid(date);
+
+                if (!titleVal) {
+                    softMarkInvalid(title, "Укажи наименование документа");
+                    ok = false;
+                }
+                if (!dateVal) {
+                    softMarkInvalid(date, "Укажи дату документа");
+                    ok = false;
+                }
+
+                return ok;
+            }
+
+            document.addEventListener("input", (e) => {
+                if (!(e.target instanceof HTMLElement)) return;
+                if (e.target.matches('input[name$="-title"], input[name$="-doc_date"]')) softClearInvalid(e.target);
+            });
+            document.addEventListener("change", (e) => {
+                if (!(e.target instanceof HTMLElement)) return;
+                if (e.target.matches('input[name$="-title"], input[name$="-doc_date"]')) softClearInvalid(e.target);
+            });
+
+            document.getElementById("add-material")?.addEventListener("click", function () {
+                addRow("materials-table", "material-empty-form", "mat");
+            });
+
+            document.getElementById("add-attachment")?.addEventListener("click", function () {
+                const tbody = document.querySelector("#attachments-table tbody");
+                const rows = Array.from(tbody?.querySelectorAll("tr.attachment-row") || [])
+                    .filter(r => !r.classList.contains("scheme-row") && !isRowHiddenOrDeleted(r));
+                const last = rows.length ? rows[rows.length - 1] : null;
+
+                if (last && !validateAttachmentRow(last)) {
+                    last.querySelector('input[name$="-title"]')?.focus();
+                    return;
+                }
+
+                addRow("attachments-table", "attachment-empty-form", "att");
+            });
+
+            document.getElementById("act-form")?.addEventListener("submit", function (e) {
+                const rows = Array.from(document.querySelectorAll("#attachments-table tbody tr.attachment-row"))
+                    .filter(r => !r.classList.contains("scheme-row") && !isRowHiddenOrDeleted(r));
+
+                let ok = true;
+                for (const r of rows) if (!validateAttachmentRow(r)) ok = false;
+
+                if (!ok) {
+                    e.preventDefault();
+                    document.getElementById("attachments-table")?.scrollIntoView({behavior: "smooth", block: "center"});
+                }
+            });
+
+            // ---------- PASSPORT MODAL (DataTables MULTISELECT) ----------
+            const modalEl = document.getElementById("passportModal");
+            const btnPickMany = document.getElementById("btnPickPassports");
+            let passportDT = null;
+
+            let currentHiddenId = null;
+
+            function getHiddenInputById(hiddenId) {
+                return document.getElementById(hiddenId);
+            }
+
+            function getPickedPassportIdsOnPage() {
+                const ids = new Set();
+                document.querySelectorAll('input[type="hidden"][id^="id_mat-"][id$="-passport"]').forEach(inp => {
+                    const v = (inp.value || "").trim();
+                    if (v) ids.add(v);
+                });
+                return ids;
+            }
+
+            function ddmmyyyyToIso(s) {
+                const t = (s || "").trim();
+                const m = t.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+                if (!m) return "";
+                return `${m[3]}-${m[2]}-${m[1]}`;
+            }
+
+            function fillMaterialRowWithPassport(row, payload, hiddenIdToUse) {
+                const hidden = hiddenIdToUse
+                    ? getHiddenInputById(hiddenIdToUse)
+                    : row.querySelector('input[type="hidden"][id$="-passport"]');
+
+                if (hidden) hidden.value = payload.id || "";
+
+                const inpMaterial = row.querySelector('input[name$="-manual_name"]');
+                const inpDocName = row.querySelector('input[name$="-manual_doc_name"]');
+                const inpDocNo = row.querySelector('input[name$="-manual_doc_no"]');
+                const inpDocDate = row.querySelector('input[name$="-manual_doc_date"]');
+
+                if (inpMaterial) inpMaterial.value = payload.material || "";
+                if (inpDocName) inpDocName.value = payload.doc_name || "";
+                if (inpDocNo) inpDocNo.value = payload.doc_no || "";
+
+                let iso = payload.doc_date_iso || "";
+                const inpDocDateText = row.querySelector('input[name$="-manual_doc_date_text"]');
+                if (inpDocDateText) inpDocDateText.value = "";
+                if (!iso && payload.doc_date) iso = ddmmyyyyToIso(payload.doc_date);
+                if (inpDocDate) inpDocDate.value = iso || "";
+            }
+
+            function openPassportModal(hiddenId) {
+                currentHiddenId = hiddenId;
+
+                if (!passportDT) {
+                    passportDT = $('#passportPickTable').DataTable({
+                        processing: true,
+                        serverSide: true,
+                        searching: true,
+                        ordering: false,
+                        pageLength: 10,
+                        lengthMenu: [10, 25, 50],
+                        language: {
+                            url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json',
+                            emptyTable: "Паспорта не найдены"
+                        },
+                        ajax: {
+                            url: "{% url 'acts_app:passports_datatable' %}",
+                            dataSrc: "data"
+                        },
+                        columns: [
+                            {
+                                data: null,
+                                render: function (data, type, row) {
+                                    return `<input type="checkbox" class="passport-pick-cb" value="${row.id}">`;
+                                }
+                            },
+                            {data: "material"},
+                            {data: "doc_name"},
+                            {data: "doc_no"},
+                            {data: "doc_date"},
+                        ],
+                        rowCallback: function (row, data) {
+                            row.dataset.passportId = data.id;
+                            row.dataset.material = data.material || "";
+                            row.dataset.docName = data.doc_name || "";
+                            row.dataset.docNo = data.doc_no || "";
+                            row.dataset.docDate = data.doc_date || "";
+                            row.dataset.docDateIso = data.doc_date_iso || "";
+                        }
+                    });
+
+                    $('#passportPickTable tbody').on('click', 'tr', function (e) {
+                        if (e.target && e.target.closest('input')) return;
+                        const cb = this.querySelector('input.passport-pick-cb');
+                        if (!cb) return;
+                        cb.checked = !cb.checked;
+                    });
+                } else {
+                    passportDT.ajax.reload(null, false);
+                }
+
+                const bsModal = new bootstrap.Modal(modalEl);
+                bsModal.show();
+            }
+
+            btnPickMany?.addEventListener("click", function () {
+                const picked = [];
+                document.querySelectorAll('#passportPickTable input.passport-pick-cb:checked').forEach(cb => {
+                    const tr = cb.closest("tr");
+                    if (!tr) return;
+
+                    const id = (cb.value || "").trim();
+                    if (!id) return;
+
+                    picked.push({
+                        id,
+                        material: tr.dataset.material || "",
+                        doc_name: tr.dataset.docName || "",
+                        doc_no: tr.dataset.docNo || "",
+                        doc_date: tr.dataset.docDate || "",
+                        doc_date_iso: tr.dataset.docDateIso || "",
+                    });
+                });
+
+                if (!picked.length || !currentHiddenId) return;
+
+                const already = getPickedPassportIdsOnPage();
+
+                const targetHidden = getHiddenInputById(currentHiddenId);
+                const targetRow = targetHidden ? targetHidden.closest("tr") : null;
+
+                if (targetRow) {
+                    const first = picked.shift();
+                    if (!already.has(first.id)) {
+                        fillMaterialRowWithPassport(targetRow, first, currentHiddenId);
+                        already.add(first.id);
+                    }
+                }
+
+                for (const item of picked) {
+                    if (already.has(item.id)) continue;
+
+                    const newRow = addRow("materials-table", "material-empty-form", "mat");
+                    if (!newRow) continue;
+
+                    fillMaterialRowWithPassport(newRow, item);
+                    already.add(item.id);
+                }
+
+                bootstrap.Modal.getInstance(modalEl)?.hide();
+                document.querySelectorAll('#passportPickTable input.passport-pick-cb').forEach(cb => cb.checked = false);
+            });
+
+            document.getElementById("add-material-from-db")?.addEventListener("click", function () {
+                const row = addRow("materials-table", "material-empty-form", "mat");
+                if (!row) return;
+
+                const hidden = row.querySelector('input[type="hidden"][id$="-passport"]');
+                if (hidden) openPassportModal(hidden.id);
+            });
+
+        })();
+    </script>
+
+    <script>
+        (function () {
+            function ensureEmptyRow() {
+                const tbody = document.querySelector("#approvalsTable tbody");
+                const any = tbody.querySelector("tr[data-approval-id]");
+                const empty = tbody.querySelector(".js-approvals-empty");
+                if (!any && !empty) {
+                    tbody.innerHTML = '<tr class="js-approvals-empty"><td colspan="2" class="text-muted">Согласования не выбраны</td></tr>';
+                }
+                if (any && empty) empty.remove();
+            }
+
+            function isSelected(id) {
+                return !!document.querySelector('#approvalsTable tr[data-approval-id="' + id + '"]');
+            }
+
+            function addApprovalRow(id, label) {
+                if (isSelected(id)) return;
+
+                const tbody = document.querySelector("#approvalsTable tbody");
+                const empty = tbody.querySelector(".js-approvals-empty");
+                if (empty) empty.remove();
+
+                const tr = document.createElement("tr");
+                tr.setAttribute("data-approval-id", String(id));
+                tr.innerHTML = `
+      <td>
+        <input type="hidden" name="approvals" value="">
+        <div class="d-flex gap-2">
+          <textarea class="form-control form-control-sm" rows="2"></textarea>
+          <button type="button" class="btn btn-outline-danger btn-sm js-approval-remove" title="Удалить">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+        <div class="form-text">Можно переписать текст — так он и будет отображаться в приложении.</div>
+      </td>
+      <td>
+        <input type="number" class="form-control form-control-sm" min="1" value="1">
+      </td>
+    `;
+
+                tr.querySelector('input[name="approvals"]').value = String(id);
+                tr.querySelector("textarea").name = "approval_label_" + String(id);
+                tr.querySelector("textarea").value = label || "";
+                tr.querySelector('input[type="number"]').name = "approval_sheets_" + String(id);
+
+                tbody.appendChild(tr);
+            }
+
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-approval-remove");
+                if (!btn) return;
+
+                const tr = btn.closest("tr");
+                if (tr) tr.remove();
+                ensureEmptyRow();
+            });
+
+            // DataTables
+            let approvalsTable = null;
+
+            function initApprovalsDatatable() {
+                if (approvalsTable) return;
+
+                approvalsTable = $("#approvalsDatatable").DataTable({
+                    processing: true,
+                    serverSide: true,
+                    searching: true,
+                    pageLength: 10,
+                    lengthChange: false,
+                    ajax: {url: "{% url 'acts_app:approvals_datatable' %}", type: "GET"},
+                    columns: [
+                        {
+                            data: "id",
+                            orderable: false,
+                            render: function (data, type, row) {
+                                const disabled = isSelected(row.id) ? "disabled" : "";
+                                const safe = (s) => $('<div>').text(s || '').html();
+
+                                return `<button type="button"
+                  class="btn btn-outline-primary btn-sm js-approval-add"
+                  data-id="${row.id}"
+                  data-label="${safe(row.label)}"
+                  data-desc="${safe(row.description_full)}"
+                  ${disabled}>
+            Добавить
+          </button>`;
+                            }
+
+                        },
+                        {data: "project"},
+                        {data: "status"},
+                        {data: "created_at"},
+                        {data: "description"},
+                    ],
+                    order: [[3, "desc"]],
+                });
+            }
+
+            const modal = document.getElementById("approvalsChooseModal");
+            if (modal) {
+                modal.addEventListener("shown.bs.modal", function () {
+                    initApprovalsDatatable();
+                    if (approvalsTable) approvalsTable.ajax.reload(null, false);
+                });
+            }
+
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-approval-add");
+                if (!btn) return;
+
+                const id = btn.getAttribute("data-id");
+                const desc = btn.getAttribute("data-desc");   // ✅ берём именно description из Approval
+                addApprovalRow(id, desc || "");
+
+                btn.setAttribute("disabled", "disabled");
+            });
+
+            ensureEmptyRow();
+        })();
+    </script>
+    <script>
+        (function () {
+            // ---------- helpers ----------
+            function isFilled(input) {
+                if (!input) return false;
+
+                // file input
+                if (input.type === "file") return (input.files && input.files.length > 0);
+
+                if (input.type === "checkbox") return input.checked;
+                return (input.value || "").trim() !== "";
+            }
+
+            function setState(input, state) {
+                if (!input) return;
+                input.classList.remove("input-required", "input-valid", "input-error");
+                if (state) input.classList.add(state);
+            }
+
+            function markRequired(input) {
+                if (!input) return;
+                input.classList.add("js-required");
+            }
+
+            function setDisabled(input, disabled) {
+                if (!input) return;
+                input.disabled = !!disabled;
+                input.classList.toggle("is-disabled", !!disabled);
+            }
+
+            function setStrike(input, strike) {
+                if (!input) return;
+                input.classList.toggle("is-strike", !!strike);
+            }
+
+            // ---------- 1) tag required fields (by selectors) ----------
+            function tagRequiredFields() {
+                // ОСНОВНОЕ (твои required)
+                [
+                    "#id_number",
+                    "#id_act_date",
+                    "#id_work_start_date",
+                    "#id_work_end_date",
+                    "#id_allow_next_works_text",
+                    "#id_work_name",
+                ].forEach((sel) => markRequired(document.querySelector(sel)));
+
+                // МАТЕРИАЛЫ: помечаем все "кандидаты", а логику required решаем по row (паспорт/ручной)
+                document.querySelectorAll('#materials-table tbody tr.material-row').forEach((row) => {
+                    markRequired(row.querySelector('input[name$="-manual_name"]'));
+                    markRequired(row.querySelector('input[name$="-manual_doc_name"]'));
+                    markRequired(row.querySelector('input[name$="-manual_doc_no"]'));
+                    markRequired(row.querySelector('input[name$="-manual_doc_date"]'));
+                    markRequired(row.querySelector('input[name$="-manual_doc_date_text"]'));
+                    markRequired(row.querySelector('input[name$="-sheets_count"]'));
+                    markRequired(row.querySelector('input[name$="-concrete_volume_m3"]'));
+                });
+
+                // ДОКУМЕНТЫ
+                document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach((row) => {
+                    const isScheme = row.classList.contains("scheme-row");
+
+                    if (isScheme) {
+                        // только дата+листы
+                        markRequired(row.querySelector('input[name$="-doc_date"]'));
+                        markRequired(row.querySelector('input[name$="-sheets_count"]'));
+                        return;
+                    }
+
+                    // остальные документы — всё кроме doc_date_to
+                    markRequired(row.querySelector('input[name$="-title"]'));
+                    markRequired(row.querySelector('input[name$="-doc_no"]'));
+                    markRequired(row.querySelector('input[name$="-doc_date"]'));
+                    markRequired(row.querySelector('input[name$="-sheets_count"]'));
+                });
+
+                // СОГЛАСОВАНИЯ (из БД) — делаем “зелёное как заполненное”
+                document.querySelectorAll('#approvalsTable tbody tr[data-approval-id]').forEach((row) => {
+                    const ta = row.querySelector("textarea");
+                    const sheets = row.querySelector('input[type="number"]');
+                    if (ta) setState(ta, "input-valid");
+                    if (sheets) setState(sheets, "input-valid");
+                });
+            }
+
+            // ---------- 2) update states ----------
+            function updateSimpleRequired(input) {
+                if (!input || !input.classList.contains("js-required")) return;
+
+                if (isFilled(input)) setState(input, "input-valid");
+                else setState(input, "input-required");
+            }
+
+
+            function updateMaterialRow(row) {
+                if (!row) return;
+
+                const passport = row.querySelector('input[type="hidden"][id$="-passport"]');
+                const hasPassport = (passport && (passport.value || "").trim() !== "");
+
+                const name = row.querySelector('input[name$="-manual_name"]');
+                const docName = row.querySelector('input[name$="-manual_doc_name"]');
+                const docNo = row.querySelector('input[name$="-manual_doc_no"]');
+                const date = row.querySelector('input[name$="-manual_doc_date"]');
+                const dateText = row.querySelector('input[name$="-manual_doc_date_text"]');
+                const sheets = row.querySelector('input[name$="-sheets_count"]');
+                const v = row.querySelector('input[name$="-concrete_volume_m3"]');
+                const dupBtn = row.querySelector(".js-duplicate-material");
+                if (dupBtn) dupBtn.style.display = hasPassport ? "none" : "";
+
+
+                function isConcreteOrMortar(materialName) {
+                    const s = (materialName || "").trim().toLowerCase();
+                    if (!s) return false;
+                    return (s.includes("бетон") || s.includes("бетонн") || s.includes("раствор"));
+                }
+
+                function setDisabled(input, disabled) {
+                    if (!input) return;
+                    input.disabled = !!disabled;
+                    input.classList.toggle("is-disabled", !!disabled);
+                }
+
+                function setStrike(input, strike) {
+                    if (!input) return;
+                    input.classList.toggle("is-strike", !!strike);
+                }
+
+                // 1) Паспорт из БД: V всегда запрещён
+                if (hasPassport) {
+                    if (v) {
+                        v.value = "";
+                        setDisabled(v, true);
+                        setStrike(v, true);
+                        v.classList.remove("input-required", "input-error");
+                        setState(v, "input-valid");
+                    }
+                    [name, docName, docNo, date, dateText, sheets].forEach((el) => setState(el, "input-valid"));
+                    return;
+                }
+
+                // 2) Ручной ввод: V включаем ТОЛЬКО если бетон/раствор, иначе блокируем
+                const needV = isConcreteOrMortar(name?.value || "");
+
+                if (v) {
+                    setStrike(v, false); // для ручных не перечёркиваем
+
+                    if (!needV) {
+                        // по умолчанию как у БД: disabled + очищаем
+                        v.value = "";
+                        setDisabled(v, true);
+                        v.classList.remove("input-required", "input-valid", "input-error");
+                    } else {
+                        setDisabled(v, false);
+                        if (isFilled(v)) setState(v, "input-valid");
+                        else setState(v, "input-required");
+                    }
+                }
+
+                // ручной ввод: обязательные колонки
+                [name, docName, docNo, sheets].forEach((el) => {
+                    if (isFilled(el)) setState(el, "input-valid");
+                    else setState(el, "input-required");
+                });
+
+                // дата: достаточно одного из двух
+                const dateOk = isFilled(date) || isFilled(dateText);
+                if (dateOk) {
+                    if (isFilled(date)) setState(date, "input-valid"); else setState(date, "input-required");
+                    if (isFilled(dateText)) setState(dateText, "input-valid"); else setState(dateText, "input-required");
+                } else {
+                    setState(date, "input-required");
+                    setState(dateText, "input-required");
+                }
+
+                // если ввели dateText — очищаем обычную дату
+                if (isFilled(dateText) && date) {
+                    date.value = "";
+                    setState(date, "input-required");
+                }
+            }
+
+            function updateAttachmentRow(row) {
+                if (!row) return;
+                const isScheme = row.classList.contains("scheme-row");
+
+                const title = row.querySelector('input[name$="-title"]');
+                const docNo = row.querySelector('input[name$="-doc_no"]');
+                const dFrom = row.querySelector('input[name$="-doc_date"]');
+                const dTo = row.querySelector('input[name$="-doc_date_to"]');
+                const sheets = row.querySelector('input[name$="-sheets_count"]');
+
+                if (isScheme) {
+                    // только дата+листы
+                    [dFrom, sheets].forEach((el) => {
+                        if (isFilled(el)) setState(el, "input-valid");
+                        else setState(el, "input-required");
+                    });
+                    // остальные не трогаем
+                    return;
+                }
+
+                // обычные строки: required всё кроме dTo
+                [title, docNo, dFrom, sheets].forEach((el) => {
+                    if (isFilled(el)) setState(el, "input-valid");
+                    else setState(el, "input-required");
+                });
+
+                // dTo (вторая дата) — не обязательна, но если заполнена, можно сделать зелёной
+                if (dTo) {
+                    if (isFilled(dTo)) setState(dTo, "input-valid");
+                    else dTo.classList.remove("input-required", "input-valid", "input-error");
+                }
+            }
+
+            function refreshAll() {
+                tagRequiredFields();
+
+                // простые поля (основное)
+                document.querySelectorAll(".js-required").forEach(updateSimpleRequired);
+
+                // материалы/документы — по строкам
+                document.querySelectorAll('#materials-table tbody tr.material-row').forEach(updateMaterialRow);
+                document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach(updateAttachmentRow);
+            }
+
+            // init
+            refreshAll();
+
+            // live updates
+            document.addEventListener("input", function (e) {
+                const el = e.target;
+                if (!el) return;
+
+                // простые required
+                updateSimpleRequired(el);
+
+                // row logic
+                const matRow = el.closest && el.closest('#materials-table tr.material-row');
+                if (matRow) updateMaterialRow(matRow);
+
+                const attRow = el.closest && el.closest('#attachments-table tr.attachment-row');
+                if (attRow) updateAttachmentRow(attRow);
+            });
+
+            document.addEventListener("change", function (e) {
+                const el = e.target;
+                if (!el) return;
+
+                // file/date change тоже считаем
+                const matRow = el.closest && el.closest('#materials-table tr.material-row');
+                if (matRow) updateMaterialRow(matRow);
+
+                const attRow = el.closest && el.closest('#attachments-table tr.attachment-row');
+                if (attRow) updateAttachmentRow(attRow);
+            });
+
+            // after submit: красим ошибки
+            document.getElementById("act-form")?.addEventListener("submit", function () {
+                document.querySelectorAll(".is-invalid, .soft-invalid").forEach(function (el) {
+                    el.classList.remove("input-required", "input-valid");
+                    el.classList.add("input-error");
+                });
+            });
+
+            // после добавления строк (материалы/документы) — обновляем подсветку
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest("#add-material, #add-material-from-db, #add-attachment, #btnPickPassports");
+                if (!btn) return;
+                setTimeout(refreshAll, 0);
+            });
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-duplicate-material");
+                if (!btn) return;
+
+                const srcRow = btn.closest('#materials-table tr.material-row');
+                if (!srcRow) return;
+
+                if (srcRow.style.display === "none") return;
+
+                const passport = srcRow.querySelector('input[type="hidden"][id$="-passport"]');
+                const hasPassport = (passport && (passport.value || "").trim() !== "");
+                if (hasPassport) return; // ✅ только ручные
+
+                const addRowFn = window.__actsAddRow;
+                if (typeof addRowFn !== "function") return;
+
+                const newRow = addRowFn("materials-table", "material-empty-form", "mat");
+                if (!newRow) return;
+
+                const get = (row, sel) => row.querySelector(sel);
+                const copyVal = (sel) => {
+                    const from = get(srcRow, sel);
+                    const to = get(newRow, sel);
+                    if (from && to) to.value = from.value || "";
+                };
+
+                // ✅ Копируем ВСЕ нужные данные:
+                copyVal('input[name$="-manual_name"]');            // material_name
+                copyVal('input[name$="-manual_doc_name"]');        // document_name
+                copyVal('input[name$="-manual_doc_no"]');          // document_number
+                copyVal('input[name$="-manual_doc_date"]');        // document_date (dd.mm.yyyy)
+                copyVal('input[name$="-manual_doc_date_text"]');   // если у тебя вместо даты используется текст
+                copyVal('input[name$="-concrete_volume_m3"]');     // V
+                copyVal('input[name$="-sheets_count"]');           // sheets_count
+
+                // Применяем правила строки (включит/выключит V; разрулит date/dateText)
+                updateMaterialRow(newRow);
+
+                // ✅ Помечаем как "требует редактирования", но НЕ очищаем значения
+                const docNo = get(newRow, 'input[name$="-manual_doc_no"]');
+                const date = get(newRow, 'input[name$="-manual_doc_date"]');
+                const dateText = get(newRow, 'input[name$="-manual_doc_date_text"]');
+                const v = get(newRow, 'input[name$="-concrete_volume_m3"]');
+
+                if (docNo) setState(docNo, "input-required");
+
+                // у тебя правило: достаточно одного из date/dateText
+                // пометим оба как "нужно", чтобы человек точно обратил внимание
+                if (date) setState(date, "input-required");
+                if (dateText) setState(dateText, "input-required");
+
+                // V подсвечиваем только если поле активно (бетон/раствор)
+                if (v && !v.disabled) setState(v, "input-required");
+
+                docNo?.focus();
+                setTimeout(refreshAll, 0);
+            });
+
+        })();
+    </script>
+
+
+
+
+{% endblock %}
+
+
+

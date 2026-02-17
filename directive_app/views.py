@@ -136,7 +136,10 @@ class AuthorizationUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Updat
     def form_valid(self, form):
         obj = form.save()
         messages.success(self.request, "Полномочие обновлено.")
-        return redirect("directive_app:directive_detail", uuid=obj.directive.uuid)
+        return redirect(
+            "directive_app:directive_detail",
+            uuid=obj.directive.uuid,
+        )
 
 
 class DirectiveOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):

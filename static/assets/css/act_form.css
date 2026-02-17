@@ -1,0 +1,17 @@
+/* обязательное, но не заполнено */
+.input-required {
+  background-color: #d6e8ff !important;   /* насыщеннее голубой */
+  border-color: #8bbcff !important;
+}
+
+/* заполнено и ок */
+.input-valid {
+  background-color: #d9f2df !important;   /* насыщеннее зелёный */
+  border-color: #7acb8a !important;
+}
+
+/* ошибка после submit */
+.input-error {
+  background-color: #f8d7da !important;   /* классический bootstrap danger */
+  border-color: #dc3545 !important;
+}

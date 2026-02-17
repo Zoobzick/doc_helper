@@ -1,0 +1,129 @@
+{# acts_app/templates/acts_app/partials/act_party_row.html #}
+{% load static %}
+
+<tr id="party-row-{{ party.uuid }}">
+  <td>
+    <div class="form-check">
+      <input
+        class="form-check-input"
+        type="checkbox"
+        name="is_enabled_{{ party.uuid }}"
+        value="1"
+        {% if party.is_enabled %}checked{% endif %}
+
+        hx-post="{% url 'acts_app:act_party_toggle_enabled' party.uuid %}"
+        hx-trigger="change"
+        hx-params="is_enabled_{{ party.uuid }}"
+        hx-target="#party-row-{{ party.uuid }}"
+        hx-swap="outerHTML"
+        hx-headers='{"X-CSRFToken":"{{ csrf_token }}"}'
+      >
+    </div>
+  </td>
+
+  <td>
+    <div class="fw-semibold">{{ party.get_role_display }}</div>
+
+    {% if resolved.status == "DISABLED" %}
+      <small class="text-muted">Не участвует в акте</small>
+    {% elif resolved.status == "MISSING_ORG" %}
+      <small class="text-danger">Не выбрана организация</small>
+    {% elif resolved.status == "NO_AUTH" %}
+      <small class="text-danger">Нет полномочий на дату</small>
+    {% elif resolved.status == "MANY_AUTH_NEED_CHOICE" %}
+      <small class="text-warning">Найдено несколько полномочий — требуется выбор</small>
+    {% elif resolved.status == "CHOSEN_AUTH" %}
+      <small class="text-success">Выбор сделан вручную</small>
+    {% elif resolved.status == "ONE_AUTH" %}
+      <small class="text-success">Подобрано автоматически</small>
+    {% endif %}
+  </td>
+
+  <td>
+    {% if not party.is_enabled %}
+      <span class="text-muted">—</span>
+    {% else %}
+      <select
+        class="form-select form-select-sm"
+        name="organization_id_{{ party.uuid }}"
+
+        hx-post="{% url 'acts_app:act_party_set_org' party.uuid %}"
+        hx-trigger="change"
+        hx-params="organization_id_{{ party.uuid }}"
+        hx-target="#party-row-{{ party.uuid }}"
+        hx-swap="outerHTML"
+        hx-headers='{"X-CSRFToken":"{{ csrf_token }}"}'
+      >
+        <option value="" {% if not party.organization_id %}selected{% endif %}>— выбери —</option>
+        {% for org in organizations %}
+          <option value="{{ org.id }}" {% if party.organization_id == org.id %}selected{% endif %}>
+            {{ org.short_name }}
+          </option>
+        {% endfor %}
+      </select>
+    {% endif %}
+  </td>
+
+  {# ЕДИНАЯ КОЛОНКА: приказ + персона + должность (обрезка) #}
+  <td>
+    {% if party.is_enabled and resolved.effective_authorization %}
+      {% with a=resolved.effective_authorization %}
+        {# приказ: только № + дата #}
+        <div class="small">
+          №{{ a.directive.number }} от {{ a.directive.date|date:"d.m.Y" }}
+        </div>
+
+        {# персона: Фамилия И.О. #}
+        <div class="fw-semibold">
+          {{ a.person.short_name }}
+        </div>
+
+        {# должность: обрезка, полный текст в title #}
+        {% if a.position_text %}
+          <div
+            class="text-muted small"
+            title="{{ a.position_text }}"
+            style="max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+          >
+            {{ a.position_text }}
+          </div>
+        {% endif %}
+      {% endwith %}
+    {% else %}
+      <span class="text-muted">—</span>
+    {% endif %}
+  </td>
+
+  <td class="text-end">
+    <div class="d-flex justify-content-end gap-1">
+      {% if party.is_enabled and resolved.status == "MANY_AUTH_NEED_CHOICE" %}
+        <button
+          type="button"
+          class="btn btn-warning btn-sm"
+          data-bs-toggle="modal"
+          data-bs-target="#authChooseModal"
+          hx-get="{% url 'acts_app:act_party_candidates' party.uuid %}"
+          hx-target="#authChooseModalBody"
+          hx-swap="innerHTML"
+        >
+          Выбрать
+        </button>
+      {% endif %}
+
+      {% if party.role == "OTHER_REP" %}
+        <button
+          type="button"
+          class="btn btn-outline-danger btn-sm"
+          hx-post="{% url 'acts_app:act_party_delete_other' party.uuid %}"
+          hx-trigger="click"
+          hx-target="#party-row-{{ party.uuid }}"
+          hx-swap="outerHTML"
+          hx-confirm="Удалить строку «Иные лица»?"
+          hx-headers='{"X-CSRFToken":"{{ csrf_token }}"}'
+        >
+          <i class="bi bi-trash"></i>
+        </button>
+      {% endif %}
+    </div>
+  </td>
+</tr>

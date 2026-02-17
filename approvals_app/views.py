@@ -1,4 +1,3 @@
-import os
 import re
 
 from django.contrib import messages
@@ -15,44 +14,28 @@ from projects_app.models import Project
 from .forms import ApprovalForm
 from .models import Approval
 
+
 TAIL_RE = re.compile(r"^([А-ЯA-Z]{2,3})(\d+)$")  # КЖ39, АР12, ОС4
 
 
-# ---------- PERMISSIONS MIXINS ----------
+def _delete_approval_file(approval: Approval) -> None:
+    """
+    approval (Approval) — объект согласования, у которого удаляем PDF.
 
-class DonePageAccessMixin(LoginRequiredMixin, PermissionRequiredMixin):
+    ВАЖНО: удаляем через FileField.delete() => через storage,
+    а не через os.remove() и не через QuerySet.delete().
+    """
+    if approval.file and getattr(approval.file, "name", ""):
+        approval.file.delete(save=False)
+
+
+# ---------- DONE LIST ----------
+
+class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     permission_required = "approvals_app.view_approvals_done_page"
     raise_exception = True
     login_url = "/login/"
 
-
-class PendingPageAccessMixin(LoginRequiredMixin, PermissionRequiredMixin):
-    permission_required = "approvals_app.view_approvals_pending_page"
-    raise_exception = True
-    login_url = "/login/"
-
-
-class DeleteApprovalsAccessMixin(LoginRequiredMixin, PermissionRequiredMixin):
-    permission_required = "approvals_app.delete_approvals"
-    raise_exception = True
-    login_url = "/login/"
-
-
-class AddDoneAccessMixin(LoginRequiredMixin, PermissionRequiredMixin):
-    permission_required = "approvals_app.add_approvals_done"
-    raise_exception = True
-    login_url = "/login/"
-
-
-class AddPendingAccessMixin(LoginRequiredMixin, PermissionRequiredMixin):
-    permission_required = "approvals_app.add_approvals_pending"
-    raise_exception = True
-    login_url = "/login/"
-
-
-# ---------- LIST DONE ----------
-
-class ApprovalDoneListView(DonePageAccessMixin, ListView):
     model = Approval
     template_name = "approvals_app/approvals_done_list.html"
     context_object_name = "approvals"
@@ -73,10 +56,8 @@ class ApprovalDoneListView(DonePageAccessMixin, ListView):
         q_up = q.upper()
         m = TAIL_RE.match(q_up)
         if m:
-            # поиск типа "КЖ39" -> section + number
             return qs.filter(project__section__code=m.group(1), project__number=int(m.group(2)))
 
-        # иначе — по описанию
         return qs.filter(description__icontains=q)
 
     def get_context_data(self, **kwargs):
@@ -84,7 +65,6 @@ class ApprovalDoneListView(DonePageAccessMixin, ListView):
 
         form = ApprovalForm()
 
-        # открываем модалку и prefill при редиректе с PENDING
         add = self.request.GET.get("add") == "1"
         pending_id = self.request.GET.get("pending_id")
         project_id = self.request.GET.get("project_id")
@@ -108,7 +88,6 @@ class ApprovalDoneListView(DonePageAccessMixin, ListView):
         ctx["pending_id"] = pending_id
         ctx["form"] = form
 
-        # чтобы в шаблоне можно было прятать кнопку "Добавить"
         ctx["can_add_done"] = self.request.user.has_perm("approvals_app.add_approvals_done")
         ctx["can_delete"] = self.request.user.has_perm("approvals_app.delete_approvals")
 
@@ -116,20 +95,30 @@ class ApprovalDoneListView(DonePageAccessMixin, ListView):
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
+        # add-perm отдельно: просматривать done можно одним правом,
+        # а добавлять "Согласовано" — другим.
         if not request.user.has_perm("approvals_app.add_approvals_done"):
             return redirect("approvals:done")
 
         form = ApprovalForm(request.POST, request.FILES)
-        pending_id = request.POST.get("pending_id")
+        pending_id = (request.POST.get("pending_id") or "").strip()
 
         if form.is_valid():
-            obj = form.save(commit=False)
-            obj.status = Approval.Status.DONE
-            obj.save()
+            done_obj = form.save(commit=False)
+            done_obj.status = Approval.Status.DONE
+            done_obj.save()
 
-            # если пришли с pending -> удалить pending запись
+            # ключевой фикс: удаляем старый pending-файл + запись pending
             if pending_id:
-                Approval.objects.filter(pk=pending_id, status=Approval.Status.PENDING).delete()
+                pending_obj = (
+                    Approval.objects
+                    .select_for_update()
+                    .filter(pk=pending_id, status=Approval.Status.PENDING)
+                    .first()
+                )
+                if pending_obj:
+                    _delete_approval_file(pending_obj)
+                    pending_obj.delete()
 
             messages.success(request, "Добавлено в «Все согласования»")
             return redirect("approvals:done")
@@ -142,9 +131,13 @@ class ApprovalDoneListView(DonePageAccessMixin, ListView):
         return self.render_to_response(ctx)
 
 
-# ---------- LIST PENDING ----------
+# ---------- PENDING LIST ----------
 
-class ApprovalPendingListView(PendingPageAccessMixin, ListView):
+class ApprovalPendingListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    permission_required = "approvals_app.view_approvals_pending_page"
+    raise_exception = True
+    login_url = "/login/"
+
     model = Approval
     template_name = "approvals_app/approvals_pending_list.html"
     context_object_name = "approvals"
@@ -183,9 +176,9 @@ class ApprovalPendingListView(PendingPageAccessMixin, ListView):
 
         form = ApprovalForm(request.POST, request.FILES)
         if form.is_valid():
-            obj = form.save(commit=False)
-            obj.status = Approval.Status.PENDING
-            obj.save()
+            pending_obj = form.save(commit=False)
+            pending_obj.status = Approval.Status.PENDING
+            pending_obj.save()
             messages.success(request, "Добавлено в «На согласовании»")
             return redirect("approvals:pending")
 
@@ -197,8 +190,6 @@ class ApprovalPendingListView(PendingPageAccessMixin, ListView):
 
 
 # ---------- MARK DONE (redirect to DONE with open modal) ----------
-# ВАЖНО: доступ только у тех, кто имеет view DONE (обычно worker).
-# mark12 таким образом НЕ сможет "провалиться" на done.
 
 class ApprovalMarkDoneRedirectView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "approvals_app.view_approvals_done_page"
@@ -220,34 +211,44 @@ class ApprovalMarkDoneRedirectView(LoginRequiredMixin, PermissionRequiredMixin, 
 
 # ---------- OPEN PDF ----------
 
-class ApprovalOpenPdfView(PendingPageAccessMixin, View):
+class ApprovalOpenPdfView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "approvals_app.view_approvals_pending_page"
+    raise_exception = True
+    login_url = "/login/"
+
     def get(self, request, pk: int):
         approval = get_object_or_404(Approval, pk=pk)
-
         try:
-            return FileResponse(open(approval.file.path, "rb"), content_type="application/pdf")
+            approval.file.open("rb")
+            return FileResponse(approval.file, content_type="application/pdf")
         except FileNotFoundError:
             raise Http404("Файл согласования не найден на диске")
 
 
 # ---------- DELETE ----------
 
-class ApprovalDeleteView(DeleteApprovalsAccessMixin, View):
+class ApprovalDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "approvals_app.delete_approvals"
+    raise_exception = True
+    login_url = "/login/"
+
     def post(self, request, pk: int):
         approval = get_object_or_404(Approval, pk=pk)
 
-        if approval.file and os.path.isfile(approval.file.path):
-            os.remove(approval.file.path)
-
+        _delete_approval_file(approval)
         approval.delete()
+
         messages.success(request, "Согласование удалено")
         return redirect(request.META.get("HTTP_REFERER", reverse("approvals:pending")))
 
 
 # ---------- PROJECT SEARCH (Select2) ----------
-# Доступно тем, кто видит pending (mark12 тоже).
 
-class ProjectSearchView(PendingPageAccessMixin, View):
+class ProjectSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "approvals_app.view_approvals_pending_page"
+    raise_exception = True
+    login_url = "/login/"
+
     def get(self, request):
         q = (request.GET.get("q") or "").strip().upper()
 
@@ -260,11 +261,11 @@ class ProjectSearchView(PendingPageAccessMixin, View):
             qs = qs.filter(section__code=m.group(1), number=int(m.group(2)))
         else:
             qs = (
-                    qs.filter(designer__code__icontains=q)
-                    | qs.filter(line__code__icontains=q)
-                    | qs.filter(stage__code__icontains=q)
-                    | qs.filter(plot__code__icontains=q)
-                    | qs.filter(section__code__icontains=q)
+                qs.filter(designer__code__icontains=q)
+                | qs.filter(line__code__icontains=q)
+                | qs.filter(stage__code__icontains=q)
+                | qs.filter(plot__code__icontains=q)
+                | qs.filter(section__code__icontains=q)
             )
 
         qs = qs.order_by("id")[:50]

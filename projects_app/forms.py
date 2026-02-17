@@ -63,9 +63,12 @@ class ProjectUpdateForm(forms.ModelForm):
             "stage",
             "plot",
             "section",
+            "address",
         )
 
         widgets = {
+            "address": forms.TextInput(attrs={"class": "form-control"}),
+
             "construction": forms.TextInput(attrs={"class": "form-control"}),
             "designer": forms.Select(attrs={"class": "form-select"}),
             "line": forms.Select(attrs={"class": "form-select"}),
