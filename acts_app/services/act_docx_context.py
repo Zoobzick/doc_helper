@@ -90,31 +90,26 @@ def _full_name_or_str(val: Any) -> str:
 
 def _project_attr_full_name(project: Any, *, direct_attr_names: tuple[str, ...], related_attr: str) -> str:
     """
-    1) Пытаемся взять первое непустое значение из direct_attr_names
-       (например project_line/project_stage, если они где-то есть).
+    1) Пытаемся взять первое непустое значение из direct_attr_names.
        Если это модель с full_name -> вернём full_name.
     2) Если это строка (обычно code) и у проекта есть related_attr (line/stage),
        то берём related_obj.full_name.
-    3) Иначе возвращаем как есть (строку/str()).
+    3) Иначе возвращаем как есть.
     """
     if project is None:
         return ""
 
-    # 1) direct attrs
     for name in direct_attr_names:
         if hasattr(project, name):
             v = getattr(project, name, None)
             s = _full_name_or_str(v)
             if s:
-                # если получили просто code строкой, попробуем улучшить через related
                 related_obj = getattr(project, related_attr, None)
                 related_full = _full_name_or_str(related_obj)
-                # если related_full есть — он и нужен (а не code)
                 if related_full:
                     return related_full
                 return s
 
-    # 2) related attrs
     related_obj = getattr(project, related_attr, None)
     related_full = _full_name_or_str(related_obj)
     if related_full:
@@ -137,15 +132,12 @@ def build_projects_text(act: Act) -> dict[str, str]:
         if code:
             codes.append(code)
 
-    # ✅ ВАЖНО: хотим full_name, а не code
-    # line: Project.line -> Line(full_name)
     project_line = _project_attr_full_name(
         first,
         direct_attr_names=("project_line", "construction_line", "object_line", "line"),
         related_attr="line",
     )
 
-    # stage: Project.stage -> Stage(full_name) (у Stage.__str__ возвращает code, поэтому явно full_name)
     project_stage = _project_attr_full_name(
         first,
         direct_attr_names=("project_stage", "stage", "design_stage"),
@@ -178,7 +170,7 @@ def _collect_material_rows(act: Act) -> list[_MaterialRow]:
     rows: list[_MaterialRow] = []
 
     for m in act.materials.select_related("passport", "passport__material").order_by("position", "id"):
-        data = resolve_material_fields(m)  # ✅ единый резолвер (override-first)
+        data = resolve_material_fields(m)
 
         rows.append(
             _MaterialRow(
@@ -436,8 +428,10 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
         person = auth.person if auth else None
         directive = auth.directive if auth else None
 
+        # ✅ (org_full) и (org_short) — оба отдаём в шаблон
         ctx[f"{prefix}_org_full"] = _strip_trailing_commas(_safe_str(getattr(org, "full_name", "")))
         ctx[f"{prefix}_org_short"] = _strip_trailing_commas(_safe_str(getattr(org, "short_name", "")))
+
         ctx[f"{prefix}_org_ogrn"] = _safe_str(getattr(org, "ogrn", ""))
         ctx[f"{prefix}_org_inn"] = _safe_str(getattr(org, "inn", ""))
         ctx[f"{prefix}_org_address"] = _strip_trailing_commas(_safe_str(getattr(org, "address", "")))
@@ -470,6 +464,7 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
             ctx[f"{prefix}_org_sro_design_ogrn"] = sro["ogrn"]
             ctx[f"{prefix}_org_sro_design_inn"] = sro["inn"]
 
+    # ---- tech customer ----
     tc_party = _party(act, ActRole.TECH_CUSTOMER_CONTROL)
     tc_org = tc_party.organization if (tc_party and tc_party.organization_id) else None
 
@@ -482,7 +477,8 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
 
     tc_sro = _pick_sro_membership_only(tc_org, SroKind.BUILD, act.act_date)
     ctx["tech_customer_org_sro_builder"] = _strip_trailing_commas(tc_sro["name"])
-    ctx["tech_customer__org_sro_ogrn"] = tc_sro["ogrn"]
+
+    ctx["tech_customer_org_sro_ogrn"] = tc_sro["ogrn"]
     ctx["tech_customer_org_sro_inn"] = tc_sro["inn"]
 
     tc_auth = _resolve_authorization(
@@ -503,6 +499,7 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
     ctx["tech_customer_directive_date"] = fmt_date_g(getattr(tc_dir, "date", None))
     ctx["tech_customer_directive_note"] = _strip_trailing_commas(_safe_str(getattr(tc_dir, "note", "")))
 
+    # ---- main roles ----
     fill_role("builder_rep", ActRole.BUILDER_REP, include_nrs=True, sro_build=True, sro_design=True)
     fill_role("builder_control", ActRole.BUILDER_CONTROL, include_nrs=True)
     fill_role("design_rep", ActRole.DESIGN_REP, include_nrs=False)
@@ -512,11 +509,18 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
     contractor_org = contractor_party.organization if (contractor_party and contractor_party.organization_id) else None
     ctx["contractor_rep_org_orgn"] = _safe_str(getattr(contractor_org, "ogrn", ""))
 
+    # ---- OTHER_REP (важно: и full, и short) ----
     others = list(_parties(act, ActRole.OTHER_REP))
     if others:
-        fio_list, pos_list, org_list, note_list = [], [], [], []
+        fio_list: list[str] = []
+        pos_list: list[str] = []
+        org_full_list: list[str] = []
+        org_short_list: list[str] = []
+        note_list: list[str] = []
+
         first_dir_num = ""
         first_dir_date = ""
+
         for p in others:
             org = p.organization if p.organization_id else None
             auth = _resolve_authorization(act, ActRole.OTHER_REP, org.id if org else None, p.chosen_authorization)
@@ -525,15 +529,22 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
 
             fio_list.append(_normalize_fio_short(_safe_str(getattr(person, "short_name", ""))))
             pos_list.append(_strip_trailing_commas(_safe_str(getattr(auth, "position_text", ""))))
-            org_list.append(_strip_trailing_commas(_safe_str(getattr(org, "full_name", ""))))
+
+            org_full_list.append(_strip_trailing_commas(_safe_str(getattr(org, "full_name", ""))))
+            org_short_list.append(_strip_trailing_commas(_safe_str(getattr(org, "short_name", ""))))
+
             if not first_dir_num:
                 first_dir_num = _safe_str(getattr(directive, "number", ""))
                 first_dir_date = fmt_date_g(getattr(directive, "date", None))
+
             note_list.append(_strip_trailing_commas(_safe_str(getattr(directive, "note", ""))))
 
         ctx["other_rep_fio"] = _strip_trailing_commas(_join_non_empty(fio_list, sep=", "))
         ctx["other_rep_position"] = _strip_trailing_commas(_join_non_empty(pos_list, sep=", "))
-        ctx["other_rep_org_full"] = _strip_trailing_commas(_join_non_empty(org_list, sep=", "))
+
+        ctx["other_rep_org_full"] = _strip_trailing_commas(_join_non_empty(org_full_list, sep=", "))
+        ctx["other_rep_org_short"] = _strip_trailing_commas(_join_non_empty(org_short_list, sep=", "))
+
         ctx["other_rep_directive_number"] = first_dir_num
         ctx["other_rep_directive_date"] = first_dir_date
         ctx["other_rep_directive_note"] = _strip_trailing_commas(_join_non_empty(note_list, sep=", "))
@@ -541,10 +552,12 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
         ctx["other_rep_fio"] = ""
         ctx["other_rep_position"] = ""
         ctx["other_rep_org_full"] = ""
+        ctx["other_rep_org_short"] = ""
         ctx["other_rep_directive_number"] = ""
         ctx["other_rep_directive_date"] = ""
         ctx["other_rep_directive_note"] = ""
 
+    # финальная нормализация значений
     for k, v in list(ctx.items()):
         ctx[k] = _strip_trailing_commas("" if v is None else str(v))
 
