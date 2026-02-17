@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import Optional
+from datetime import date
+from typing import Optional, Iterable, Any
 
 from django.db import transaction
 from django.db.models import Sum
@@ -26,40 +28,64 @@ class AppendixBuilderError(Exception):
     pass
 
 
+_DATE_RE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")  # 08.01.2026
+
+
+def _parse_first_date_from_text(s: str) -> Optional[date]:
+    """
+    Берём первую встреченную дату (start-date) из строки:
+      "08.01.2026", "08-09.01.2026", "08.01.2026г."
+    Нужно только для сортировки.
+    """
+    if not s:
+        return None
+    m = _DATE_RE.search(s)
+    if not m:
+        return None
+    dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        return date(yyyy, mm, dd)
+    except ValueError:
+        return None
+
+
+def _safe_strip(x: Any) -> str:
+    return (str(x).strip() if x is not None else "")
+
+
+def _strip_trailing_commas(s: str) -> str:
+    s = (s or "").strip()
+    while s.endswith(","):
+        s = s[:-1].rstrip()
+    return s
+
+
+def _join(parts: Iterable[str], sep: str = ", ") -> str:
+    out = [p.strip() for p in parts if (p or "").strip()]
+    return sep.join(out)
+
+
+@dataclass(frozen=True)
+class _PlannedLine:
+    kind: str  # ATTACHMENT | VIRTUAL
+    label: str
+    sheets_count: int
+    source_attachment: Optional[ActAttachment]
+
+
 class AppendixBuilder:
     """
     Пересобирает раздел "Приложения" в акте.
 
-    Правила:
-    1) Исполнительная схема (ВСЕГДА первая) — минимум 1 документ.
-    2) Материалы:
-       - если материалов < 5 → расписываем каждый материал отдельной строкой (VIRTUAL)
-       - если материалов >= 5 → создаём/обновляем attachment MATERIALS_REGISTRY и
-         в приложениях одна строка-реестр:
-         label = "реестр №П-3.<act_number> от <work_end_date>"
-         листов = сумма листов материалов + sheets_count самого реестра
-    3) Документы, подтверждающие соответствие работ:
-       - если (все attachments кроме EXEC_SCHEME и реестров) >= 5 → нужен реестр документов:
-         label = "реестр №П-4.<act_number> от <act_date>"
-         листов = сумма листов этих документов + sheets_count реестра
-       - если < 5 → перечисляем как раньше (бетонные/протоколы/прочие)
+    Требование (<5 материалов):
+    - 1 строка на 1 material_name.
+    - Внутри строки: все паспорта этого материала (даже если document_name разный).
+    - Порядок: сначала документы/паспорта с более ранней датой.
 
-    4) Согласования (Доп. сведения):
-       - источник данных: ActApprovalItem (act.approval_items)
-       - если согласований >= 5 → создаём/обновляем attachment APPROVALS_REGISTRY (П-8),
-         и в приложениях показываем одну строку-реестр.
-         листов = сумма листов согласований + sheets_count реестра П-8
-       - если 1..4 → показываем поочерёдно каждое согласование отдельной строкой (VIRTUAL),
-         листов = item.sheets_count, текст = item.label_override (если пусто — fallback из Approval).
-       - если 0 → ничего не показываем и удаляем реестр П-8, если он был создан ранее.
-
-    ВАЖНО:
-    - title у реестров строго "реестр"
-    - для П-3: doc_no="П-3.<act_number>", doc_date=work_end_date
-    - для П-4: doc_no="П-4.<act_number>", doc_date=act_date
-    - для П-8: doc_no="П-8.<act_number>", doc_date=act_date
-
-    is_label_overridden=True => label вручную не перезаписываем.
+    Требование (П-4, <5 документов):
+    - Все документы в П-4 (кроме исполнительной схемы и реестров) имеют type OTHER_QUALITY_DOC.
+    - Склеиваем документы по одинаковому title:
+      Title №n1, №n2 от d1, №n3 от d2 (даты по возрастанию).
     """
 
     REGISTRY_THRESHOLD = 5
@@ -82,8 +108,8 @@ class AppendixBuilder:
             )
 
         # 1) материалы
-        materials_count = act.materials.count()  # (materials_count) кол-во материалов в акте
-        materials_sheets = self._sum_materials_sheets(act)  # (materials_sheets) сумма sheets_count по материалам
+        materials_count = act.materials.count()
+        materials_sheets = self._sum_materials_sheets(act)
 
         materials_registry = self._ensure_materials_registry(
             act=act,
@@ -92,8 +118,8 @@ class AppendixBuilder:
 
         # 2) документы соответствия (все attachments, кроме схемы и реестров)
         compliance_docs_qs = act.attachments.exclude(type__in=self._registry_and_exec_types())
-        compliance_docs_count = compliance_docs_qs.count()  # (compliance_docs_count) кол-во документов
-        compliance_docs_sheets = self._sum_attachments_sheets(compliance_docs_qs)  # (compliance_docs_sheets) сумма листов
+        compliance_docs_count = compliance_docs_qs.count()
+        compliance_docs_sheets = self._sum_attachments_sheets(compliance_docs_qs)
 
         docs_registry = self._ensure_docs_registry(
             act=act,
@@ -106,19 +132,18 @@ class AppendixBuilder:
             .order_by("-created_at")
             .first()
         )
-        test_protocols = list(
-            act.attachments.filter(type=AttachmentType.TEST_PROTOCOL).order_by("created_at")
-        )
+
+        # ✅ ВАЖНО: все документы П-4 (кроме схем и реестров) — OTHER_QUALITY_DOC
         other_quality_docs = list(
-            act.attachments.filter(type=AttachmentType.OTHER_QUALITY_DOC).order_by("created_at")
+            act.attachments.filter(type=AttachmentType.OTHER_QUALITY_DOC).order_by("created_at", "id")
         )
 
-        # 4) согласования (Доп. сведения) — источник ActApprovalItem
+        # 4) согласования (Доп. сведения)
         approval_items = list(
             act.approval_items.select_related("approval", "approval__project").order_by("position", "id")
         )
-        approvals_count = len(approval_items)  # (approvals_count) кол-во согласований
-        approvals_items_sheets = sum(int(i.sheets_count or 0) for i in approval_items)  # сумма листов по согласованиям
+        approvals_count = len(approval_items)
+        approvals_items_sheets = sum(int(i.sheets_count or 0) for i in approval_items)
 
         need_approvals_registry = (approvals_count >= self.REGISTRY_THRESHOLD) and (approvals_count > 0)
         approvals_registry = self._ensure_approvals_registry(
@@ -129,7 +154,7 @@ class AppendixBuilder:
         # --- строим план приложений ---
         lines_plan: list[_PlannedLine] = []
 
-        # 1) Исполнительная схема — первая (если схем несколько — подряд)
+        # 1) Исполнительные схемы
         for scheme in exec_schemes:
             label = self._format_attachment_label(scheme, default_title="Исполнительная схема")
             lines_plan.append(
@@ -159,19 +184,11 @@ class AppendixBuilder:
                     )
                 )
             else:
-                # <5: каждый материал отдельной строкой (VIRTUAL)
-                for m in act.materials.select_related("passport", "passport__material").order_by("position", "id"):
-                    label = self._format_material_label(m)
-                    lines_plan.append(
-                        _PlannedLine(
-                            kind="VIRTUAL",
-                            label=label,
-                            sheets_count=max(1, int(m.sheets_count or 0)),
-                            source_attachment=None,
-                        )
-                    )
+                # ✅ <5: 1 строка на 1 material_name, внутри — все паспорта
+                for gl in self._build_grouped_material_lines(act):
+                    lines_plan.append(gl)
 
-        # 3) Документы соответствия
+        # 3) Документы соответствия (П-4)
         if compliance_docs_count > 0:
             if compliance_docs_count >= self.REGISTRY_THRESHOLD:
                 if not docs_registry:
@@ -188,6 +205,7 @@ class AppendixBuilder:
                     )
                 )
             else:
+                # бетонные образцы — одиночный документ (как было)
                 if concrete_samples_act:
                     label = self._format_attachment_label(
                         concrete_samples_act,
@@ -202,32 +220,14 @@ class AppendixBuilder:
                         )
                     )
 
-                for proto in test_protocols:
-                    label = self._format_attachment_label(proto, default_title="Протокол испытаний")
-                    lines_plan.append(
-                        _PlannedLine(
-                            kind="ATTACHMENT",
-                            label=label,
-                            sheets_count=int(proto.sheets_count),
-                            source_attachment=proto,
-                        )
-                    )
+                # ✅ Склеиваем OTHER_QUALITY_DOC по одинаковому title
+                for pl in self._build_grouped_attachment_lines(
+                    attachments=other_quality_docs,
+                    default_title="Документ",
+                ):
+                    lines_plan.append(pl)
 
-                for doc in other_quality_docs:
-                    label = self._format_attachment_label(
-                        doc,
-                        default_title="Документ, подтверждающий качество выполненных работ",
-                    )
-                    lines_plan.append(
-                        _PlannedLine(
-                            kind="ATTACHMENT",
-                            label=label,
-                            sheets_count=int(doc.sheets_count),
-                            source_attachment=doc,
-                        )
-                    )
-
-        # 4) Согласования — в конец
+        # 4) Согласования
         if approvals_count > 0:
             if approvals_count >= self.REGISTRY_THRESHOLD:
                 if not approvals_registry:
@@ -342,6 +342,181 @@ class AppendixBuilder:
         res = qs.aggregate(total=Sum("sheets_count"))
         return int(res["total"] or 0)
 
+    # --------- grouping materials (<5) ----------
+
+    def _build_grouped_material_lines(self, act: Act) -> list[_PlannedLine]:
+        """
+        1 строка на 1 material_name.
+        Внутри строки: все паспорта, даже если document_name разный.
+
+        Формат:
+          material_name (docA №1, №2 от d1, №3 от d2, docB №4 от d0, №5 от d3)
+
+        Правило порядка:
+        - сначала document_name, у которого самая ранняя дата
+        - внутри document_name: даты по возрастанию
+        """
+        items: list[dict[str, Any]] = []
+        for m in act.materials.select_related("passport", "passport__material").order_by("position", "id"):
+            data = resolve_material_fields(m)
+
+            material_name = (data.get("material_name") or "").strip() or "Материал"
+            document_name = (data.get("document_name") or "").strip() or "Документ"
+            document_no = (data.get("document_no") or "").strip()
+            document_date_str = (data.get("document_date_str") or "").strip()
+
+            dt = _parse_first_date_from_text(document_date_str) or date.max
+
+            items.append(
+                {
+                    "material_name": material_name,
+                    "document_name": document_name,
+                    "document_no": document_no,
+                    "document_date_str": document_date_str,
+                    "date": dt,
+                    "sheets": int(m.sheets_count or 0),
+                }
+            )
+
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for it in items:
+            grouped.setdefault(it["material_name"], []).append(it)
+
+        out: list[_PlannedLine] = []
+
+        for material_name in sorted(grouped.keys()):
+            group = grouped[material_name]
+
+            doc_map: dict[str, dict[str, list[str]]] = {}
+            doc_min_date: dict[str, date] = {}
+
+            sheets_total = 0
+            for it in group:
+                sheets_total += int(it["sheets"] or 0)
+
+                doc = it["document_name"]
+                ds = (it["document_date_str"] or "").strip()
+                dt = it["date"]
+
+                doc_map.setdefault(doc, {})
+                doc_map[doc].setdefault(ds, [])
+                if it["document_no"]:
+                    doc_map[doc][ds].append(it["document_no"])
+
+                prev = doc_min_date.get(doc)
+                if prev is None or dt < prev:
+                    doc_min_date[doc] = dt
+
+            # document_name по самой ранней дате
+            doc_names_sorted = sorted(doc_map.keys(), key=lambda dn: (doc_min_date.get(dn, date.max), dn))
+
+            chunks: list[str] = []
+            for doc_name in doc_names_sorted:
+                date_dict = doc_map[doc_name]
+
+                # даты внутри doc_name
+                date_keys_sorted = sorted(
+                    date_dict.keys(),
+                    key=lambda ds: (_parse_first_date_from_text(ds) or date.max, ds),
+                )
+
+                first_part = True
+                for ds in date_keys_sorted:
+                    nos = date_dict.get(ds) or []
+                    if not nos:
+                        continue
+
+                    nos_part = ", ".join([f"№{n}" for n in nos])
+                    part = f"{nos_part} от {ds}" if ds else nos_part
+
+                    if first_part:
+                        chunks.append(_strip_trailing_commas(f"{doc_name} {part}"))
+                        first_part = False
+                    else:
+                        chunks.append(_strip_trailing_commas(part))
+
+            label = _strip_trailing_commas(f"{material_name} ({_join(chunks, sep=', ')})")
+
+            out.append(
+                _PlannedLine(
+                    kind="VIRTUAL",
+                    label=label,
+                    sheets_count=max(1, sheets_total),
+                    source_attachment=None,
+                )
+            )
+
+        return out
+
+    # --------- grouping attachments (P-4) ----------
+
+    def _build_grouped_attachment_lines(
+        self,
+        *,
+        attachments: list[ActAttachment],
+        default_title: str,
+    ) -> list[_PlannedLine]:
+        """
+        Склеиваем документы по одинаковому title:
+          Title №n1, №n2 от d1, №n3 от d2
+        """
+        if not attachments:
+            return []
+
+        grouped: dict[str, list[ActAttachment]] = {}
+        for att in attachments:
+            title = (att.title or "").strip() or default_title
+            grouped.setdefault(title, []).append(att)
+
+        out: list[_PlannedLine] = []
+
+        for title in sorted(grouped.keys()):
+            group = grouped[title]
+
+            def _key(a: ActAttachment):
+                ds = fmt_date_range_g(a.doc_date, getattr(a, "doc_date_to", None))
+                dt = _parse_first_date_from_text(ds) or date.max
+                return (dt, _safe_strip(a.doc_no))
+
+            group.sort(key=_key)
+
+            by_date: dict[str, list[str]] = {}
+            date_order: list[str] = []
+            sheets_total = 0
+
+            for a in group:
+                sheets_total += int(a.sheets_count or 0)
+
+                ds = fmt_date_range_g(a.doc_date, getattr(a, "doc_date_to", None))
+                if ds not in by_date:
+                    by_date[ds] = []
+                    date_order.append(ds)
+
+                if a.doc_no:
+                    by_date[ds].append(_safe_strip(a.doc_no))
+
+            chunks: list[str] = []
+            for ds in sorted(date_order, key=lambda x: (_parse_first_date_from_text(x) or date.max, x)):
+                nos = by_date.get(ds) or []
+                if not nos:
+                    continue
+                nos_part = ", ".join([f"№{n}" for n in nos])
+                chunks.append(_strip_trailing_commas(f"{nos_part} от {ds}" if ds else nos_part))
+
+            label = _strip_trailing_commas(_join([title, _join(chunks, sep=", ")], sep=" "))
+            out.append(
+                _PlannedLine(
+                    kind="ATTACHMENT" if len(group) == 1 else "VIRTUAL",
+                    label=label,
+                    sheets_count=max(1, sheets_total),
+                    source_attachment=group[0] if len(group) == 1 else None,
+                )
+            )
+
+        return out
+
+    # --------- registries ---------
+
     def _ensure_materials_registry(self, *, act: Act, need: bool) -> Optional[ActAttachment]:
         qs = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY)
 
@@ -422,6 +597,8 @@ class AppendixBuilder:
         obj.save()
         return obj
 
+    # --------- formatting ---------
+
     def _format_registry_label(self, registry: ActAttachment) -> str:
         return self._format_attachment_label(registry, default_title=self.REGISTRY_TITLE)
 
@@ -437,33 +614,3 @@ class AppendixBuilder:
             parts.append(f"от {date_str}")
 
         return " ".join(parts)
-
-    def _format_material_label(self, m) -> str:
-        """
-        Формат для материалов (<5):
-        document_name №document_no от document_date, material
-
-        Источник истины: resolve_material_fields(m)
-        """
-        data = resolve_material_fields(m)  # (data) итоговые поля с учётом override
-
-        parts = [data["document_name"]]
-
-        if data["document_no"]:
-            parts.append(f"№{data['document_no']}")
-
-        if data["document_date_str"] and data["document_date_str"] != "—":
-            parts.append(f"от {data['document_date_str']}")
-
-        base = " ".join(parts).strip()
-        material_name = (data["material_name"] or "").strip()
-
-        return f"{base}, {material_name}".strip().strip(",")
-
-
-@dataclass(frozen=True)
-class _PlannedLine:
-    kind: str  # ATTACHMENT | VIRTUAL
-    label: str
-    sheets_count: int
-    source_attachment: Optional[ActAttachment]
