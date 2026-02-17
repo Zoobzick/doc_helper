@@ -75,6 +75,54 @@ def _get_first_attr(obj: Any, names: tuple[str, ...], default: str = "") -> str:
     return default
 
 
+def _full_name_or_str(val: Any) -> str:
+    """
+    Если val — связанная модель с полем full_name (Line/Stage/DesignStage/etc),
+    то возвращаем full_name, иначе обычный str().
+    """
+    if val is None:
+        return ""
+    full_name = getattr(val, "full_name", None)
+    if isinstance(full_name, str) and full_name.strip():
+        return full_name.strip()
+    return str(val).strip()
+
+
+def _project_attr_full_name(project: Any, *, direct_attr_names: tuple[str, ...], related_attr: str) -> str:
+    """
+    1) Пытаемся взять первое непустое значение из direct_attr_names
+       (например project_line/project_stage, если они где-то есть).
+       Если это модель с full_name -> вернём full_name.
+    2) Если это строка (обычно code) и у проекта есть related_attr (line/stage),
+       то берём related_obj.full_name.
+    3) Иначе возвращаем как есть (строку/str()).
+    """
+    if project is None:
+        return ""
+
+    # 1) direct attrs
+    for name in direct_attr_names:
+        if hasattr(project, name):
+            v = getattr(project, name, None)
+            s = _full_name_or_str(v)
+            if s:
+                # если получили просто code строкой, попробуем улучшить через related
+                related_obj = getattr(project, related_attr, None)
+                related_full = _full_name_or_str(related_obj)
+                # если related_full есть — он и нужен (а не code)
+                if related_full:
+                    return related_full
+                return s
+
+    # 2) related attrs
+    related_obj = getattr(project, related_attr, None)
+    related_full = _full_name_or_str(related_obj)
+    if related_full:
+        return related_full
+
+    return ""
+
+
 # -------------------------
 # Projects
 # -------------------------
@@ -89,8 +137,21 @@ def build_projects_text(act: Act) -> dict[str, str]:
         if code:
             codes.append(code)
 
-    project_line = _get_first_attr(first, ("project_line", "line", "construction_line", "object_line"), default="")
-    project_stage = _get_first_attr(first, ("project_stage", "stage"), default="")
+    # ✅ ВАЖНО: хотим full_name, а не code
+    # line: Project.line -> Line(full_name)
+    project_line = _project_attr_full_name(
+        first,
+        direct_attr_names=("project_line", "construction_line", "object_line", "line"),
+        related_attr="line",
+    )
+
+    # stage: Project.stage -> Stage(full_name) (у Stage.__str__ возвращает code, поэтому явно full_name)
+    project_stage = _project_attr_full_name(
+        first,
+        direct_attr_names=("project_stage", "stage", "design_stage"),
+        related_attr="stage",
+    )
+
     project_address = _get_first_attr(first, ("project_address", "address", "addr", "location"), default="")
 
     return {
