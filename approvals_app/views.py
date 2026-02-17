@@ -3,6 +3,8 @@ import re
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db import transaction
+from django.db.models import Q
+from django.db.models.functions import Length
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -56,6 +58,7 @@ class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
         q_up = q.upper()
         m = TAIL_RE.match(q_up)
         if m:
+            # ⚠️ оставляем как у тебя (поиск по done-листу)
             return qs.filter(project__section__code=m.group(1), project__number=int(m.group(2)))
 
         return qs.filter(description__icontains=q)
@@ -95,8 +98,6 @@ class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
-        # add-perm отдельно: просматривать done можно одним правом,
-        # а добавлять "Согласовано" — другим.
         if not request.user.has_perm("approvals_app.add_approvals_done"):
             return redirect("approvals:done")
 
@@ -108,7 +109,6 @@ class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
             done_obj.status = Approval.Status.DONE
             done_obj.save()
 
-            # ключевой фикс: удаляем старый pending-файл + запись pending
             if pending_id:
                 pending_obj = (
                     Approval.objects
@@ -250,23 +250,23 @@ class ProjectSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
     login_url = "/login/"
 
     def get(self, request):
-        q = (request.GET.get("q") or "").strip().upper()
+        # (q_raw) — что ввёл пользователь
+        q_raw = (request.GET.get("q") or "").strip()
+        # (q) — для поиска (в БД используем icontains, поэтому upper не обязателен)
+        q = q_raw
 
-        qs = Project.objects.select_related(
-            "designer", "line", "design_stage", "stage", "plot", "section"
-        )
+        qs = Project.objects.all()
 
-        m = TAIL_RE.match(q)
-        if m:
-            qs = qs.filter(section__code=m.group(1), number=int(m.group(2)))
-        else:
-            qs = (
-                qs.filter(designer__code__icontains=q)
-                | qs.filter(line__code__icontains=q)
-                | qs.filter(stage__code__icontains=q)
-                | qs.filter(plot__code__icontains=q)
-                | qs.filter(section__code__icontains=q)
-            )
+        # Важно: full_code nullable => отсекаем NULL, чтобы сортировка/поиск были предсказуемыми
+        qs = qs.exclude(full_code__isnull=True)
 
-        qs = qs.order_by("id")[:50]
+        if q:
+            # ✅ Главное: ищем по full_code (часть строки)
+            qs = qs.filter(full_code__icontains=q)
+
+        # ✅ Сортировка “от меньшего к большему” для кейса КЖ2:
+        # 1) короткие раньше (КЖ2 перед КЖ21)
+        # 2) затем по full_code (КЖ21, КЖ22, ...)
+        qs = qs.annotate(_len=Length("full_code")).order_by("_len", "full_code")[:50]
+
         return JsonResponse({"results": [{"id": p.id, "text": p.full_code} for p in qs]})
