@@ -130,7 +130,7 @@ class AuthorizationUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Updat
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["directive"] = self.object.directive
+        ctx["directive"] = self.object.directive  # <-- ВОТ ЭТО
         return ctx
 
     def form_valid(self, form):
@@ -140,7 +140,6 @@ class AuthorizationUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Updat
             "directive_app:directive_detail",
             uuid=obj.directive.uuid,
         )
-
 
 
 class DirectiveOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
