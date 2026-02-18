@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
+import subprocess
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -320,6 +322,76 @@ def _save_approval_items(*, act: Act, request: HttpRequest) -> None:
         act.approvals.clear()
 
 
+def _first_existing_file_url(obj) -> str | None:
+    """
+    (obj) любой объект модели.
+    Пытаемся найти файловое поле по частым именам, и вернуть .url если файл есть.
+    """
+    if obj is None:
+        return None
+
+    candidates = ("file", "pdf", "scan", "document", "doc", "attachment")
+    for name in candidates:
+        if hasattr(obj, name):
+            f = getattr(obj, name, None)
+            if not f:
+                continue
+            try:
+                if getattr(f, "url", None) and getattr(f, "name", ""):
+                    return f.url
+            except Exception:
+                continue
+    return None
+
+
+def _docx_to_pdf_cached(docx_path: Path) -> Path:
+    """
+    (docx_path) путь к docx.
+    Возвращает путь к pdf рядом с docx.
+    Если pdf нет или он старее docx — пересобирает через LibreOffice.
+    """
+    if not docx_path.exists():
+        raise FileNotFoundError(f"DOCX not found: {docx_path}")
+
+    out_dir = docx_path.parent
+    pdf_path = out_dir / (docx_path.stem + ".pdf")
+
+    if pdf_path.exists():
+        try:
+            if pdf_path.stat().st_mtime >= docx_path.stat().st_mtime:
+                return pdf_path
+        except Exception:
+            pass
+
+    cmd = [
+        "libreoffice",
+        "--headless",
+        "--nologo",
+        "--nofirststartwizard",
+        "--convert-to",
+        "pdf",
+        "--outdir",
+        str(out_dir),
+        str(docx_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        raise RuntimeError("LibreOffice не найден. Установи пакет libreoffice на сервере.")
+    except subprocess.CalledProcessError as e:
+        err = ""
+        try:
+            err = (e.stderr or b"").decode("utf-8", errors="ignore")
+        except Exception:
+            err = str(e)
+        raise RuntimeError(f"Не удалось конвертировать DOCX→PDF: {err[:500]}")
+
+    if not pdf_path.exists():
+        raise RuntimeError("Конвертация завершилась без ошибки, но PDF не появился.")
+
+    return pdf_path
+
+
 # -------------------------
 # NEW: projects ajax search
 # -------------------------
@@ -370,11 +442,11 @@ class ProjectsSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 dt_field = "id"
 
             qs = (
-                     Project.objects.filter(acts__isnull=False)
-                     .annotate(last_used=Max(f"acts__{dt_field}"))
-                     .order_by("-last_used", "-id")
-                     .distinct()
-                 )[:5]
+                Project.objects.filter(acts__isnull=False)
+                .annotate(last_used=Max(f"acts__{dt_field}"))
+                .order_by("-last_used", "-id")
+                .distinct()
+            )[:5]
 
             return JsonResponse({"results": [{"id": p.id, "label": project_label(p)} for p in qs]})
 
@@ -430,7 +502,7 @@ class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             proj = a.project.full_code if a.project_id and a.project else "Общее"
             status = a.get_status_display() if hasattr(a, "get_status_display") else (a.status or "")
             created = a.created_at.strftime("%d.%m.%Y") if a.created_at else "—"
-            desc_full = (a.description or "").strip()  # полный текст, без обрезки
+            desc_full = (a.description or "").strip()
             desc_short = desc_full or "—"
 
             data.append(
@@ -439,19 +511,14 @@ class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "project": proj,
                     "status": status,
                     "created_at": created,
-                    "description": desc_short,  # в таблицу (можно оставить коротко)
-                    "description_full": desc_full,  # ✅ то, что будем подставлять в textarea
+                    "description": desc_short,
+                    "description_full": desc_full,
                     "label": _approval_label_short(a),
                 }
             )
 
         return JsonResponse(
-            {
-                "draw": draw,
-                "recordsTotal": records_total,
-                "recordsFiltered": records_filtered,
-                "data": data,
-            }
+            {"draw": draw, "recordsTotal": records_total, "recordsFiltered": records_filtered, "data": data}
         )
 
 
@@ -559,7 +626,18 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
                     child_label = f"{base}, {mat}".strip().strip(",")
 
-                    children.append({"label": child_label or "—", "sheets": int(mi.sheets_count or 0)})
+                    # ✅ ссылка на файл паспорта (если материал из БД)
+                    url = None
+                    if getattr(mi, "passport_id", None) and getattr(mi, "passport", None) is not None:
+                        url = _first_existing_file_url(mi.passport)
+
+                    children.append(
+                        {
+                            "label": child_label or "—",
+                            "sheets": int(mi.sheets_count or 0),
+                            "url": url,
+                        }
+                    )
 
                 row["children"] = children
                 appendix_rows.append(row)
@@ -586,7 +664,13 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                         if date_str:
                             parts.append(f"от {date_str}")
 
-                        children.append({"label": " ".join(parts), "sheets": int(a.sheets_count or 0)})
+                        children.append(
+                            {
+                                "label": " ".join(parts),
+                                "sheets": int(a.sheets_count or 0),
+                                "url": (a.file.url if getattr(a, "file", None) else None),
+                            }
+                        )
 
                     row["children"] = children
                     appendix_rows.append(row)
@@ -597,14 +681,20 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                 if getattr(src, "type", None) == AttachmentType.APPROVALS_REGISTRY:
                     children = []
                     for it in act.approval_items.all().order_by("position", "id"):
-                        label = (it.label_override or "").strip()
-                        if not label and getattr(it, "approval", None) is not None:
-                            label = (getattr(it.approval, "description", "") or "").strip()
+                        label2 = (it.label_override or "").strip()
+                        approval = getattr(it, "approval", None)
+
+                        if not label2 and approval is not None:
+                            label2 = (getattr(approval, "description", "") or "").strip()
+
+                        # ✅ ссылка на файл согласования (если есть file/pdf/etc)
+                        url = _first_existing_file_url(approval) if approval is not None else None
 
                         children.append(
                             {
-                                "label": label or "—",
+                                "label": label2 or "—",
                                 "sheets": int(it.sheets_count or 0),
+                                "url": url,
                             }
                         )
 
@@ -622,7 +712,12 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
         else:
             ctx["signatories_source"] = "resolved"
             ctx["resolved_parties"] = resolve_act_parties(act)
+
         ctx["has_p3_registry"] = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).exists()
+
+        # ✅ PDF preview url (iframe)
+        ctx["pdf_preview_url"] = reverse("acts_app:act_pdf_preview", kwargs={"uuid": str(act.uuid)})
+
         return ctx
 
 
@@ -684,12 +779,7 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
 
         return JsonResponse(
-            {
-                "draw": draw,
-                "recordsTotal": records_total,
-                "recordsFiltered": records_filtered,
-                "data": data,
-            }
+            {"draw": draw, "recordsTotal": records_total, "recordsFiltered": records_filtered, "data": data}
         )
 
 
@@ -785,7 +875,7 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         try:
             AppendixBuilder(act).rebuild()
-            generate_act_docx(act)  # ✅ создаём/перезаписываем docx при сохранении
+            generate_act_docx(act)
             reg = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).order_by("-created_at", "-id").first()
             if reg:
                 generate_and_save_registry_p3_docx(act=act, registry=reg)
@@ -917,7 +1007,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         try:
             AppendixBuilder(act).rebuild()
-            generate_act_docx(act)  # ✅ создаём/перезаписываем docx при сохранении
+            generate_act_docx(act)
             reg = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).order_by("-created_at", "-id").first()
             if reg:
                 generate_and_save_registry_p3_docx(act=act, registry=reg)
@@ -933,6 +1023,8 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 # -------------------------
 # Parties (HTMX/AJAX endpoints)
+# -------------------------
+# ... (всё дальше без изменений, я оставил как у тебя)
 # -------------------------
 
 class ActPartiesTableView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -1256,6 +1348,45 @@ class ActDocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
 
 
+class ActPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """
+    PDF preview (inline) для страницы деталей.
+    Генерит DOCX при необходимости, затем конвертирует в PDF (кеш).
+    """
+    permission_required = "acts_app.view_act"
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+
+        # 1) гарантируем docx
+        paths = get_act_docx_paths(act)
+        docx_path = None
+        for p in paths:
+            if p.exists():
+                docx_path = p
+                break
+
+        if docx_path is None:
+            try:
+                paths = generate_act_docx(act)
+                docx_path = paths[0] if paths else None
+            except DocxRenderError as e:
+                return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
+
+        if docx_path is None or not docx_path.exists():
+            return HttpResponse("DOCX ERROR: файл не был создан.", status=500, content_type="text/plain; charset=utf-8")
+
+        # 2) docx -> pdf (кеш)
+        try:
+            pdf_path = _docx_to_pdf_cached(Path(docx_path))
+        except Exception as e:
+            return HttpResponse(f"PDF ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
+
+        resp = FileResponse(open(pdf_path, "rb"), content_type="application/pdf")
+        resp["Content-Disposition"] = f'inline; filename="{pdf_path.name}"'
+        return resp
+
+
 class ActRegistryP3DocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "acts_app.view_act"
 
@@ -1303,4 +1434,3 @@ class ActRegistryP3DocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin,
             filename=p.name,
             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-
