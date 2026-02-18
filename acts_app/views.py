@@ -14,6 +14,9 @@ from django.urls import reverse
 from django.views import View
 from django.views.generic import DetailView, ListView
 
+from django.utils.decorators import method_decorator
+from django.views.decorators.clickjacking import xframe_options_sameorigin
+
 from acts_app.forms import (
     ActAttachmentFormSet,
     ActAttachmentCreateFormSet,
@@ -442,11 +445,11 @@ class ProjectsSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 dt_field = "id"
 
             qs = (
-                Project.objects.filter(acts__isnull=False)
-                .annotate(last_used=Max(f"acts__{dt_field}"))
-                .order_by("-last_used", "-id")
-                .distinct()
-            )[:5]
+                     Project.objects.filter(acts__isnull=False)
+                     .annotate(last_used=Max(f"acts__{dt_field}"))
+                     .order_by("-last_used", "-id")
+                     .distinct()
+                 )[:5]
 
             return JsonResponse({"results": [{"id": p.id, "label": project_label(p)} for p in qs]})
 
@@ -629,7 +632,7 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                     # ✅ ссылка на файл паспорта (если материал из БД)
                     url = None
                     if getattr(mi, "passport_id", None) and getattr(mi, "passport", None) is not None:
-                        url = _first_existing_file_url(mi.passport)
+                        url = reverse("acts_app:passport_open", kwargs={"pk": mi.passport_id})
 
                     children.append(
                         {
@@ -668,7 +671,9 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                             {
                                 "label": " ".join(parts),
                                 "sheets": int(a.sheets_count or 0),
-                                "url": (a.file.url if getattr(a, "file", None) else None),
+                                "url": (
+                                    reverse("acts_app:act_attachment_open", kwargs={"pk": a.id}) if getattr(a, "file",
+                                                                                                            None) else None),
                             }
                         )
 
@@ -688,7 +693,8 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                             label2 = (getattr(approval, "description", "") or "").strip()
 
                         # ✅ ссылка на файл согласования (если есть file/pdf/etc)
-                        url = _first_existing_file_url(approval) if approval is not None else None
+                        url = reverse("acts_app:approval_open",
+                                      kwargs={"pk": approval.id}) if approval is not None else None
 
                         children.append(
                             {
@@ -1348,6 +1354,7 @@ class ActDocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
 
 
+@method_decorator(xframe_options_sameorigin, name="dispatch")
 class ActPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """
     PDF preview (inline) для страницы деталей.
@@ -1434,3 +1441,68 @@ class ActRegistryP3DocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin,
             filename=p.name,
             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
+
+class PassportOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request, pk: int):
+        from passports_app.models import Passport  # noqa
+
+        p = get_object_or_404(Passport, pk=pk)
+
+        if not p.file:
+            return HttpResponse("FILE ERROR: у паспорта нет файла.", status=404,
+                                content_type="text/plain; charset=utf-8")
+
+        # storage локальный (FileSystemStorage), значит path должен быть
+        try:
+            path = p.file.path
+        except Exception:
+            return HttpResponse("FILE ERROR: не удалось получить путь к файлу.", status=500,
+                                content_type="text/plain; charset=utf-8")
+
+        return FileResponse(open(path, "rb"), content_type="application/octet-stream", as_attachment=False)
+
+
+class ApprovalOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request, pk: int):
+        from approvals_app.models import Approval  # noqa
+
+        a = get_object_or_404(Approval, pk=pk)
+
+        if not a.file:
+            return HttpResponse("FILE ERROR: у согласования нет файла.", status=404,
+                                content_type="text/plain; charset=utf-8")
+
+        try:
+            path = a.file.path
+        except Exception:
+            return HttpResponse("FILE ERROR: не удалось получить путь к файлу.", status=500,
+                                content_type="text/plain; charset=utf-8")
+
+        # чаще всего это PDF
+        return FileResponse(open(path, "rb"), content_type="application/pdf", as_attachment=False)
+
+
+class ActAttachmentOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request, pk: int):
+        from acts_app.models import ActAttachment  # noqa
+
+        att = get_object_or_404(ActAttachment, pk=pk)
+
+        if not getattr(att, "file", None):
+            return HttpResponse("FILE ERROR: у документа нет файла.", status=404,
+                                content_type="text/plain; charset=utf-8")
+
+        try:
+            path = att.file.path
+        except Exception:
+            return HttpResponse("FILE ERROR: не удалось получить путь к файлу.", status=500,
+                                content_type="text/plain; charset=utf-8")
+
+        return FileResponse(open(path, "rb"), content_type="application/octet-stream", as_attachment=False)

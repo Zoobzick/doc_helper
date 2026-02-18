@@ -27,11 +27,7 @@ urlpatterns = [
 
     # parties: table + preview + row
     path("acts/<uuid:uuid>/parties/", views.ActPartiesTableView.as_view(), name="act_parties_table"),
-    path(
-        "acts/<uuid:uuid>/parties/preview/",
-        views.ActPartiesPreviewByDateView.as_view(),
-        name="act_parties_preview_by_date",
-    ),
+    path("acts/<uuid:uuid>/parties/preview/", views.ActPartiesPreviewByDateView.as_view(), name="act_parties_preview_by_date"),
     path("acts/party/<uuid:party_uuid>/row/", views.ActPartyRowView.as_view(), name="act_party_row"),
 
     # parties: edits
@@ -47,11 +43,15 @@ urlpatterns = [
     path("acts/party/<uuid:party_uuid>/other/delete/", views.ActPartyDeleteOtherView.as_view(), name="act_party_delete_other"),
 
     path("projects/search/", views.ProjectsSearchView.as_view(), name="projects_search"),
-
     path("approvals/datatable/", views.ApprovalsDatatableView.as_view(), name="approvals_datatable"),
 
     # downloads
     path("acts/<uuid:uuid>/docx/", views.ActDocxDownloadView.as_view(), name="act_docx_download"),
-    path("acts/<uuid:uuid>/pdf/", views.ActPdfPreviewView.as_view(), name="act_pdf_preview"),  # ✅ NEW
+    path("acts/<uuid:uuid>/pdf/", views.ActPdfPreviewView.as_view(), name="act_pdf_preview"),
     path("acts/<uuid:uuid>/registry/p3/docx/", views.ActRegistryP3DocxDownloadView.as_view(), name="act_registry_p3_docx_download"),
+
+    # ✅ NEW: open files via views (because base_url=None)
+    path("files/passport/<int:pk>/", views.PassportOpenView.as_view(), name="passport_open"),
+    path("files/approval/<int:pk>/", views.ApprovalOpenView.as_view(), name="approval_open"),
+    path("files/attachment/<int:pk>/", views.ActAttachmentOpenView.as_view(), name="act_attachment_open"),
 ]
