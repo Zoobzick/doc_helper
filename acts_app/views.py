@@ -1462,7 +1462,9 @@ class PassportOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return HttpResponse("FILE ERROR: не удалось получить путь к файлу.", status=500,
                                 content_type="text/plain; charset=utf-8")
 
-        return FileResponse(open(path, "rb"), content_type="application/octet-stream", as_attachment=False)
+        resp = FileResponse(open(path, "rb"), content_type="application/pdf")
+        resp["Content-Disposition"] = "inline"
+        return resp
 
 
 class ApprovalOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -1484,7 +1486,9 @@ class ApprovalOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
                                 content_type="text/plain; charset=utf-8")
 
         # чаще всего это PDF
-        return FileResponse(open(path, "rb"), content_type="application/pdf", as_attachment=False)
+        resp = FileResponse(open(path, "rb"), content_type="application/pdf")
+        resp["Content-Disposition"] = "inline"
+        return resp
 
 
 class ActAttachmentOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -1505,4 +1509,6 @@ class ActAttachmentOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return HttpResponse("FILE ERROR: не удалось получить путь к файлу.", status=500,
                                 content_type="text/plain; charset=utf-8")
 
-        return FileResponse(open(path, "rb"), content_type="application/octet-stream", as_attachment=False)
+        resp = FileResponse(open(path, "rb"), content_type="application/pdf")
+        resp["Content-Disposition"] = "inline"
+        return resp
