@@ -184,6 +184,24 @@ def _collect_material_rows(act: Act) -> list[_MaterialRow]:
     return rows
 
 
+# ✅ NEW: для сортировки дат в строках вида "08.01.2026г." / "08-09.01.2026г."
+_DATE_RE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
+
+
+def _parse_first_date_from_text(s: str):
+    if not s:
+        return None
+    m = _DATE_RE.search(s)
+    if not m:
+        return None
+    dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        from datetime import date as _d
+        return _d(yyyy, mm, dd)
+    except Exception:
+        return None
+
+
 def build_passports_text(act: Act) -> str:
     count = act.materials.count()
     if count <= 0:
@@ -209,6 +227,7 @@ def build_passports_text(act: Act) -> str:
             for r in rows
         ))
 
+    # ✅ case: 1 материал, 1 document_name, 1 дата => "Документ №a, №b от дата"
     if same_material and same_doc_name and same_doc_date:
         mname = rows[0].material_name
         dname = rows[0].document_name
@@ -216,12 +235,64 @@ def build_passports_text(act: Act) -> str:
         nums = ", ".join([f"№{r.document_no}" for r in rows])
         return _strip_trailing_commas(f"{mname} ({dname} {nums} от {ddate})")
 
+    # ✅ FIX: 1 материал, но даты разные (и/или doc_name разные) —
+    # группируем внутри материала по document_name и по датам,
+    # и НЕ повторяем document_name для каждого паспорта.
     if same_material:
         mname = rows[0].material_name
-        inner = ", ".join(
-            f"{r.document_name} №{r.document_no} от {r.document_date_str}"
-            for r in rows
-        )
+
+        # doc_name -> date_str -> [nos]
+        doc_map: dict[str, dict[str, list[str]]] = {}
+        doc_min_date = {}
+
+        for r in rows:
+            doc = (r.document_name or "Документ").strip()
+            ds = (r.document_date_str or "—").strip()
+            no = (r.document_no or "—").strip()
+
+            doc_map.setdefault(doc, {})
+            doc_map[doc].setdefault(ds, [])
+            if no and no != "—":
+                doc_map[doc][ds].append(no)
+
+            dt = _parse_first_date_from_text(ds)
+            if dt is not None:
+                prev = doc_min_date.get(doc)
+                if prev is None or dt < prev:
+                    doc_min_date[doc] = dt
+
+        # порядок document_name: у кого более ранняя дата — раньше
+        def _doc_key(dn: str):
+            from datetime import date as _d
+            return (doc_min_date.get(dn, _d.max), dn)
+
+        inner_parts: list[str] = []
+
+        for doc_name in sorted(doc_map.keys(), key=_doc_key):
+            date_dict = doc_map[doc_name]
+
+            # порядок дат: раньше -> позже
+            def _date_key(ds: str):
+                from datetime import date as _d
+                return (_parse_first_date_from_text(ds) or _d.max, ds)
+
+            first = True
+            for ds in sorted(date_dict.keys(), key=_date_key):
+                nos = date_dict.get(ds) or []
+                if not nos:
+                    continue
+
+                nos_part = ", ".join([f"№{n}" for n in nos])
+
+                if first:
+                    # 1-й блок этого doc_name: печатаем doc_name
+                    inner_parts.append(f"{doc_name} {nos_part} от {ds}")
+                    first = False
+                else:
+                    # следующие даты того же doc_name: doc_name не повторяем
+                    inner_parts.append(f"{nos_part} от {ds}")
+
+        inner = _strip_trailing_commas(", ".join(inner_parts))
         return _strip_trailing_commas(f"{mname} ({inner})")
 
     return _strip_trailing_commas(", ".join(

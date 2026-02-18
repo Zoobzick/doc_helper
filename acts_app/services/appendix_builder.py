@@ -349,12 +349,8 @@ class AppendixBuilder:
         1 строка на 1 material_name.
         Внутри строки: все паспорта, даже если document_name разный.
 
-        Формат:
-          material_name (docA №1, №2 от d1, №3 от d2, docB №4 от d0, №5 от d3)
-
-        Правило порядка:
-        - сначала document_name, у которого самая ранняя дата
-        - внутри document_name: даты по возрастанию
+        Формат (как у тебя сейчас внутри, но итоговая строка будет "docs..., material"):
+          docA №1, №2 от d1, №3 от d2, docB №4 от d0, №5 от d3, material_name
         """
         items: list[dict[str, Any]] = []
         for m in act.materials.select_related("passport", "passport__material").order_by("position", "id"):
@@ -407,14 +403,12 @@ class AppendixBuilder:
                 if prev is None or dt < prev:
                     doc_min_date[doc] = dt
 
-            # document_name по самой ранней дате
             doc_names_sorted = sorted(doc_map.keys(), key=lambda dn: (doc_min_date.get(dn, date.max), dn))
 
             chunks: list[str] = []
             for doc_name in doc_names_sorted:
                 date_dict = doc_map[doc_name]
 
-                # даты внутри doc_name
                 date_keys_sorted = sorted(
                     date_dict.keys(),
                     key=lambda ds: (_parse_first_date_from_text(ds) or date.max, ds),
@@ -435,7 +429,9 @@ class AppendixBuilder:
                     else:
                         chunks.append(_strip_trailing_commas(part))
 
-            label = _strip_trailing_commas(f"{material_name} ({_join(chunks, sep=', ')})")
+            # ✅ FIX: формат для "Приложение" -> сначала docs, потом material
+            docs_text = _join(chunks, sep=", ")
+            label = _strip_trailing_commas(f"{docs_text}, {material_name}")
 
             out.append(
                 _PlannedLine(
