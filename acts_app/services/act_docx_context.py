@@ -76,10 +76,6 @@ def _get_first_attr(obj: Any, names: tuple[str, ...], default: str = "") -> str:
 
 
 def _full_name_or_str(val: Any) -> str:
-    """
-    Если val — связанная модель с полем full_name (Line/Stage/DesignStage/etc),
-    то возвращаем full_name, иначе обычный str().
-    """
     if val is None:
         return ""
     full_name = getattr(val, "full_name", None)
@@ -89,13 +85,6 @@ def _full_name_or_str(val: Any) -> str:
 
 
 def _project_attr_full_name(project: Any, *, direct_attr_names: tuple[str, ...], related_attr: str) -> str:
-    """
-    1) Пытаемся взять первое непустое значение из direct_attr_names.
-       Если это модель с full_name -> вернём full_name.
-    2) Если это строка (обычно code) и у проекта есть related_attr (line/stage),
-       то берём related_obj.full_name.
-    3) Иначе возвращаем как есть.
-    """
     if project is None:
         return ""
 
@@ -168,10 +157,8 @@ class _MaterialRow:
 
 def _collect_material_rows(act: Act) -> list[_MaterialRow]:
     rows: list[_MaterialRow] = []
-
     for m in act.materials.select_related("passport", "passport__material").order_by("position", "id"):
         data = resolve_material_fields(m)
-
         rows.append(
             _MaterialRow(
                 material_name=(data["material_name"] or "Материал").strip(),
@@ -180,11 +167,10 @@ def _collect_material_rows(act: Act) -> list[_MaterialRow]:
                 document_date_str=(data["document_date_str"] or "—").strip(),
             )
         )
-
     return rows
 
 
-# ✅ NEW: для сортировки дат в строках вида "08.01.2026г." / "08-09.01.2026г."
+# для сортировки дат вида "05.12.2025г." / "05-06.12.2025г."
 _DATE_RE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
 
 
@@ -227,7 +213,6 @@ def build_passports_text(act: Act) -> str:
             for r in rows
         ))
 
-    # ✅ case: 1 материал, 1 document_name, 1 дата => "Документ №a, №b от дата"
     if same_material and same_doc_name and same_doc_date:
         mname = rows[0].material_name
         dname = rows[0].document_name
@@ -235,13 +220,9 @@ def build_passports_text(act: Act) -> str:
         nums = ", ".join([f"№{r.document_no}" for r in rows])
         return _strip_trailing_commas(f"{mname} ({dname} {nums} от {ddate})")
 
-    # ✅ FIX: 1 материал, но даты разные (и/или doc_name разные) —
-    # группируем внутри материала по document_name и по датам,
-    # и НЕ повторяем document_name для каждого паспорта.
     if same_material:
         mname = rows[0].material_name
 
-        # doc_name -> date_str -> [nos]
         doc_map: dict[str, dict[str, list[str]]] = {}
         doc_min_date = {}
 
@@ -261,17 +242,14 @@ def build_passports_text(act: Act) -> str:
                 if prev is None or dt < prev:
                     doc_min_date[doc] = dt
 
-        # порядок document_name: у кого более ранняя дата — раньше
         def _doc_key(dn: str):
             from datetime import date as _d
             return (doc_min_date.get(dn, _d.max), dn)
 
         inner_parts: list[str] = []
-
         for doc_name in sorted(doc_map.keys(), key=_doc_key):
             date_dict = doc_map[doc_name]
 
-            # порядок дат: раньше -> позже
             def _date_key(ds: str):
                 from datetime import date as _d
                 return (_parse_first_date_from_text(ds) or _d.max, ds)
@@ -285,11 +263,9 @@ def build_passports_text(act: Act) -> str:
                 nos_part = ", ".join([f"№{n}" for n in nos])
 
                 if first:
-                    # 1-й блок этого doc_name: печатаем doc_name
                     inner_parts.append(f"{doc_name} {nos_part} от {ds}")
                     first = False
                 else:
-                    # следующие даты того же doc_name: doc_name не повторяем
                     inner_parts.append(f"{nos_part} от {ds}")
 
         inner = _strip_trailing_commas(", ".join(inner_parts))
@@ -302,7 +278,7 @@ def build_passports_text(act: Act) -> str:
 
 
 # -------------------------
-# Docs (п.4)
+# Docs (п.4)  ✅ FIX HERE
 # -------------------------
 
 def _format_attachment(att) -> str:
@@ -323,6 +299,74 @@ def _format_attachment(att) -> str:
     return _strip_trailing_commas(" ".join(parts))
 
 
+def _format_attachments_grouped_by_title(attachments: list) -> str:
+    """
+    Делает склейку, как в "Приложении":
+    title №n1 от d1, №n2 от d2
+    (title печатаем один раз, далее только номера и даты)
+    """
+    if not attachments:
+        return ""
+
+    # title -> [attachments]
+    grouped: dict[str, list] = {}
+    title_min_date = {}
+
+    for a in attachments:
+        title = (getattr(a, "title", "") or "").strip() or "Документ"
+        grouped.setdefault(title, []).append(a)
+
+        ds = fmt_date_range_g(getattr(a, "doc_date", None), getattr(a, "doc_date_to", None))
+        dt = _parse_first_date_from_text(ds)
+        if dt is not None:
+            prev = title_min_date.get(title)
+            if prev is None or dt < prev:
+                title_min_date[title] = dt
+
+    def _title_key(t: str):
+        from datetime import date as _d
+        return (title_min_date.get(t, _d.max), t)
+
+    parts: list[str] = []
+
+    for title in sorted(grouped.keys(), key=_title_key):
+        items = grouped[title]
+
+        # date_str -> [nos]
+        by_date: dict[str, list[str]] = {}
+        date_order: list[str] = []
+
+        for a in items:
+            ds = fmt_date_range_g(getattr(a, "doc_date", None), getattr(a, "doc_date_to", None))
+            if ds not in by_date:
+                by_date[ds] = []
+                date_order.append(ds)
+
+            no = (getattr(a, "doc_no", "") or "").strip()
+            if no:
+                by_date[ds].append(no)
+
+        def _date_key(ds: str):
+            from datetime import date as _d
+            return (_parse_first_date_from_text(ds) or _d.max, ds)
+
+        first = True
+        for ds in sorted(date_order, key=_date_key):
+            nos = by_date.get(ds) or []
+            if not nos:
+                continue
+
+            nos_part = ", ".join([f"№{n}" for n in nos])
+
+            if first:
+                parts.append(_strip_trailing_commas(f"{title} {nos_part} от {ds}"))
+                first = False
+            else:
+                parts.append(_strip_trailing_commas(f"{nos_part} от {ds}"))
+
+    return _strip_trailing_commas(", ".join(parts))
+
+
 def build_docs_texts(act: Act) -> dict[str, str]:
     exec_schemes = list(act.attachments.filter(type=AttachmentType.EXEC_SCHEME).order_by("created_at", "id"))
     exec_scheme_text = _format_attachment(exec_schemes[0]) if exec_schemes else ""
@@ -337,10 +381,12 @@ def build_docs_texts(act: Act) -> dict[str, str]:
     }
 
     if docs_registry:
+        # если есть реестр П-4, то в пункте 4 печатаем реестр
         other_docs_text = _format_attachment(docs_registry)
     else:
         other_docs = list(act.attachments.exclude(type__in=exclude_types).order_by("created_at", "id"))
-        other_docs_text = _strip_trailing_commas(_join_non_empty([_format_attachment(a) for a in other_docs], sep=", "))
+        # ✅ FIX: группировка по title, как в "Приложениях"
+        other_docs_text = _format_attachments_grouped_by_title(other_docs)
 
     return {"exec_scheme": exec_scheme_text, "other_docs": other_docs_text}
 
@@ -499,7 +545,6 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
         person = auth.person if auth else None
         directive = auth.directive if auth else None
 
-        # ✅ (org_full) и (org_short) — оба отдаём в шаблон
         ctx[f"{prefix}_org_full"] = _strip_trailing_commas(_safe_str(getattr(org, "full_name", "")))
         ctx[f"{prefix}_org_short"] = _strip_trailing_commas(_safe_str(getattr(org, "short_name", "")))
 
@@ -535,7 +580,6 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
             ctx[f"{prefix}_org_sro_design_ogrn"] = sro["ogrn"]
             ctx[f"{prefix}_org_sro_design_inn"] = sro["inn"]
 
-    # ---- tech customer ----
     tc_party = _party(act, ActRole.TECH_CUSTOMER_CONTROL)
     tc_org = tc_party.organization if (tc_party and tc_party.organization_id) else None
 
@@ -548,7 +592,6 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
 
     tc_sro = _pick_sro_membership_only(tc_org, SroKind.BUILD, act.act_date)
     ctx["tech_customer_org_sro_builder"] = _strip_trailing_commas(tc_sro["name"])
-
     ctx["tech_customer_org_sro_ogrn"] = tc_sro["ogrn"]
     ctx["tech_customer_org_sro_inn"] = tc_sro["inn"]
 
@@ -570,7 +613,6 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
     ctx["tech_customer_directive_date"] = fmt_date_g(getattr(tc_dir, "date", None))
     ctx["tech_customer_directive_note"] = _strip_trailing_commas(_safe_str(getattr(tc_dir, "note", "")))
 
-    # ---- main roles ----
     fill_role("builder_rep", ActRole.BUILDER_REP, include_nrs=True, sro_build=True, sro_design=True)
     fill_role("builder_control", ActRole.BUILDER_CONTROL, include_nrs=True)
     fill_role("design_rep", ActRole.DESIGN_REP, include_nrs=False)
@@ -580,7 +622,6 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
     contractor_org = contractor_party.organization if (contractor_party and contractor_party.organization_id) else None
     ctx["contractor_rep_org_orgn"] = _safe_str(getattr(contractor_org, "ogrn", ""))
 
-    # ---- OTHER_REP (важно: и full, и short) ----
     others = list(_parties(act, ActRole.OTHER_REP))
     if others:
         fio_list: list[str] = []
@@ -628,7 +669,6 @@ def build_act_docx_context(act: Act) -> dict[str, str]:
         ctx["other_rep_directive_date"] = ""
         ctx["other_rep_directive_note"] = ""
 
-    # финальная нормализация значений
     for k, v in list(ctx.items()):
         ctx[k] = _strip_trailing_commas("" if v is None else str(v))
 
