@@ -1390,7 +1390,11 @@ class ActPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return HttpResponse(f"PDF ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
 
         resp = FileResponse(open(pdf_path, "rb"), content_type="application/pdf")
-        resp["Content-Disposition"] = f'inline; filename="{pdf_path.name}"'
+
+        safe_date = act.act_date.strftime("%d.%m.%Y") if act.act_date else ""
+        download_name = f"Акт №{act.number} от {safe_date}.pdf".strip()
+
+        resp["Content-Disposition"] = f'inline; filename="{download_name}"'
         return resp
 
 
