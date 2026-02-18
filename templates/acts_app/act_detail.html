@@ -36,16 +36,17 @@
                     <i class="bi bi-pencil me-1"></i>Редактировать
                 </a>
 
-                {# ✅ НОВОЕ: скачать DOCX #}
-                {# ✅ Скачать: Акт #}
                 <a class="btn btn-outline-success" href="{% url 'acts_app:act_docx_download' act.uuid %}">
-                    <i class="bi bi-download me-1"></i>Акт
+                    <i class="bi bi-download me-1"></i>Акт (DOCX)
                 </a>
 
-                {# ✅ Скачать: Реестр (П-3) #}
+                <button class="btn btn-outline-danger" type="button" data-bs-toggle="collapse" data-bs-target="#pdfPreview"
+                        aria-expanded="false" aria-controls="pdfPreview">
+                    <i class="bi bi-filetype-pdf me-1"></i>PDF просмотр
+                </button>
+
                 {% if has_p3_registry %}
-                    <a class="btn btn-outline-success"
-                       href="{% url 'acts_app:act_registry_p3_docx_download' act.uuid %}">
+                    <a class="btn btn-outline-success" href="{% url 'acts_app:act_registry_p3_docx_download' act.uuid %}">
                         <i class="bi bi-download me-1"></i>Реестр
                     </a>
                 {% else %}
@@ -63,7 +64,20 @@
             </div>
         </div>
 
-        {# --- В ОДНУ КОЛОНКУ: СНАЧАЛА "ОСНОВНОЕ", НИЖЕ "ПРИЛОЖЕНИЯ" --- #}
+        <div class="collapse mb-3" id="pdfPreview">
+            <div class="card">
+                <div class="card-body pt-3">
+                    <h5 class="card-title">Предпросмотр PDF</h5>
+                    <div class="ratio ratio-16x9">
+                        <iframe src="{{ pdf_preview_url }}" title="PDF preview" style="border:0;"></iframe>
+                    </div>
+                    <div class="small text-muted mt-2">
+                        Если видишь ошибку PDF — значит на сервере нет LibreOffice или не удалось сконвертировать DOCX.
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="row g-3">
             <div class="col-12">
                 <div class="card">
@@ -76,9 +90,7 @@
                                 {% with projects=act.projects.all %}
                                     {% if projects %}
                                         {% for p in projects %}
-                                            <a href="{% url 'projects:project_detail' p.id %}"
-                                               class="text-decoration-none">{{ p }}</a>{% if not forloop.last %},
-                                        {% endif %}
+                                            <a href="{% url 'projects:project_detail' p.id %}" class="text-decoration-none">{{ p }}</a>{% if not forloop.last %}, {% endif %}
                                         {% endfor %}
                                     {% else %}
                                         <span class="text-muted">—</span>
@@ -91,20 +103,17 @@
 
                             <dt class="col-sm-3 text-muted">Начало</dt>
                             <dd class="col-sm-9">
-                                {% if act.work_start_date %}{{ act.work_start_date|date:"d.m.Y" }}{% else %}
-                                    <span class="text-muted">—</span>{% endif %}
+                                {% if act.work_start_date %}{{ act.work_start_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
                             </dd>
 
                             <dt class="col-sm-3 text-muted">Окончание</dt>
                             <dd class="col-sm-9">
-                                {% if act.work_end_date %}{{ act.work_end_date|date:"d.m.Y" }}{% else %}
-                                    <span class="text-muted">—</span>{% endif %}
+                                {% if act.work_end_date %}{{ act.work_end_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
                             </dd>
 
                             <dt class="col-sm-3 text-muted">Последующие</dt>
                             <dd class="col-sm-9">
-                                {% if act.allow_next_works_text %}{{ act.allow_next_works_text|linebreaksbr }}{% else %}
-                                    <span class="text-muted">—</span>{% endif %}
+                                {% if act.allow_next_works_text %}{{ act.allow_next_works_text|linebreaksbr }}{% else %}<span class="text-muted">—</span>{% endif %}
                             </dd>
                         </dl>
                     </div>
@@ -118,19 +127,9 @@
 
                         {% if appendix_rows %}
                             <style>
-                                .appendix-table {
-                                    table-layout: fixed;
-                                    width: 100%;
-                                }
-
-                                .appendix-col-pos {
-                                    width: 4.2rem;
-                                }
-
-                                .appendix-col-sheets {
-                                    width: 5.2rem;
-                                }
-
+                                .appendix-table { table-layout: fixed; width: 100%; }
+                                .appendix-col-pos { width: 4.2rem; }
+                                .appendix-col-sheets { width: 5.2rem; }
                                 .appendix-label {
                                     white-space: nowrap;
                                     overflow: hidden;
@@ -138,31 +137,12 @@
                                     display: block;
                                     width: 100%;
                                 }
-
-                                .registry-row {
-                                    cursor: pointer;
-                                }
-
-                                .registry-chevron {
-                                    transition: transform .15s ease;
-                                }
-
-                                .registry-row.is-open .registry-chevron {
-                                    transform: rotate(180deg);
-                                }
-
-                                .registry-child-row td {
-                                    padding-top: .35rem;
-                                    padding-bottom: .35rem;
-                                }
-
-                                .registry-child-row td:first-child {
-                                    color: #6c757d;
-                                }
-
-                                .registry-child-row .appendix-label {
-                                    padding-left: .75rem;
-                                }
+                                .registry-row { cursor: pointer; }
+                                .registry-chevron { transition: transform .15s ease; }
+                                .registry-row.is-open .registry-chevron { transform: rotate(180deg); }
+                                .registry-child-row td { padding-top: .35rem; padding-bottom: .35rem; }
+                                .registry-child-row td:first-child { color: #6c757d; }
+                                .registry-child-row .appendix-label { padding-left: .75rem; }
                             </style>
 
                             <div class="table-responsive">
@@ -183,41 +163,50 @@
                                     <tbody id="appendix-accordion">
                                     {% for row in appendix_rows %}
                                         <tr
-                                                {% if row.children %}
-                                                    class="registry-row js-registry-row"
-                                                    data-registry-pos="{{ row.pos }}"
-                                                    aria-expanded="false"
-                                                    role="button"
-                                                    tabindex="0"
-                                                {% endif %}
+                                            {% if row.children %}
+                                                class="registry-row js-registry-row"
+                                                data-registry-pos="{{ row.pos }}"
+                                                aria-expanded="false"
+                                                role="button"
+                                                tabindex="0"
+                                            {% endif %}
                                         >
                                             <td>{{ row.pos }}</td>
                                             <td>
-                        <span class="appendix-label">
-                          {{ row.label }}
-                            {% if row.children %}
-                                <i class="bi bi-chevron-down ms-1 text-muted small registry-chevron"></i>
-                            {% endif %}
-                        </span>
+                                                <span class="appendix-label">
+                                                    {{ row.label }}
+                                                    {% if row.children %}
+                                                        <i class="bi bi-chevron-down ms-1 text-muted small registry-chevron"></i>
+                                                    {% endif %}
+                                                </span>
                                             </td>
                                             <td class="text-end">
-                        <span
-                                {% if row.children %}
-                                    class="js-registry-sheets"
-                                    data-registry-pos="{{ row.pos }}"
-                                {% endif %}
-                        >
-                          {{ row.sheets }}
-                        </span>
+                                                <span
+                                                    {% if row.children %}
+                                                        class="js-registry-sheets"
+                                                        data-registry-pos="{{ row.pos }}"
+                                                    {% endif %}
+                                                >
+                                                    {{ row.sheets }}
+                                                </span>
                                             </td>
                                         </tr>
 
                                         {% if row.children %}
                                             {% for ch in row.children %}
-                                                <tr class="registry-child-row js-registry-child d-none"
-                                                    data-registry-pos="{{ row.pos }}">
+                                                <tr class="registry-child-row js-registry-child d-none" data-registry-pos="{{ row.pos }}">
                                                     <td>{{ row.pos }}.{{ forloop.counter }}</td>
-                                                    <td><span class="appendix-label">{{ ch.label }}</span></td>
+                                                    <td>
+                                                        <span class="appendix-label">
+                                                            {% if ch.url %}
+                                                                <a class="text-decoration-none" href="{{ ch.url }}" target="_blank" rel="noopener">
+                                                                    <i class="bi bi-box-arrow-up-right me-1"></i>{{ ch.label }}
+                                                                </a>
+                                                            {% else %}
+                                                                {{ ch.label }}
+                                                            {% endif %}
+                                                        </span>
+                                                    </td>
                                                     <td class="text-end">{{ ch.sheets }}</td>
                                                 </tr>
                                             {% endfor %}
@@ -304,4 +293,5 @@
             </div>
         </div>
     </section>
+
 {% endblock %}
