@@ -347,12 +347,13 @@ class AppendixBuilder:
     def _build_grouped_material_lines(self, act: Act) -> list[_PlannedLine]:
         """
         1 строка на 1 material_name.
-        Внутри строки: все паспорта, даже если document_name разный.
-
-        Формат (как у тебя сейчас внутри, но итоговая строка будет "docs..., material"):
-          docA №1, №2 от d1, №3 от d2, docB №4 от d0, №5 от d3, material_name
+        Порядок материалов = порядок position в акте.
+        Внутри материала — документы сортируются по дате.
         """
-        items: list[dict[str, Any]] = []
+
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        material_order: list[str] = []  # <- сохраняем порядок появления
+
         for m in act.materials.select_related("passport", "passport__material").order_by("position", "id"):
             data = resolve_material_fields(m)
 
@@ -363,9 +364,12 @@ class AppendixBuilder:
 
             dt = _parse_first_date_from_text(document_date_str) or date.max
 
-            items.append(
+            if material_name not in grouped:
+                grouped[material_name] = []
+                material_order.append(material_name)  # фиксируем порядок
+
+            grouped[material_name].append(
                 {
-                    "material_name": material_name,
                     "document_name": document_name,
                     "document_no": document_no,
                     "document_date_str": document_date_str,
@@ -374,28 +378,26 @@ class AppendixBuilder:
                 }
             )
 
-        grouped: dict[str, list[dict[str, Any]]] = {}
-        for it in items:
-            grouped.setdefault(it["material_name"], []).append(it)
-
         out: list[_PlannedLine] = []
 
-        for material_name in sorted(grouped.keys()):
+        # ❗ больше НЕТ sorted()
+        for material_name in material_order:
             group = grouped[material_name]
 
             doc_map: dict[str, dict[str, list[str]]] = {}
             doc_min_date: dict[str, date] = {}
-
             sheets_total = 0
+
             for it in group:
                 sheets_total += int(it["sheets"] or 0)
 
                 doc = it["document_name"]
-                ds = (it["document_date_str"] or "").strip()
+                ds = it["document_date_str"]
                 dt = it["date"]
 
                 doc_map.setdefault(doc, {})
                 doc_map[doc].setdefault(ds, [])
+
                 if it["document_no"]:
                     doc_map[doc][ds].append(it["document_no"])
 
@@ -403,9 +405,14 @@ class AppendixBuilder:
                 if prev is None or dt < prev:
                     doc_min_date[doc] = dt
 
-            doc_names_sorted = sorted(doc_map.keys(), key=lambda dn: (doc_min_date.get(dn, date.max), dn))
+            # внутри материала документы по дате
+            doc_names_sorted = sorted(
+                doc_map.keys(),
+                key=lambda dn: (doc_min_date.get(dn, date.max), dn),
+            )
 
             chunks: list[str] = []
+
             for doc_name in doc_names_sorted:
                 date_dict = doc_map[doc_name]
 
@@ -429,7 +436,6 @@ class AppendixBuilder:
                     else:
                         chunks.append(_strip_trailing_commas(part))
 
-            # ✅ FIX: формат для "Приложение" -> сначала docs, потом material
             docs_text = _join(chunks, sep=", ")
             label = _strip_trailing_commas(f"{docs_text}, {material_name}")
 

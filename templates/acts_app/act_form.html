@@ -254,46 +254,7 @@
                                         <td>
                                             <input type="number"
                                                    class="form-control form-control-sm"
-                                                   name="approval_sheets_
-
-
-
-
-
-
-
-                                                           
-                                                           
-                                                           
-                                                           
-                                                           
-                                                           
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                                                           {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
+                                                   name="approval_sheets_{% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
                                         </td>
@@ -342,7 +303,7 @@
                                     <th style="min-width: 180px;">Номер документа</th>
                                     <th style="width: 170px;">Дата</th>
                                     <th style="min-width: 200px;">Отображение</th>
-                                    <th style="width: 120px;">Объём, м3</th>   <!-- ✅ ШАГ 1 -->
+                                    <th style="width: 120px;">Объём, м3</th>
                                     <th style="width: 120px;">Листов</th>
                                     <th style="width: 70px;"></th>
                                 </tr>
@@ -390,7 +351,7 @@
                                         </td>
 
                                         <td>
-                                            {{ f.concrete_volume_m3 }}   <!-- ✅ ШАГ 1 -->
+                                            {{ f.concrete_volume_m3 }}
                                             {% if f.concrete_volume_m3.errors %}
                                                 <div class="invalid-feedback d-block">{{ f.concrete_volume_m3.errors }}</div>
                                             {% endif %}
@@ -447,7 +408,7 @@
                                 <td>{{ material_formset.empty_form.manual_doc_no }}</td>
                                 <td>{{ material_formset.empty_form.manual_doc_date }}</td>
                                 <td>{{ material_formset.empty_form.manual_doc_date_text }}</td>
-                                <td>{{ material_formset.empty_form.concrete_volume_m3 }}</td> <!-- ✅ -->
+                                <td>{{ material_formset.empty_form.concrete_volume_m3 }}</td>
                                 <td>{{ material_formset.empty_form.sheets_count }}</td>
 
                                 <td class="text-end">
@@ -1037,7 +998,51 @@
 
 
             // ---------- REMOVE ROWS CORRECTLY (formsets) ----------
+            function _isRowMarkedDeleted(row, prefix) {
+                if (!row) return true;
+                if (row.style.display === "none") return true;
+
+                const delCb = row.querySelector(`input[type="checkbox"][name^="${prefix}-"][name$="-DELETE"]`);
+                if (delCb && delCb.checked) return true;
+
+                const anyNamed = row.querySelector(`[name^="${prefix}-"][name*="-"]`);
+                if (!anyNamed) return false;
+
+                const m = anyNamed.getAttribute("name").match(new RegExp(`^${prefix}-(\\d+)-`));
+                if (!m) return false;
+
+                const idx = m[1];
+                const hiddenName = `${prefix}-${idx}-DELETE`;
+                const hidden = row.querySelector(`input[type="hidden"][name="${hiddenName}"]`);
+                return !!(hidden && String(hidden.value || "").toLowerCase() === "on");
+            }
+
+            function _clearMaterialRowValues(row) {
+                if (!row) return;
+
+                const hiddenPassport = row.querySelector('input[type="hidden"][id$="-passport"]');
+                if (hiddenPassport) hiddenPassport.value = "";
+
+                const fields = [
+                    'input[name$="-manual_name"]',
+                    'input[name$="-manual_doc_name"]',
+                    'input[name$="-manual_doc_no"]',
+                    'input[name$="-manual_doc_date"]',
+                    'input[name$="-manual_doc_date_text"]',
+                    'input[name$="-concrete_volume_m3"]',
+                    'input[name$="-sheets_count"]',
+                ];
+                fields.forEach(sel => {
+                    const el = row.querySelector(sel);
+                    if (el) el.value = "";
+                });
+            }
+
             function markFormDeleted(row, prefix) {
+                // ✅ важно: для материалов очищаем hidden passport и поля,
+                // чтобы удалённые строки НЕ считались "уже добавленными" (и не давали пустые строки)
+                if (prefix === "mat") _clearMaterialRowValues(row);
+
                 const delCb = row.querySelector(`input[type="checkbox"][name^="${prefix}-"][name$="-DELETE"]`);
                 if (delCb) {
                     delCb.checked = true;
@@ -1184,21 +1189,33 @@
                 }
             });
 
-            // ---------- PASSPORT MODAL (DataTables MULTISELECT) ----------
+            // ---------- PASSPORT MODAL (DataTables MULTISELECT, PERSISTED) ----------
             const modalEl = document.getElementById("passportModal");
             const btnPickMany = document.getElementById("btnPickPassports");
             let passportDT = null;
 
+            // (currentHiddenId) hidden input id в строке, куда пишем первый выбранный паспорт
             let currentHiddenId = null;
+
+            // ✅ сохраняем выбор между поиском/пагинацией
+            const selectedPassportIds = new Set();         // (selectedPassportIds) ids выбранных паспортов
+            const selectedPassportPayload = new Map();     // (selectedPassportPayload) id -> {id, material, doc_name, doc_no, doc_date, doc_date_iso}
 
             function getHiddenInputById(hiddenId) {
                 return document.getElementById(hiddenId);
             }
 
+            function _isMaterialRowDeleted(row) {
+                return _isRowMarkedDeleted(row, "mat");
+            }
+
             function getPickedPassportIdsOnPage() {
+                // ✅ берём только НЕ удалённые/НЕ скрытые строки материалов
                 const ids = new Set();
-                document.querySelectorAll('input[type="hidden"][id^="id_mat-"][id$="-passport"]').forEach(inp => {
-                    const v = (inp.value || "").trim();
+                document.querySelectorAll('#materials-table tbody tr.material-row').forEach(row => {
+                    if (_isMaterialRowDeleted(row)) return;
+                    const inp = row.querySelector('input[type="hidden"][id$="-passport"]');
+                    const v = (inp?.value || "").trim();
                     if (v) ids.add(v);
                 });
                 return ids;
@@ -1234,8 +1251,47 @@
                 if (inpDocDate) inpDocDate.value = iso || "";
             }
 
+            function _togglePassportSelected(payload, checked) {
+                const id = String(payload?.id || "").trim();
+                if (!id) return;
+
+                if (checked) {
+                    selectedPassportIds.add(id);
+                    selectedPassportPayload.set(id, payload);
+                } else {
+                    selectedPassportIds.delete(id);
+                    selectedPassportPayload.delete(id);
+                }
+            }
+
+            function _readPayloadFromTr(tr) {
+                const id = String(tr?.dataset?.passportId || "").trim();
+                if (!id) return null;
+
+                return {
+                    id,
+                    material: tr.dataset.material || "",
+                    doc_name: tr.dataset.docName || "",
+                    doc_no: tr.dataset.docNo || "",
+                    doc_date: tr.dataset.docDate || "",
+                    doc_date_iso: tr.dataset.docDateIso || "",
+                };
+            }
+
+            function _syncCheckboxStateOnDraw() {
+                // ✅ после любого поиска/пагинации восстанавливаем чекбоксы
+                document.querySelectorAll('#passportPickTable input.passport-pick-cb').forEach(cb => {
+                    const id = String(cb.value || "").trim();
+                    cb.checked = selectedPassportIds.has(id);
+                });
+            }
+
             function openPassportModal(hiddenId) {
                 currentHiddenId = hiddenId;
+
+                // ✅ каждый новый заход в модалку — начинаем с чистого выбора
+                selectedPassportIds.clear();
+                selectedPassportPayload.clear();
 
                 if (!passportDT) {
                     passportDT = $('#passportPickTable').DataTable({
@@ -1275,11 +1331,28 @@
                         }
                     });
 
+                    // click row toggles checkbox
                     $('#passportPickTable tbody').on('click', 'tr', function (e) {
                         if (e.target && e.target.closest('input')) return;
                         const cb = this.querySelector('input.passport-pick-cb');
                         if (!cb) return;
                         cb.checked = !cb.checked;
+                        cb.dispatchEvent(new Event("change", {bubbles: true}));
+                    });
+
+                    // checkbox change persists selection
+                    $('#passportPickTable tbody').on('change', 'input.passport-pick-cb', function () {
+                        const cb = this;
+                        const tr = cb.closest("tr");
+                        if (!tr) return;
+                        const payload = _readPayloadFromTr(tr);
+                        if (!payload) return;
+                        _togglePassportSelected(payload, cb.checked);
+                    });
+
+                    // restore on draw
+                    $('#passportPickTable').on('draw.dt', function () {
+                        _syncCheckboxStateOnDraw();
                     });
                 } else {
                     passportDT.ajax.reload(null, false);
@@ -1290,51 +1363,67 @@
             }
 
             btnPickMany?.addEventListener("click", function () {
+                if (!currentHiddenId) return;
+
+                // ✅ берём выбор из Set/Map (он переживает поиск/пагинацию)
                 const picked = [];
-                document.querySelectorAll('#passportPickTable input.passport-pick-cb:checked').forEach(cb => {
-                    const tr = cb.closest("tr");
-                    if (!tr) return;
+                for (const id of selectedPassportIds) {
+                    const payload = selectedPassportPayload.get(id);
+                    if (payload) picked.push(payload);
+                }
 
-                    const id = (cb.value || "").trim();
-                    if (!id) return;
-
-                    picked.push({
-                        id,
-                        material: tr.dataset.material || "",
-                        doc_name: tr.dataset.docName || "",
-                        doc_no: tr.dataset.docNo || "",
-                        doc_date: tr.dataset.docDate || "",
-                        doc_date_iso: tr.dataset.docDateIso || "",
-                    });
-                });
-
-                if (!picked.length || !currentHiddenId) return;
+                if (!picked.length) return;
 
                 const already = getPickedPassportIdsOnPage();
 
                 const targetHidden = getHiddenInputById(currentHiddenId);
                 const targetRow = targetHidden ? targetHidden.closest("tr") : null;
 
+                // 1) первый паспорт — в строку, из которой открывали модалку
                 if (targetRow) {
-                    const first = picked.shift();
-                    if (!already.has(first.id)) {
+                    // ищем первый НЕ-дубликат
+                    let first = null;
+                    while (picked.length) {
+                        const cand = picked.shift();
+                        if (!already.has(String(cand.id))) {
+                            first = cand;
+                            break;
+                        }
+                    }
+
+                    if (first) {
                         fillMaterialRowWithPassport(targetRow, first, currentHiddenId);
-                        already.add(first.id);
+                        already.add(String(first.id));
+                    } else {
+                        // ✅ все выбранные оказались дублями -> чтобы не оставлять пустую строку
+                        // удаляем созданную пустую строку (если она новая/пустая)
+                        const hid = targetRow.querySelector('input[type="hidden"][id$="-passport"]');
+                        const hasAny = (hid && (hid.value || "").trim());
+                        if (!hasAny) {
+                            markFormDeleted(targetRow, "mat");
+                        }
+                        bootstrap.Modal.getInstance(modalEl)?.hide();
+                        return;
                     }
                 }
 
+                // 2) остальные — добавляем новыми строками
                 for (const item of picked) {
-                    if (already.has(item.id)) continue;
+                    const id = String(item.id);
+                    if (already.has(id)) continue;
 
                     const newRow = addRow("materials-table", "material-empty-form", "mat");
                     if (!newRow) continue;
 
                     fillMaterialRowWithPassport(newRow, item);
-                    already.add(item.id);
+                    already.add(id);
                 }
 
                 bootstrap.Modal.getInstance(modalEl)?.hide();
-                document.querySelectorAll('#passportPickTable input.passport-pick-cb').forEach(cb => cb.checked = false);
+
+                // ✅ чистим выбор на выходе
+                selectedPassportIds.clear();
+                selectedPassportPayload.clear();
             });
 
             document.getElementById("add-material-from-db")?.addEventListener("click", function () {
@@ -1586,17 +1675,6 @@
                     return (s.includes("бетон") || s.includes("бетонн") || s.includes("раствор"));
                 }
 
-                function setDisabled(input, disabled) {
-                    if (!input) return;
-                    input.disabled = !!disabled;
-                    input.classList.toggle("is-disabled", !!disabled);
-                }
-
-                function setStrike(input, strike) {
-                    if (!input) return;
-                    input.classList.toggle("is-strike", !!strike);
-                }
-
                 // 1) Паспорт из БД: V всегда запрещён
                 if (hasPassport) {
                     if (v) {
@@ -1617,7 +1695,6 @@
                     setStrike(v, false); // для ручных не перечёркиваем
 
                     if (!needV) {
-                        // по умолчанию как у БД: disabled + очищаем
                         v.value = "";
                         setDisabled(v, true);
                         v.classList.remove("input-required", "input-valid", "input-error");
@@ -1662,22 +1739,18 @@
                 const sheets = row.querySelector('input[name$="-sheets_count"]');
 
                 if (isScheme) {
-                    // только дата+листы
                     [dFrom, sheets].forEach((el) => {
                         if (isFilled(el)) setState(el, "input-valid");
                         else setState(el, "input-required");
                     });
-                    // остальные не трогаем
                     return;
                 }
 
-                // обычные строки: required всё кроме dTo
                 [title, docNo, dFrom, sheets].forEach((el) => {
                     if (isFilled(el)) setState(el, "input-valid");
                     else setState(el, "input-required");
                 });
 
-                // dTo (вторая дата) — не обязательна, но если заполнена, можно сделать зелёной
                 if (dTo) {
                     if (isFilled(dTo)) setState(dTo, "input-valid");
                     else dTo.classList.remove("input-required", "input-valid", "input-error");
@@ -1686,11 +1759,7 @@
 
             function refreshAll() {
                 tagRequiredFields();
-
-                // простые поля (основное)
                 document.querySelectorAll(".js-required").forEach(updateSimpleRequired);
-
-                // материалы/документы — по строкам
                 document.querySelectorAll('#materials-table tbody tr.material-row').forEach(updateMaterialRow);
                 document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach(updateAttachmentRow);
             }
@@ -1703,10 +1772,8 @@
                 const el = e.target;
                 if (!el) return;
 
-                // простые required
                 updateSimpleRequired(el);
 
-                // row logic
                 const matRow = el.closest && el.closest('#materials-table tr.material-row');
                 if (matRow) updateMaterialRow(matRow);
 
@@ -1718,7 +1785,6 @@
                 const el = e.target;
                 if (!el) return;
 
-                // file/date change тоже считаем
                 const matRow = el.closest && el.closest('#materials-table tr.material-row');
                 if (matRow) updateMaterialRow(matRow);
 
@@ -1726,7 +1792,6 @@
                 if (attRow) updateAttachmentRow(attRow);
             });
 
-            // after submit: красим ошибки
             document.getElementById("act-form")?.addEventListener("submit", function () {
                 document.querySelectorAll(".is-invalid, .soft-invalid").forEach(function (el) {
                     el.classList.remove("input-required", "input-valid");
@@ -1734,7 +1799,6 @@
                 });
             });
 
-            // после добавления строк (материалы/документы) — обновляем подсветку
             document.addEventListener("click", function (e) {
                 const btn = e.target.closest("#add-material, #add-material-from-db, #add-attachment, #btnPickPassports");
                 if (!btn) return;
@@ -1751,7 +1815,7 @@
 
                 const passport = srcRow.querySelector('input[type="hidden"][id$="-passport"]');
                 const hasPassport = (passport && (passport.value || "").trim() !== "");
-                if (hasPassport) return; // ✅ только ручные
+                if (hasPassport) return;
 
                 const addRowFn = window.__actsAddRow;
                 if (typeof addRowFn !== "function") return;
@@ -1766,32 +1830,24 @@
                     if (from && to) to.value = from.value || "";
                 };
 
-                // ✅ Копируем ВСЕ нужные данные:
-                copyVal('input[name$="-manual_name"]');            // material_name
-                copyVal('input[name$="-manual_doc_name"]');        // document_name
-                copyVal('input[name$="-manual_doc_no"]');          // document_number
-                copyVal('input[name$="-manual_doc_date"]');        // document_date (dd.mm.yyyy)
-                copyVal('input[name$="-manual_doc_date_text"]');   // если у тебя вместо даты используется текст
-                copyVal('input[name$="-concrete_volume_m3"]');     // V
-                copyVal('input[name$="-sheets_count"]');           // sheets_count
+                copyVal('input[name$="-manual_name"]');
+                copyVal('input[name$="-manual_doc_name"]');
+                copyVal('input[name$="-manual_doc_no"]');
+                copyVal('input[name$="-manual_doc_date"]');
+                copyVal('input[name$="-manual_doc_date_text"]');
+                copyVal('input[name$="-concrete_volume_m3"]');
+                copyVal('input[name$="-sheets_count"]');
 
-                // Применяем правила строки (включит/выключит V; разрулит date/dateText)
                 updateMaterialRow(newRow);
 
-                // ✅ Помечаем как "требует редактирования", но НЕ очищаем значения
                 const docNo = get(newRow, 'input[name$="-manual_doc_no"]');
                 const date = get(newRow, 'input[name$="-manual_doc_date"]');
                 const dateText = get(newRow, 'input[name$="-manual_doc_date_text"]');
                 const v = get(newRow, 'input[name$="-concrete_volume_m3"]');
 
                 if (docNo) setState(docNo, "input-required");
-
-                // у тебя правило: достаточно одного из date/dateText
-                // пометим оба как "нужно", чтобы человек точно обратил внимание
                 if (date) setState(date, "input-required");
                 if (dateText) setState(dateText, "input-required");
-
-                // V подсвечиваем только если поле активно (бетон/раствор)
                 if (v && !v.disabled) setState(v, "input-required");
 
                 docNo?.focus();
@@ -1801,10 +1857,4 @@
         })();
     </script>
 
-
-
-
 {% endblock %}
-
-
-
