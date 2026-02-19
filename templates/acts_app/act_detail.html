@@ -173,6 +173,15 @@
                                 .registry-child-row .appendix-label {
                                     padding-left: .75rem;
                                 }
+
+                                a.link-plain,
+                                a.link-plain:hover,
+                                a.link-plain:focus,
+                                a.link-plain:active {
+                                    color: inherit !important;
+                                    text-decoration: none !important;
+                                }
+
                             </style>
 
                             <div class="table-responsive">
@@ -201,44 +210,56 @@
                                                     tabindex="0"
                                                 {% endif %}
                                         >
-                                            <td>{{ row.pos }}</td>
+                                            <td class="text-muted" style="width: 40px;">{{ row.pos }}</td>
+
                                             <td>
                                                 <span class="appendix-label">
-                                                    {{ row.label }}
+        {% if row.url %}
+            <a href="{{ row.url }}" target="_blank" rel="noopener"
+               class="text-reset text-decoration-none link-plain">
+            {{ row.label|default:"—" }}
+          </a>
+        {% else %}
+            {{ row.label|default:"—" }}
+        {% endif %}
+
                                                     {% if row.children %}
                                                         <i class="bi bi-chevron-down ms-1 text-muted small registry-chevron"></i>
                                                     {% endif %}
-                                                </span>
+      </span>
                                             </td>
-                                            <td class="text-end">
-                                                <span
-                                                        {% if row.children %}
-                                                            class="js-registry-sheets"
-                                                            data-registry-pos="{{ row.pos }}"
-                                                        {% endif %}
-                                                >
-                                                    {{ row.sheets }}
-                                                </span>
+
+                                            <td class="text-end" style="width: 90px;">
+      <span
+              {% if row.children %}
+                  class="js-registry-sheets"
+                  data-registry-pos="{{ row.pos }}"
+              {% endif %}
+      >
+        {{ row.sheets }}
+      </span>
                                             </td>
                                         </tr>
 
                                         {% if row.children %}
                                             {% for ch in row.children %}
-                                                <tr class="registry-child-row js-registry-child d-none"
+                                                <tr class="table-light registry-child-row js-registry-child d-none"
                                                     data-registry-pos="{{ row.pos }}">
-                                                    <td>{{ row.pos }}.{{ forloop.counter }}</td>
+                                                    <td class="text-muted">{{ row.pos }}.{{ forloop.counter }}</td>
+
                                                     <td>
-                                                        <span class="appendix-label">
-                                                            {% if ch.url %}
-                                                                <a class="text-decoration-none" href="{{ ch.url }}"
-                                                                   target="_blank" rel="noopener">
-                                                                    <i class="bi bi-box-arrow-up-right me-1"></i>{{ ch.label }}
-                                                                </a>
-                                                            {% else %}
-                                                                {{ ch.label }}
-                                                            {% endif %}
-                                                        </span>
+          <span class="appendix-label">
+            {% if ch.url %}
+                <a href="{{ ch.url }}" target="_blank" rel="noopener"
+                   class="text-reset text-decoration-none link-plain js-child-link">
+                {{ ch.label|default:"—" }}
+              </a>
+            {% else %}
+                {{ ch.label|default:"—" }}
+            {% endif %}
+          </span>
                                                     </td>
+
                                                     <td class="text-end">{{ ch.sheets }}</td>
                                                 </tr>
                                             {% endfor %}
@@ -310,6 +331,14 @@
                                             }
                                         });
                                     });
+
+                                    // ✅ ВАЖНО: клики по ссылкам внутри реестра
+                                    // не должны открывать/закрывать аккордеон
+                                    document.querySelectorAll(".js-child-link").forEach(a => {
+                                        a.addEventListener("click", function (e) {
+                                            e.stopPropagation();
+                                        });
+                                    });
                                 });
                             </script>
 
@@ -326,4 +355,7 @@
         </div>
     </section>
 
+
+
 {% endblock %}
+
