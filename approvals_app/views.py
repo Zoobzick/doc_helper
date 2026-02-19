@@ -17,7 +17,7 @@ from .forms import ApprovalForm
 from .models import Approval
 
 
-TAIL_RE = re.compile(r"^([А-ЯA-Z]{2,3})(\d+)$")  # КЖ39, АР12, ОС4
+TAIL_RE = re.compile(r"^([А-ЯA-Z]{2,3})(\d+)$")  # КЖ39, АР12, ОС4 (хвост шифра)
 
 
 def _delete_approval_file(approval: Approval) -> None:
@@ -29,6 +29,36 @@ def _delete_approval_file(approval: Approval) -> None:
     """
     if approval.file and getattr(approval.file, "name", ""):
         approval.file.delete(save=False)
+
+
+def _apply_search(qs, q: str):
+    """
+    qs (QuerySet[Approval]) — базовый queryset
+    q (str) — строка из GET параметра q
+
+    Логика:
+    - всегда ищем по description (часть текста)
+    - если похоже на хвост шифра (КЖ39), то дополнительно ищем по project.full_code:
+        * iendswith: "...КЖ39" (самый точный кейс)
+        * icontains: "КЖ39" где угодно (на всякий)
+    """
+    q = (q or "").strip()
+    if not q:
+        return qs
+
+    q_up = q.upper()
+
+    # базово: текстовое описание
+    cond = Q(description__icontains=q)
+
+    # если ввели что-то вроде "КЖ39"
+    if TAIL_RE.match(q_up):
+        cond |= Q(project__full_code__iendswith=q_up) | Q(project__full_code__icontains=q_up)
+    else:
+        # если ввели произвольную строку — тоже полезно искать по full_code
+        cond |= Q(project__full_code__icontains=q)
+
+    return qs.filter(cond)
 
 
 # ---------- DONE LIST ----------
@@ -51,17 +81,8 @@ class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
             .filter(status=Approval.Status.DONE)
         )
 
-        q = (self.request.GET.get("q") or "").strip()
-        if not q:
-            return qs
-
-        q_up = q.upper()
-        m = TAIL_RE.match(q_up)
-        if m:
-            # ⚠️ оставляем как у тебя (поиск по done-листу)
-            return qs.filter(project__section__code=m.group(1), project__number=int(m.group(2)))
-
-        return qs.filter(description__icontains=q)
+        q = self.request.GET.get("q") or ""
+        return _apply_search(qs, q)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -151,16 +172,8 @@ class ApprovalPendingListView(LoginRequiredMixin, PermissionRequiredMixin, ListV
             .filter(status=Approval.Status.PENDING)
         )
 
-        q = (self.request.GET.get("q") or "").strip()
-        if not q:
-            return qs
-
-        q_up = q.upper()
-        m = TAIL_RE.match(q_up)
-        if m:
-            return qs.filter(project__section__code=m.group(1), project__number=int(m.group(2)))
-
-        return qs.filter(description__icontains=q)
+        q = self.request.GET.get("q") or ""
+        return _apply_search(qs, q)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
