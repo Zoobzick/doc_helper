@@ -47,7 +47,7 @@
         class="form-select form-select-sm"
         name="organization_id_{{ party.uuid }}"
 
-        hx-post="{% url 'acts_app:act_party_set_org' party.uuid %}"
+        hx-post="{% url 'acts_app:act_party_set_organization' party.uuid %}"
         hx-trigger="change"
         hx-params="organization_id_{{ party.uuid }}"
         hx-target="#party-row-{{ party.uuid }}"
