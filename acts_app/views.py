@@ -582,148 +582,257 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     slug_field = "uuid"
     slug_url_kwarg = "uuid"
 
+    REGISTRY_THRESHOLD = 5  # как в AppendixBuilder
+
     def get_queryset(self):
-        return Act.objects.prefetch_related(
-            "projects",
-            "materials",
-            "materials__passport",
-            "materials__passport__material",
-            "attachments",
-            "appendix_lines",
-            "parties",
-            "signatory_snapshots",
-            "approval_items",
-            "approval_items__approval",
-            "approval_items__approval__project",
+        return (
+            Act.objects
+            .prefetch_related(
+                "projects",
+                "materials",
+                "materials__passport",
+                "materials__passport__material",
+                "appendix_lines",
+                "attachments",
+                "parties",
+                "signatory_snapshots",
+                "approval_items",
+                "approval_items__approval",
+            )
         )
+
+    # -------------------------
+    # helpers (UI only)
+    # -------------------------
+
+    def _looks_like_grouped_material_line(self, label: str) -> bool:
+        """
+        AppendixBuilder при <5 материалов делает VIRTUAL-строку:
+        '... №123 от 01.01.2026, №456 от 02.02.2026, арматура 22 A500C'
+        Нам надо такую строку спрятать в UI, чтобы вместо неё показать паспорта поштучно.
+        """
+        s = (label or "").strip().lower()
+        if not s:
+            return False
+        return ("№" in s) and (" от " in s) and ("," in s)
+
+    def _looks_like_virtual_approval_line(self, label: str) -> bool:
+        """
+        AppendixBuilder при <5 approvals делает VIRTUAL-строки без source_attachment.
+        """
+        s = (label or "").strip().lower()
+        if not s:
+            return False
+        return ("№" not in s) and (" от " not in s)
+
+    def _build_material_rows_flat(self, materials: list) -> list[dict]:
+        """
+        Для UI: каждый паспорт отдельной строкой, с url на passport_open.
+        """
+        out: list[dict] = []
+        for mi in materials:
+            data = resolve_material_fields(mi)
+
+            parts = [data["document_name"]]
+            if data["document_no"]:
+                parts.append(f"№{data['document_no']}")
+            if data["document_date_str"] and data["document_date_str"] != "—":
+                parts.append(f"от {data['document_date_str']}")
+
+            base = " ".join(parts).strip()
+            mat = (data["material_name"] or "").strip()
+            label = f"{base}, {mat}".strip().strip(",")
+
+            url = None
+            if mi.passport_id and getattr(mi, "passport", None) is not None:
+                url = reverse("acts_app:passport_open", kwargs={"pk": mi.passport_id})
+
+            out.append(
+                {"label": label or "—", "sheets": int(mi.sheets_count or 0), "url": url, "children": []}
+            )
+        return out
+
+    def _build_approval_rows_flat(self, approval_items: list) -> list[dict]:
+        """
+        Для UI: каждое согласование отдельной строкой, с url на approval_open.
+        """
+        out: list[dict] = []
+        for it in approval_items:
+            approval = getattr(it, "approval", None)
+
+            label = (it.label_override or "").strip()
+            if not label and approval is not None:
+                label = (getattr(approval, "description", "") or "").strip()
+
+            url = reverse("acts_app:approval_open", kwargs={"pk": approval.id}) if approval is not None else None
+            out.append(
+                {"label": label or "—", "sheets": int(it.sheets_count or 0), "url": url, "children": []}
+            )
+        return out
+
+    # -------------------------
+    # main
+    # -------------------------
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         act: Act = ctx["act"]
 
+        materials = list(act.materials.all().order_by("position", "id"))
+        approval_items = list(act.approval_items.all().order_by("position", "id"))
+        attachments = list(act.attachments.all())
+        appendix_lines = list(act.appendix_lines.all())
+        snapshots = list(act.signatory_snapshots.all())
+
+        materials_count = len(materials)
+        approvals_count = len(approval_items)
+
+        # флаги наличия строк-реестров в витрине приложений
+        has_materials_registry_line = any(
+            getattr(getattr(l, "source_attachment", None), "type", None) == AttachmentType.MATERIALS_REGISTRY
+            for l in appendix_lines
+        )
+        approvals_reg_type = getattr(AttachmentType, "APPROVALS_REGISTRY", None)
+        has_approvals_registry_line = any(
+            approvals_reg_type
+            and getattr(getattr(l, "source_attachment", None), "type", None) == approvals_reg_type
+            for l in appendix_lines
+        )
+
+        # кнопка "Реестр" (П-3)
+        ctx["has_p3_registry"] = any(a.type == AttachmentType.MATERIALS_REGISTRY for a in attachments)
+
         appendix_rows: list[dict] = []
-        for line in act.appendix_lines.all():
+
+        # будем вставлять материалы “на место”, а approvals — всегда в конец
+        insert_materials_at = None
+
+        for line in appendix_lines:
             label = (line.label or "").strip()
             sheets = int(line.sheets_count or 0)
 
-            row: dict = {"label": label, "sheets": sheets, "children": []}
-
             src = getattr(line, "source_attachment", None)
+            src_type = getattr(src, "type", None) if src is not None else None
 
-            # ✅ MATERIALS_REGISTRY: дети строим через resolve_material_fields(mi)
-            if src is not None and getattr(src, "type", None) == AttachmentType.MATERIALS_REGISTRY:
+            # --- Реестр материалов: разворачиваем ---
+            if src_type == AttachmentType.MATERIALS_REGISTRY:
                 children = []
-                for mi in act.materials.all().order_by("position", "id"):
+                for mi in materials:
                     data = resolve_material_fields(mi)
 
                     parts = [data["document_name"]]
-
                     if data["document_no"]:
                         parts.append(f"№{data['document_no']}")
-
                     if data["document_date_str"] and data["document_date_str"] != "—":
                         parts.append(f"от {data['document_date_str']}")
 
                     base = " ".join(parts).strip()
                     mat = (data["material_name"] or "").strip()
-
                     child_label = f"{base}, {mat}".strip().strip(",")
 
-                    # ✅ ссылка на файл паспорта (если материал из БД)
                     url = None
-                    if getattr(mi, "passport_id", None) and getattr(mi, "passport", None) is not None:
+                    if mi.passport_id and getattr(mi, "passport", None) is not None:
                         url = reverse("acts_app:passport_open", kwargs={"pk": mi.passport_id})
 
                     children.append(
-                        {
-                            "label": child_label or "—",
-                            "sheets": int(mi.sheets_count or 0),
-                            "url": url,
-                        }
+                        {"label": child_label or "—", "sheets": int(mi.sheets_count or 0), "url": url}
                     )
 
-                row["children"] = children
-                appendix_rows.append(row)
+                appendix_rows.append({"label": label or "—", "sheets": sheets, "children": children})
                 continue
 
-            # DOCS_REGISTRY
-            if src is not None and hasattr(AttachmentType, "DOCS_REGISTRY"):
-                if getattr(src, "type", None) == AttachmentType.DOCS_REGISTRY:
-                    exclude_types = [
-                        AttachmentType.EXEC_SCHEME,
-                        AttachmentType.MATERIALS_REGISTRY,
-                        AttachmentType.DOCS_REGISTRY,
-                        getattr(AttachmentType, "APPROVALS_REGISTRY", "APPROVALS_REGISTRY"),
-                    ]
-                    children = []
-                    for a in act.attachments.exclude(type__in=exclude_types).order_by("created_at"):
-                        title = (a.title or "").strip() or "—"
-                        doc_no = (a.doc_no or "").strip()
-                        parts = [title]
-                        if doc_no:
-                            parts.append(f"№{doc_no}")
+            # --- Реестр документов ---
+            if hasattr(AttachmentType, "DOCS_REGISTRY") and src_type == AttachmentType.DOCS_REGISTRY:
+                exclude_types = {
+                    AttachmentType.EXEC_SCHEME,
+                    AttachmentType.MATERIALS_REGISTRY,
+                    AttachmentType.DOCS_REGISTRY,
+                }
+                if approvals_reg_type:
+                    exclude_types.add(approvals_reg_type)
 
-                        date_str = fmt_date_range_g(a.doc_date, getattr(a, "doc_date_to", None))
-                        if date_str:
-                            parts.append(f"от {date_str}")
+                children = []
+                for a in sorted(attachments, key=lambda x: (x.created_at or 0)):
+                    if a.type in exclude_types:
+                        continue
 
-                        children.append(
-                            {
-                                "label": " ".join(parts),
-                                "sheets": int(a.sheets_count or 0),
-                                "url": (
-                                    reverse("acts_app:act_attachment_open", kwargs={"pk": a.id}) if getattr(a, "file",
-                                                                                                            None) else None),
-                            }
-                        )
+                    title = (a.title or "").strip() or "—"
+                    doc_no = (a.doc_no or "").strip()
 
-                    row["children"] = children
-                    appendix_rows.append(row)
+                    parts = [title]
+                    if doc_no:
+                        parts.append(f"№{doc_no}")
+
+                    date_str = fmt_date_range_g(a.doc_date, getattr(a, "doc_date_to", None))
+                    if date_str:
+                        parts.append(f"от {date_str}")
+
+                    url = reverse("acts_app:act_attachment_open", kwargs={"pk": a.id}) if getattr(a, "file",
+                                                                                                  None) else None
+                    children.append(
+                        {"label": " ".join(parts), "sheets": int(a.sheets_count or 0), "url": url}
+                    )
+
+                appendix_rows.append({"label": label or "—", "sheets": sheets, "children": children})
+                continue
+
+            # --- Реестр согласований: разворачиваем ---
+            if approvals_reg_type and src_type == approvals_reg_type:
+                children = []
+                for it in approval_items:
+                    approval = getattr(it, "approval", None)
+
+                    label2 = (it.label_override or "").strip()
+                    if not label2 and approval is not None:
+                        label2 = (getattr(approval, "description", "") or "").strip()
+
+                    url = reverse("acts_app:approval_open",
+                                  kwargs={"pk": approval.id}) if approval is not None else None
+                    children.append(
+                        {"label": label2 or "—", "sheets": int(it.sheets_count or 0), "url": url}
+                    )
+
+                appendix_rows.append({"label": label or "—", "sheets": sheets, "children": children})
+                continue
+
+            # --- НЕТ реестра материалов и материалов < 5: скрываем склейку материалов ---
+            if (not has_materials_registry_line) and (0 < materials_count < self.REGISTRY_THRESHOLD) and (src is None):
+                if self._looks_like_grouped_material_line(label):
+                    if insert_materials_at is None:
+                        insert_materials_at = len(appendix_rows)
                     continue
 
-            # APPROVALS_REGISTRY
-            if src is not None and hasattr(AttachmentType, "APPROVALS_REGISTRY"):
-                if getattr(src, "type", None) == AttachmentType.APPROVALS_REGISTRY:
-                    children = []
-                    for it in act.approval_items.all().order_by("position", "id"):
-                        label2 = (it.label_override or "").strip()
-                        approval = getattr(it, "approval", None)
-
-                        if not label2 and approval is not None:
-                            label2 = (getattr(approval, "description", "") or "").strip()
-
-                        # ✅ ссылка на файл согласования (если есть file/pdf/etc)
-                        url = reverse("acts_app:approval_open",
-                                      kwargs={"pk": approval.id}) if approval is not None else None
-
-                        children.append(
-                            {
-                                "label": label2 or "—",
-                                "sheets": int(it.sheets_count or 0),
-                                "url": url,
-                            }
-                        )
-
-                    row["children"] = children
-                    appendix_rows.append(row)
+            # --- НЕТ реестра согласований и approvals < 5: скрываем VIRTUAL строки approvals ---
+            if (not has_approvals_registry_line) and approvals_reg_type and (
+                    0 < approvals_count < self.REGISTRY_THRESHOLD) and (src is None):
+                if self._looks_like_virtual_approval_line(label):
                     continue
 
-            appendix_rows.append(row)
+            appendix_rows.append({"label": label or "—", "sheets": sheets, "children": []})
+
+        # 1) вставляем плоские материалы “на место”
+        if (not has_materials_registry_line) and (0 < materials_count < self.REGISTRY_THRESHOLD):
+            flat_m = self._build_material_rows_flat(materials)
+            if insert_materials_at is None:
+                insert_materials_at = len(appendix_rows)
+            appendix_rows[insert_materials_at:insert_materials_at] = flat_m
+
+        # 2) вставляем плоские согласования ВСЕГДА В КОНЕЦ
+        if approvals_reg_type and (not has_approvals_registry_line) and (0 < approvals_count < self.REGISTRY_THRESHOLD):
+            flat_a = self._build_approval_rows_flat(approval_items)
+            appendix_rows.extend(flat_a)
 
         ctx["appendix_rows"] = [{"pos": i + 1, **r} for i, r in enumerate(appendix_rows)]
 
-        if act.status == ActStatus.FINAL and act.signatory_snapshots.exists():
+        # ---- Signatories ----
+        if act.status == ActStatus.FINAL and snapshots:
             ctx["signatories_source"] = "snapshot"
-            ctx["signatories"] = list(act.signatory_snapshots.order_by("position", "id"))
+            ctx["signatories"] = sorted(snapshots, key=lambda x: (x.position or 0, x.id))
         else:
             ctx["signatories_source"] = "resolved"
             ctx["resolved_parties"] = resolve_act_parties(act)
 
-        ctx["has_p3_registry"] = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).exists()
-
-        # ✅ PDF preview url (iframe)
         ctx["pdf_preview_url"] = reverse("acts_app:act_pdf_preview", kwargs={"uuid": str(act.uuid)})
-
         return ctx
 
 
