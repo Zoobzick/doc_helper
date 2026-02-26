@@ -3,14 +3,25 @@ from __future__ import annotations
 from django.conf import settings
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, get_object_or_404
-from django.views import View
-from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.shortcuts import render
+from django.contrib.auth.mixins import LoginRequiredMixin
 
-from projects_app.models import Project, Stage
+from projects_app.models import Stage
 from .forms import BoxLabelForm
 from .services.box_label_docx import render_box_label_docx
 
+from pathlib import Path
+
+from django.http import FileResponse, Http404
+from django.shortcuts import get_object_or_404
+from django.views import View
+from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.utils.decorators import method_decorator
+from django.views.decorators.clickjacking import xframe_options_sameorigin
+
+from projects_app.models import Project
+from documents_app.models import TitleSheet
+from documents_app.services.title_sheets import ensure_title_sheet
 
 DEFAULT_DSM = 'ГУП "Московский метрополитен"'
 DEFAULT_MIP = 'АО "Мосинжпроект"'
@@ -45,11 +56,11 @@ class BoxLabelProjectSearchView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         if q:
             # ВАЖНО: добавили full_code__icontains=q — теперь "КЖ8" найдёт проект
             qs = qs.filter(
-                Q(full_code__icontains=q) |                       # (full_code) основной поиск по шифру
+                Q(full_code__icontains=q) |  # (full_code) основной поиск по шифру
                 Q(designer__code__icontains=q) |
                 Q(line__code__icontains=q) |
                 Q(plot__code__icontains=q) |
-                Q(plot__full_name__icontains=q) |                 # (plot.full_name) чтобы искать по названию участка
+                Q(plot__full_name__icontains=q) |  # (plot.full_name) чтобы искать по названию участка
                 Q(section__code__icontains=q) |
                 Q(construction__icontains=q)
             )
@@ -141,3 +152,31 @@ class BoxLabelGenerateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
         resp["Content-Disposition"] = 'attachment; filename="наклейка_коробка.docx"'
         return resp
+
+
+@method_decorator(xframe_options_sameorigin, name="dispatch")
+class TitleSheetOpenPdfView(PermissionRequiredMixin, View):
+    """
+    Отдаёт PDF титульника для предпросмотра в iframe.
+    ВАЖНО: xframe_options_sameorigin — иначе будет X-Frame-Options ошибка.
+    """
+    permission_required = "projects_app.view_project_detail_page"
+    raise_exception = True
+
+    def get(self, request, project_id: int, doc_type: str):
+        # (project) проект, для которого хотим титульник
+        project = get_object_or_404(Project, pk=project_id)
+
+        # (doc_type) валидируем тип (ID/RD/ID_RD)
+        allowed = {TitleSheet.DocType.ID, TitleSheet.DocType.RD, TitleSheet.DocType.ID_RD}
+        if doc_type not in allowed:
+            raise Http404("Неизвестный тип титульного листа")
+
+        # ✅ гарантируем актуальность (если не locked) и наличие PDF
+        ts = ensure_title_sheet(project=project, doc_type=doc_type)
+
+        pdf_path = Path(ts.pdf_path) if ts.pdf_path else None
+        if not pdf_path or not pdf_path.exists():
+            raise Http404("PDF титульного листа не найден")
+
+        return FileResponse(pdf_path.open("rb"), content_type="application/pdf", as_attachment=False)

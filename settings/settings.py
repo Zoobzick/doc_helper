@@ -65,6 +65,7 @@ APPROVALS_DIR = BASE_ID_DIR / "Согласования"
 PROJECTS_DIR = BASE_ID_DIR / "Проекты"
 PROJECTS_JSON = PROJECTS_DIR / "projects.json"
 ACTS_DIR = BASE_ID_DIR / "Акты"
+DOCUMENTS_DIR = BASE_ID_DIR / "Документы"
 
 # Templates Документов
 DOCUMENT_TEMPLATES_DIR = BASE_DIR / "document_templates"

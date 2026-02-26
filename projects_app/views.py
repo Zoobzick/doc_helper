@@ -100,6 +100,11 @@ class ProjectDetailView(PermissionRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         project = self.object
+
+        # ✅ Тихо гарантируем, что титульники актуальны (если не is_locked)
+        from documents_app.services.title_sheets import ensure_all_title_sheets_for_project
+        # ensure_all_title_sheets_for_project(project)
+
         ctx["revisions"] = ProjectRevision.objects.filter(project=self.object).order_by("-created_at")
         ctx["latest_revision"] = (
             ProjectRevision.objects
@@ -110,7 +115,6 @@ class ProjectDetailView(PermissionRequiredMixin, DetailView):
         ctx["title"] = f"Данные проекта — {project.full_code}"
 
         return ctx
-
 
 @method_decorator(xframe_options_sameorigin, name="dispatch")
 class ProjectRevisionOpenView(PermissionRequiredMixin, View):
