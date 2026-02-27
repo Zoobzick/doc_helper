@@ -344,7 +344,7 @@ class ProjectUpdateView(PermissionRequiredMixin, UpdateView):
             return True
 
         # поля, которые ты сейчас перетираешь (оставил твою логику)
-        for field in ("designer", "line", "design_stage", "stage", "plot", "section", "construction"):
+        for field in ("designer", "line", "design_stage", "stage", "plot", "section", "construction", "address"):
             incoming = form.cleaned_data.get(field)
 
             if merged and not is_meaningful(incoming):
