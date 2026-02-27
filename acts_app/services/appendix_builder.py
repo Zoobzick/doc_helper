@@ -222,8 +222,8 @@ class AppendixBuilder:
 
                 # ✅ Склеиваем OTHER_QUALITY_DOC по одинаковому title
                 for pl in self._build_grouped_attachment_lines(
-                    attachments=other_quality_docs,
-                    default_title="Документ",
+                        attachments=other_quality_docs,
+                        default_title="Документ",
                 ):
                     lines_plan.append(pl)
 
@@ -453,10 +453,10 @@ class AppendixBuilder:
     # --------- grouping attachments (P-4) ----------
 
     def _build_grouped_attachment_lines(
-        self,
-        *,
-        attachments: list[ActAttachment],
-        default_title: str,
+            self,
+            *,
+            attachments: list[ActAttachment],
+            default_title: str,
     ) -> list[_PlannedLine]:
         """
         Склеиваем документы по одинаковому title:
@@ -466,13 +466,20 @@ class AppendixBuilder:
             return []
 
         grouped: dict[str, list[ActAttachment]] = {}
+        title_order: list[str] = []  # <-- порядок как добавляли (created_at/id)
+
         for att in attachments:
             title = (att.title or "").strip() or default_title
-            grouped.setdefault(title, []).append(att)
+            if title not in grouped:
+                grouped[title] = []
+                title_order.append(title)
+            grouped[title].append(att)
 
         out: list[_PlannedLine] = []
 
-        for title in sorted(grouped.keys()):
+        # было: for title in sorted(grouped.keys()):
+        for title in title_order:
+
             group = grouped[title]
 
             def _key(a: ActAttachment):
