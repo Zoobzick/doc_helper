@@ -54,7 +54,7 @@ class DesignStage(models.Model):
 
 
 class Stage(models.Model):
-    code = models.CharField(max_length=10, unique=True)
+    code = models.CharField(max_length=25, unique=True)
     full_name = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
 
@@ -68,7 +68,7 @@ class Stage(models.Model):
 
 
 class Plot(models.Model):
-    code = models.CharField(max_length=10, unique=True)
+    code = models.CharField(max_length=25, unique=True)
     full_name = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
 
