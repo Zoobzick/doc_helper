@@ -315,14 +315,43 @@ class ProjectUpdateView(PermissionRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        project = Project.objects.select_for_update().get(pk=self.object.pk)
+        # (original_project_id) — проект, который редактировали в форме (часто "черновик" после ZIP)
+        original_project_id = self.object.pk
+
+        # (project) — блокируем именно исходный объект, чтобы избежать гонок
+        project = Project.objects.select_for_update().get(pk=original_project_id)
 
         new_full_code = form.cleaned_data.get("full_code")
-        if new_full_code:
-            project = change_project_full_code(project, new_full_code)
 
+        # (merged) — флаг: произошёл ли merge в другой Project (существующий full_code)
+        merged = False
+
+        if new_full_code:
+            updated_project = change_project_full_code(project, new_full_code)
+            merged = (updated_project.pk != original_project_id)
+            project = updated_project
+
+        # ВАЖНО:
+        # если merged=True, то project теперь "старый" (target),
+        # а cleaned_data — от формы "нового" проекта (обычно пустая по справочникам),
+        # поэтому нельзя перетирать target пустыми значениями.
+        def is_meaningful(value) -> bool:
+            # (value) — значение из form.cleaned_data
+            if value is None:
+                return False
+            if isinstance(value, str) and not value.strip():
+                return False
+            return True
+
+        # поля, которые ты сейчас перетираешь (оставил твою логику)
         for field in ("designer", "line", "design_stage", "stage", "plot", "section", "construction"):
-            setattr(project, field, form.cleaned_data.get(field))
+            incoming = form.cleaned_data.get(field)
+
+            if merged and not is_meaningful(incoming):
+                # не трогаем уже заполненные поля у target
+                continue
+
+            setattr(project, field, incoming)
 
         project.save()
 
@@ -331,7 +360,6 @@ class ProjectUpdateView(PermissionRequiredMixin, UpdateView):
 
         messages.success(self.request, "Данные проекта сохранены")
         return redirect("projects:project_detail", pk=project.pk)
-
 
 class ProjectRevisionDeleteView(PermissionRequiredMixin, View):
     permission_required = "projects_app.view_project_detail_page"
