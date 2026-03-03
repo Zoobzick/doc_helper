@@ -14,8 +14,9 @@ class ApprovalForm(forms.ModelForm):
 
     class Meta:
         model = Approval
-        fields = ["project", "description", "file"]
+        fields = ["project", "construction", "description", "file"]
         widgets = {
+            "construction": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "file": forms.ClearableFileInput(attrs={"class": "form-control", "accept": "application/pdf"}),
         }

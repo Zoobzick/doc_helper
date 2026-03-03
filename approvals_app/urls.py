@@ -5,7 +5,7 @@ from .views import (
     ApprovalOpenPdfView,
     ApprovalDeleteView,
     ProjectSearchView,
-    ApprovalMarkDoneRedirectView,
+    ApprovalMarkDoneRedirectView, ApprovalUpdateView,
 )
 
 app_name = "approvals"
@@ -18,5 +18,7 @@ urlpatterns = [
 
     path("projects/search/", ProjectSearchView.as_view(), name="project_search"),
     path("<int:pk>/open/", ApprovalOpenPdfView.as_view(), name="open_pdf"),
+    path("<int:pk>/edit/", ApprovalUpdateView.as_view(), name="edit"),
+
     path("<int:pk>/delete/", ApprovalDeleteView.as_view(), name="delete"),
 ]
