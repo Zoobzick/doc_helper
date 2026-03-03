@@ -536,20 +536,95 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     context_object_name = "acts"
     paginate_by = 20
 
-    def get_queryset(self):
-        qs = Act.objects.prefetch_related("projects").order_by("-act_date", "number")
+    def _parse_any_date(self, raw: str):
+        """
+        raw (str) — значение из GET date_from/date_to
+        Поддерживает:
+        - YYYY-MM-DD (из input[type=date])
+        - DD.MM.YYYY (если пользователь руками)
+        """
+        d = _parse_iso_date(raw)
+        if d:
+            return d
+        return _parse_search_date(raw)
 
+    def _month_range_filter_q(self, d_from, d_to):
+        """
+        Возвращает Q-фильтр по (act_year, act_month) в диапазоне месяцев [from..to] включительно.
+        """
+        y1, m1 = int(d_from.year), int(d_from.month)
+        y2, m2 = int(d_to.year), int(d_to.month)
+
+        # если пользователь перепутал местами
+        if (y1, m1) > (y2, m2):
+            y1, m1, y2, m2 = y2, m2, y1, m1
+
+        # (act_year > y1 OR (act_year = y1 AND act_month >= m1))
+        left = Q(act_year__gt=y1) | (Q(act_year=y1) & Q(act_month__gte=m1))
+        # (act_year < y2 OR (act_year = y2 AND act_month <= m2))
+        right = Q(act_year__lt=y2) | (Q(act_year=y2) & Q(act_month__lte=m2))
+
+        return left & right
+
+    def get_queryset(self):
+        # 1) базовый queryset + сортировка по created_at (самые свежие)
+        qs = (
+            Act.objects
+            .prefetch_related("projects")
+            .order_by("-created_at", "-id")
+        )
+
+        # 2) фильтр по проекту (ПЕРВЫМ, как ты просил)
+        project_id = (self.request.GET.get("project") or "").strip()
+        if project_id.isdigit():
+            qs = qs.filter(projects__id=int(project_id)).distinct()
+
+        # 3) фильтр по периоду (по act_year/act_month, НЕ по act_date)
+        date_from_raw = (self.request.GET.get("date_from") or "").strip()
+        date_to_raw = (self.request.GET.get("date_to") or "").strip()
+
+        d_from = self._parse_any_date(date_from_raw) if date_from_raw else None
+        d_to = self._parse_any_date(date_to_raw) if date_to_raw else None
+
+        if d_from and d_to:
+            qs = qs.filter(self._month_range_filter_q(d_from, d_to))
+        elif d_from:
+            qs = qs.filter(
+                Q(act_year__gt=d_from.year) |
+                (Q(act_year=d_from.year) & Q(act_month__gte=d_from.month))
+            )
+        elif d_to:
+            qs = qs.filter(
+                Q(act_year__lt=d_to.year) |
+                (Q(act_year=d_to.year) & Q(act_month__lte=d_to.month))
+            )
+
+        # 4) статус (как было)
+        status = (self.request.GET.get("status") or "").strip()
+        if status in {ActStatus.DRAFT, ActStatus.FINAL}:
+            qs = qs.filter(status=status)
+
+        # 5) общий поиск по всем колонкам (ПОСЛЕДНИМ)
         q = (self.request.GET.get("q") or "").strip()
         if q:
-            filters = Q(number__icontains=q)
+            filters = Q()
 
+            # № акта
+            filters |= Q(number__icontains=q)
+
+            # работы
+            filters |= Q(work_name__icontains=q)
+
+            # если ввели дату — ищем совпадение по act_date (полезно как “точный поиск”)
             parsed_date = _parse_search_date(q)
             if parsed_date:
                 filters |= Q(act_date=parsed_date)
 
+            # если ввели год (2026)
             if q.isdigit() and len(q) == 4:
-                filters |= Q(act_date__year=int(q))
+                filters |= Q(act_year=int(q))
 
+            # проекты (как у тебя уже делалось)
             if Project is not None:
                 project_fields = {f.name for f in Project._meta.get_fields() if getattr(f, "concrete", False)}
 
@@ -563,16 +638,21 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
             qs = qs.filter(filters).distinct()
 
-        project_id = (self.request.GET.get("project") or "").strip()
-        if project_id.isdigit():
-            qs = qs.filter(projects__id=int(project_id)).distinct()
-
-        status = (self.request.GET.get("status") or "").strip()
-        if status in {ActStatus.DRAFT, ActStatus.FINAL}:
-            qs = qs.filter(status=status)
-
         return qs
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+
+        # чтобы select2 проекта сохранял выбранное значение
+        project_id = (self.request.GET.get("project") or "").strip()
+        selected = []
+        if project_id.isdigit() and Project is not None:
+            p = Project.objects.filter(id=int(project_id)).first()
+            if p:
+                selected = [{"id": p.id, "label": _project_label(p)}]
+
+        ctx["selected_projects"] = selected
+        return ctx
 
 class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     permission_required = "acts_app.view_act"
