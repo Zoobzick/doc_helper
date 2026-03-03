@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+
+  <div class="pagetitle">
+    <h1>Редактирование согласования</h1>
+    <nav>
+      <ol class="breadcrumb">
+        {% if approval.status == "DONE" %}
+          <li class="breadcrumb-item"><a href="{% url 'approvals:done' %}">Все согласования</a></li>
+          <li class="breadcrumb-item active">Редактирование</li>
+        {% else %}
+          <li class="breadcrumb-item"><a href="{% url 'approvals:pending' %}">На согласовании</a></li>
+          <li class="breadcrumb-item active">Редактирование</li>
+        {% endif %}
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section">
+    <div class="row">
+      <div class="col-12 col-lg-8">
+
+        <div class="card">
+          <div class="card-body">
+
+            <h5 class="card-title">Данные согласования</h5>
+
+            <form method="post" enctype="multipart/form-data" id="approvalForm">
+              {% csrf_token %}
+
+              <div class="row g-3">
+
+                <div class="col-12">
+                  <label class="form-label">{{ form.project.label }}</label>
+                  {{ form.project }}
+                  {% if form.project.errors %}
+                    <div class="text-danger small mt-1">{{ form.project.errors }}</div>
+                  {% endif %}
+                </div>
+
+                <div class="col-12">
+                  <label class="form-label">{{ form.construction.label }}</label>
+                  {{ form.construction }}
+                  {% if form.construction.errors %}
+                    <div class="text-danger small mt-1">{{ form.construction.errors }}</div>
+                  {% endif %}
+                </div>
+
+                <div class="col-12">
+                  <label class="form-label">{{ form.description.label }}</label>
+                  {{ form.description }}
+                  {% if form.description.errors %}
+                    <div class="text-danger small mt-1">{{ form.description.errors }}</div>
+                  {% endif %}
+                </div>
+
+                <div class="col-12">
+                  <h5 class="card-title mb-2">Файл согласования (PDF)</h5>
+
+                  <!-- ✅ DnD зона — по структуре/классам как passport_upload -->
+                  <div id="approvalDropZone"
+                       class="border border-2 border-secondary rounded-3 p-5 text-center"
+                       style="border-style:dashed; user-select:none; cursor:pointer;">
+                    <div class="fw-semibold">Перетащите сюда новый PDF</div>
+                    <div class="text-muted small">или кликните, чтобы выбрать</div>
+                  </div>
+
+                  <div id="uploadStatus" class="mt-3"></div>
+
+                  {% if form.file.errors %}
+                    <div class="text-danger small mt-2">{{ form.file.errors }}</div>
+                  {% endif %}
+
+                  <div class="form-text mt-2">
+                    Если файл не выбрать — останется текущий.
+                  </div>
+
+                  <!-- настоящий input file скрываем -->
+                  <div class="d-none">
+                    {{ form.file }}
+                  </div>
+                </div>
+
+              </div>
+
+              <hr class="my-4">
+
+              <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-success" type="submit" id="btnSave">
+                  <i class="bi bi-check2-circle me-1"></i> Сохранить
+                </button>
+
+                {% if approval.status == "DONE" %}
+                  <a class="btn btn-outline-secondary" href="{% url 'approvals:done' %}">Назад</a>
+                {% else %}
+                  <a class="btn btn-outline-secondary" href="{% url 'approvals:pending' %}">Назад</a>
+                {% endif %}
+
+                <button class="btn btn-outline-secondary" type="button" id="btnReset" disabled>
+                  Сбросить файл
+                </button>
+              </div>
+
+              <div class="mt-2 text-muted small" id="pickedInfo"></div>
+
+            </form>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- select2 как в листингах (если у тебя уже в base подключено — не мешает) -->
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+  <script>
+    (function () {
+      function bindDnD(dropEl) {
+        ["dragenter", "dragover", "dragleave", "drop"].forEach((evt) => {
+          dropEl.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }, false);
+        });
+        dropEl.addEventListener("dragover", () => dropEl.classList.add("bg-light"));
+        dropEl.addEventListener("dragleave", () => dropEl.classList.remove("bg-light"));
+        dropEl.addEventListener("drop", () => dropEl.classList.remove("bg-light"));
+      }
+
+      function isPdf(file) {
+        const name = file && file.name ? file.name.toLowerCase() : "";
+        return (file && file.type === "application/pdf") || name.endsWith(".pdf");
+      }
+
+      function setStatus(html) {
+        uploadStatus.innerHTML = html || "";
+      }
+
+      // form + input
+      const form = document.getElementById("approvalForm");
+      const dropZone = document.getElementById("approvalDropZone");
+      const uploadStatus = document.getElementById("uploadStatus");
+      const pickedInfo = document.getElementById("pickedInfo");
+      const btnReset = document.getElementById("btnReset");
+
+      const fileInput = form.querySelector('input[type="file"][name="file"]');
+
+      bindDnD(dropZone);
+
+      function resetPicked() {
+        fileInput.value = "";
+        btnReset.disabled = true;
+        pickedInfo.innerHTML = "";
+        setStatus('<div class="alert alert-secondary py-2 mb-0">Файл не выбран — будет использован текущий.</div>');
+      }
+
+      function handlePicked(file) {
+        if (!file) return resetPicked();
+
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        pickedInfo.innerHTML = `Выбран файл: <strong>${file.name}</strong> (${sizeMb} MB)`;
+        btnReset.disabled = false;
+
+        if (!isPdf(file)) {
+          setStatus('<div class="alert alert-danger py-2 mb-0">Нужен PDF файл (.pdf)</div>');
+          return;
+        }
+
+        setStatus('<div class="alert alert-success py-2 mb-0">Новый PDF выбран. После сохранения он заменит текущий.</div>');
+      }
+
+      function pickFileFromDnd(file) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        handlePicked(file);
+      }
+
+      dropZone.addEventListener("click", () => fileInput.click());
+
+      dropZone.addEventListener("drop", (e) => {
+        const f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) pickFileFromDnd(f);
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        const f = e.target.files && e.target.files[0];
+        handlePicked(f);
+      });
+
+      btnReset.addEventListener("click", resetPicked);
+
+      // init
+      resetPicked();
+
+      // select2 для проекта (если поле есть)
+      const $el = $('.js-project-select');
+      if ($el.length) {
+        $el.select2({
+          placeholder: '— Общее согласование (без проекта) —',
+          allowClear: true,
+          ajax: {
+            url: "{% url 'approvals:project_search' %}",
+            dataType: 'json',
+            delay: 250,
+            data: function (params) { return { q: params.term || "" }; },
+            processResults: function (data) { return data; }
+          }
+        });
+      }
+    })();
+  </script>
+
+{% endblock %}

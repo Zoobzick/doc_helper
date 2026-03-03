@@ -9,7 +9,6 @@
         </div>
     {% endblock breadcrumbs %}
 
-
     <section class="section">
         <div class="row">
             <div class="col-lg-12">
@@ -21,9 +20,9 @@
                             <h5 class="card-title mb-0">Согласованные</h5>
 
                             {% if perms.approvals_app.add_approvals_done %}
-                                <button class="btn btn-primary" data-bs-toggle="modal"
+                                <button class="btn btn-sm btn-success" data-bs-toggle="modal"
                                         data-bs-target="#addApprovalModal">
-                                    <i class="bi bi-plus-lg me-1"></i> Добавить согласование
+                                    <i class="bi bi-plus-circle me-1"></i> Добавить согласование
                                 </button>
                             {% endif %}
                         </div>
@@ -51,6 +50,7 @@
                                 <thead>
                                 <tr>
                                     <th class="text-nowrap">Проект</th>
+                                    <th class="text-nowrap">Сооружение</th>
                                     <th>Описание</th>
                                     <th class="text-nowrap text-center">Действие</th>
                                 </tr>
@@ -67,6 +67,8 @@
                                             {% endif %}
                                         </td>
 
+                                        <td>{{ a.construction|default:"—" }}</td>
+
                                         <td>{{ a.description|default:"—" }}</td>
 
                                         <td class="text-center text-nowrap">
@@ -76,6 +78,14 @@
                                                title="Открыть PDF">
                                                 <i class="bi bi-file-earmark-pdf-fill"></i>
                                             </a>
+
+                                            {% if perms.approvals_app.change_approval %}
+                                            <a class="btn btn-sm btn-outline-primary ms-1"
+                                               href="{% url 'approvals:edit' a.pk %}"
+                                               title="Редактировать">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            {% endif %}
 
                                             {% if perms.approvals_app.delete_approvals %}
                                                 <form method="post"
@@ -93,7 +103,7 @@
                                     </tr>
                                 {% empty %}
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted py-4">
+                                        <td colspan="4" class="text-center text-muted py-4">
                                             Ничего не найдено
                                         </td>
                                     </tr>
@@ -108,8 +118,7 @@
                                     {% if page_obj.has_previous %}
                                         <li class="page-item">
                                             <a class="page-link"
-                                               href="?page=
-                                                       {{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">←</a>
+                                               href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">←</a>
                                         </li>
                                     {% endif %}
 
@@ -120,8 +129,7 @@
                                     {% if page_obj.has_next %}
                                         <li class="page-item">
                                             <a class="page-link"
-                                               href="?page=
-                                                       {{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">→</a>
+                                               href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">→</a>
                                         </li>
                                     {% endif %}
                                 </ul>
@@ -135,7 +143,6 @@
         </div>
     </section>
 
-
     {% if perms.approvals_app.add_approvals_done %}
         <!-- Modal: Добавить согласование (DONE) -->
         <div class="modal fade" id="addApprovalModal" tabindex="-1" aria-hidden="true">
@@ -145,7 +152,6 @@
                     <form method="post" action="{% url 'approvals:done' %}" enctype="multipart/form-data">
                         {% csrf_token %}
 
-                        <!-- pending_id: если пришли с "На согласовании" -->
                         <input type="hidden" name="pending_id" value="{{ pending_id|default:'' }}">
 
                         <div class="modal-header">
@@ -161,6 +167,14 @@
                                 <small class="text-muted">Можно ввести “КЖ39” для быстрого поиска.</small>
                                 {% if form.project.errors %}
                                     <div class="text-danger small">{{ form.project.errors }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Сооружение (необязательно)</label>
+                                {{ form.construction }}
+                                {% if form.construction.errors %}
+                                    <div class="text-danger small">{{ form.construction.errors }}</div>
                                 {% endif %}
                             </div>
 
@@ -219,7 +233,6 @@
 
         <script>
             document.addEventListener("DOMContentLoaded", function () {
-                // Drag&Drop
                 const dz = document.getElementById("dropzone");
                 const fileInput = document.querySelector('input[type="file"][name="file"]');
                 const fileName = document.getElementById("fileName");
@@ -232,10 +245,7 @@
                 dz.addEventListener("click", () => fileInput.click());
                 fileInput.addEventListener("change", setFileName);
 
-                dz.addEventListener("dragover", (e) => {
-                    e.preventDefault();
-                    dz.classList.add("bg-light");
-                });
+                dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("bg-light"); });
                 dz.addEventListener("dragleave", () => dz.classList.remove("bg-light"));
                 dz.addEventListener("drop", (e) => {
                     e.preventDefault();
@@ -246,7 +256,6 @@
                     }
                 });
 
-                // Select2
                 const $el = $('.js-project-select');
                 $el.select2({
                     dropdownParent: $('#addApprovalModal'),
@@ -256,16 +265,11 @@
                         url: "{% url 'approvals:project_search' %}",
                         dataType: 'json',
                         delay: 250,
-                        data: function (params) {
-                            return {q: params.term || ""};
-                        },
-                        processResults: function (data) {
-                            return data;
-                        }
+                        data: function (params) { return {q: params.term || ""}; },
+                        processResults: function (data) { return data; }
                     }
                 });
 
-                // Проставить initial выбранный проект (если пришли со страницы pending)
                 const initialId = "{{ initial_project_id|default:'' }}";
                 const initialText = "{{ initial_project_text|default:'' }}";
                 if (initialId && initialText) {

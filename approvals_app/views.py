@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils.http import urlencode
 from django.views import View
 from django.views.generic import ListView
+from django.views.generic.edit import UpdateView
 
 from projects_app.models import Project
 from .forms import ApprovalForm
@@ -35,12 +36,6 @@ def _apply_search(qs, q: str):
     """
     qs (QuerySet[Approval]) — базовый queryset
     q (str) — строка из GET параметра q
-
-    Логика:
-    - всегда ищем по description (часть текста)
-    - если похоже на хвост шифра (КЖ39), то дополнительно ищем по project.full_code:
-        * iendswith: "...КЖ39" (самый точный кейс)
-        * icontains: "КЖ39" где угодно (на всякий)
     """
     q = (q or "").strip()
     if not q:
@@ -48,14 +43,11 @@ def _apply_search(qs, q: str):
 
     q_up = q.upper()
 
-    # базово: текстовое описание
-    cond = Q(description__icontains=q)
+    cond = Q(description__icontains=q) | Q(construction__icontains=q)
 
-    # если ввели что-то вроде "КЖ39"
     if TAIL_RE.match(q_up):
         cond |= Q(project__full_code__iendswith=q_up) | Q(project__full_code__icontains=q_up)
     else:
-        # если ввели произвольную строку — тоже полезно искать по full_code
         cond |= Q(project__full_code__icontains=q)
 
     return qs.filter(cond)
@@ -80,7 +72,6 @@ class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
             .select_related("project")
             .filter(status=Approval.Status.DONE)
         )
-
         q = self.request.GET.get("q") or ""
         return _apply_search(qs, q)
 
@@ -93,12 +84,15 @@ class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
         pending_id = self.request.GET.get("pending_id")
         project_id = self.request.GET.get("project_id")
         description = self.request.GET.get("description", "")
+        construction = self.request.GET.get("construction", "")
 
         if add and self.request.user.has_perm("approvals_app.add_approvals_done"):
             ctx["open_modal"] = True
 
         if description:
             form.initial["description"] = description
+        if construction:
+            form.initial["construction"] = construction
 
         ctx["initial_project_id"] = project_id
         ctx["initial_project_text"] = ""
@@ -114,6 +108,7 @@ class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
 
         ctx["can_add_done"] = self.request.user.has_perm("approvals_app.add_approvals_done")
         ctx["can_delete"] = self.request.user.has_perm("approvals_app.delete_approvals")
+        ctx["can_edit"] = self.request.user.has_perm("approvals_app.change_approval")
 
         return ctx
 
@@ -171,7 +166,6 @@ class ApprovalPendingListView(LoginRequiredMixin, PermissionRequiredMixin, ListV
             .select_related("project")
             .filter(status=Approval.Status.PENDING)
         )
-
         q = self.request.GET.get("q") or ""
         return _apply_search(qs, q)
 
@@ -181,6 +175,7 @@ class ApprovalPendingListView(LoginRequiredMixin, PermissionRequiredMixin, ListV
         ctx["can_add_pending"] = self.request.user.has_perm("approvals_app.add_approvals_pending")
         ctx["can_mark_done"] = self.request.user.has_perm("approvals_app.view_approvals_done_page")
         ctx["can_delete"] = self.request.user.has_perm("approvals_app.delete_approvals")
+        ctx["can_edit"] = self.request.user.has_perm("approvals_app.change_approval")
         return ctx
 
     def post(self, request, *args, **kwargs):
@@ -217,6 +212,8 @@ class ApprovalMarkDoneRedirectView(LoginRequiredMixin, PermissionRequiredMixin, 
             params["project_id"] = str(pending.project_id)
         if pending.description:
             params["description"] = pending.description
+        if pending.construction:
+            params["construction"] = pending.construction
 
         url = reverse("approvals:done")
         return redirect(f"{url}?{urlencode(params)}")
@@ -236,6 +233,48 @@ class ApprovalOpenPdfView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return FileResponse(approval.file, content_type="application/pdf")
         except FileNotFoundError:
             raise Http404("Файл согласования не найден на диске")
+
+
+# ---------- EDIT ----------
+
+class ApprovalUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    """
+    Редактирование согласования:
+    - project / construction / description
+    - замена PDF файла (старый файл удаляем из storage)
+    """
+    permission_required = "approvals_app.change_approval"
+    raise_exception = True
+    login_url = "/login/"
+
+    model = Approval
+    form_class = ApprovalForm
+    template_name = "approvals_app/approval_edit.html"
+    context_object_name = "approval"
+
+    def get_success_url(self):
+        if self.object.status == Approval.Status.DONE:
+            return reverse("approvals:done")
+        return reverse("approvals:pending")
+
+    def form_valid(self, form):
+        # (old_file_name) — путь старого файла (если пользователь загрузил новый)
+        old_file_name = ""
+        if "file" in form.changed_data and self.object.file and getattr(self.object.file, "name", ""):
+            old_file_name = self.object.file.name
+
+        resp = super().form_valid(form)
+
+        # Удаляем старый файл ПОСЛЕ успешного сохранения нового
+        if old_file_name and old_file_name != getattr(self.object.file, "name", ""):
+            try:
+                self.object.file.storage.delete(old_file_name)
+            except Exception:
+                # не падаем из-за мусора в storage
+                pass
+
+        messages.success(self.request, "Согласование обновлено")
+        return resp
 
 
 # ---------- DELETE ----------
@@ -263,23 +302,14 @@ class ProjectSearchView(LoginRequiredMixin, PermissionRequiredMixin, View):
     login_url = "/login/"
 
     def get(self, request):
-        # (q_raw) — что ввёл пользователь
         q_raw = (request.GET.get("q") or "").strip()
-        # (q) — для поиска (в БД используем icontains, поэтому upper не обязателен)
         q = q_raw
 
-        qs = Project.objects.all()
-
-        # Важно: full_code nullable => отсекаем NULL, чтобы сортировка/поиск были предсказуемыми
-        qs = qs.exclude(full_code__isnull=True)
+        qs = Project.objects.all().exclude(full_code__isnull=True)
 
         if q:
-            # ✅ Главное: ищем по full_code (часть строки)
             qs = qs.filter(full_code__icontains=q)
 
-        # ✅ Сортировка “от меньшего к большему” для кейса КЖ2:
-        # 1) короткие раньше (КЖ2 перед КЖ21)
-        # 2) затем по full_code (КЖ21, КЖ22, ...)
         qs = qs.annotate(_len=Length("full_code")).order_by("_len", "full_code")[:50]
 
         return JsonResponse({"results": [{"id": p.id, "text": p.full_code} for p in qs]})

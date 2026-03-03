@@ -18,8 +18,8 @@
               <h5 class="card-title mb-0">Согласования у проектировщика</h5>
 
               {% if perms.approvals_app.add_approvals_pending %}
-              <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addApprovalModal">
-                <i class="bi bi-plus-lg me-1"></i> Добавить
+              <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addApprovalModal">
+                <i class="bi bi-plus-circle me-1"></i> Добавить
               </button>
               {% endif %}
             </div>
@@ -46,6 +46,7 @@
                 <thead>
                   <tr>
                     <th class="text-nowrap">Шифр проекта</th>
+                    <th class="text-nowrap">Сооружение</th>
                     <th>Описание</th>
                     <th class="text-nowrap">Дата_создания</th>
                     <th class="text-nowrap text-center">Действие</th>
@@ -63,6 +64,8 @@
                       {% endif %}
                     </td>
 
+                    <td>{{ a.construction|default:"—" }}</td>
+
                     <td>{{ a.description|default:"—" }}</td>
 
                     <td class="text-nowrap">{{ a.created_at|date:"d.m.Y H:i" }}</td>
@@ -78,6 +81,14 @@
                       </a>
                       {% else %}
                       <span class="text-muted" title="Файл не прикреплён">—</span>
+                      {% endif %}
+
+                      {% if perms.approvals_app.change_approval %}
+                      <a class="btn btn-sm btn-outline-primary ms-1"
+                         href="{% url 'approvals:edit' a.pk %}"
+                         title="Редактировать">
+                        <i class="bi bi-pencil"></i>
+                      </a>
                       {% endif %}
 
                       {% if perms.approvals_app.view_approvals_done_page %}
@@ -108,7 +119,7 @@
                   </tr>
                   {% empty %}
                   <tr>
-                    <td colspan="4" class="text-center text-muted py-4">
+                    <td colspan="5" class="text-center text-muted py-4">
                       Ничего не найдено
                     </td>
                   </tr>
@@ -174,6 +185,14 @@
           </div>
 
           <div class="mb-3">
+            <label class="form-label">Сооружение (необязательно)</label>
+            {{ form.construction }}
+            {% if form.construction.errors %}
+              <div class="text-danger small">{{ form.construction.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
             <label class="form-label">Описание</label>
             {{ form.description }}
             {% if form.description.errors %}
@@ -182,7 +201,7 @@
           </div>
 
           <div class="mb-2">
-            <label class="form-label">PDF файл (необязательно)</label>
+            <label class="form-label">PDF файл</label>
 
             <div id="dropzone"
                  class="border rounded-2 p-3 text-center"
@@ -228,7 +247,6 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  // Drag&Drop
   const dz = document.getElementById("dropzone");
   const fileInput = document.querySelector('input[type="file"][name="file"]');
   const fileName = document.getElementById("fileName");
@@ -252,7 +270,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // Select2 search проектов
   const $el = $('.js-project-select');
   $el.select2({
     dropdownParent: $('#addApprovalModal'),

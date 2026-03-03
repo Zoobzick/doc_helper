@@ -3,13 +3,13 @@ from __future__ import annotations
 import os
 import re
 
+import uuid
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.utils import timezone
 
 from projects_app.models import Project
-
 
 # (approvals_storage) — корень хранения именно для approvals:
 # физически: <BASE_ID_DIR>/Согласования/...
@@ -62,6 +62,7 @@ class Approval(models.Model):
         DONE = "DONE", "Согласовано"
         PENDING = "PENDING", "На согласовании"
 
+    uuid = models.UUIDField("UUID", default=uuid.uuid4, editable=False, unique=True, db_index=True)
     project = models.ForeignKey(
         Project,
         on_delete=models.SET_NULL,
@@ -70,6 +71,8 @@ class Approval(models.Model):
         related_name="approvals",
         verbose_name="Проект",
     )
+
+    construction = models.CharField("Сооружение", max_length=255, blank=True, default="")
 
     description = models.TextField("Описание", blank=True)
 
