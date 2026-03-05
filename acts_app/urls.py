@@ -16,7 +16,8 @@ urlpatterns = [
     # загрузки
     path("<uuid:uuid>/docx/", views.ActDocxDownloadView.as_view(), name="act_docx_download"),
     path("<uuid:uuid>/pdf/", views.ActPdfPreviewView.as_view(), name="act_pdf_preview"),
-    path("<uuid:uuid>/registry-p3/", views.ActRegistryP3DocxDownloadView.as_view(), name="act_registry_p3_docx_download"),
+    path("<uuid:uuid>/registry-p3/", views.ActRegistryP3DocxDownloadView.as_view(),
+         name="act_registry_p3_docx_download"),
 
     # пересборка / финализация
     path("<uuid:uuid>/rebuild-appendix/", views.ActRebuildAppendixView.as_view(), name="act_rebuild_appendix"),
@@ -34,12 +35,20 @@ urlpatterns = [
 
     # parties (htmx)
     path("<uuid:uuid>/parties/", views.ActPartiesTableView.as_view(), name="act_parties_table"),
-    path("<uuid:uuid>/parties/preview-by-date/", views.ActPartiesPreviewByDateView.as_view(), name="act_parties_preview_by_date"),
+    path("<uuid:uuid>/parties/preview-by-date/", views.ActPartiesPreviewByDateView.as_view(),
+         name="act_parties_preview_by_date"),
     path("party/<uuid:party_uuid>/", views.ActPartyRowView.as_view(), name="act_party_row"),
-    path("party/<uuid:party_uuid>/toggle-enabled/", views.ActPartyToggleEnabledView.as_view(), name="act_party_toggle_enabled"),
-    path("party/<uuid:party_uuid>/set-organization/", views.ActPartySetOrganizationView.as_view(), name="act_party_set_organization"),
+    path("party/<uuid:party_uuid>/toggle-enabled/", views.ActPartyToggleEnabledView.as_view(),
+         name="act_party_toggle_enabled"),
+    path("party/<uuid:party_uuid>/set-organization/", views.ActPartySetOrganizationView.as_view(),
+         name="act_party_set_organization"),
     path("party/<uuid:party_uuid>/candidates/", views.ActPartyCandidatesView.as_view(), name="act_party_candidates"),
-    path("party/<uuid:party_uuid>/choose-authorization/", views.ActPartyChooseAuthorizationView.as_view(), name="act_party_choose_authorization"),
+    path("party/<uuid:party_uuid>/choose-authorization/", views.ActPartyChooseAuthorizationView.as_view(),
+         name="act_party_choose_authorization"),
     path("<uuid:uuid>/party/add-other/", views.ActPartyAddOtherView.as_view(), name="act_party_add_other"),
-    path("party/<uuid:party_uuid>/delete-other/", views.ActPartyDeleteOtherView.as_view(), name="act_party_delete_other"),
+    path("party/<uuid:party_uuid>/delete-other/", views.ActPartyDeleteOtherView.as_view(),
+         name="act_party_delete_other"),
+
+    # protocols
+    path("protocols/", views.ProtocolListView.as_view(), name="protocol_list"),
 ]

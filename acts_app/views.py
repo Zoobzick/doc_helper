@@ -29,7 +29,7 @@ from acts_app.models import (
     ActStatus,
     AttachmentType,
     ActParty,
-    ActApprovalItem,
+    ActApprovalItem, ActAttachment,
 )
 
 from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx
@@ -654,6 +654,7 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
         ctx["selected_projects"] = selected
         return ctx
 
+
 class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     permission_required = "acts_app.view_act"
     model = Act
@@ -913,6 +914,84 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
             ctx["resolved_parties"] = resolve_act_parties(act)
 
         ctx["pdf_preview_url"] = reverse("acts_app:act_pdf_preview", kwargs={"uuid": str(act.uuid)})
+        return ctx
+
+
+class ProtocolListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    permission_required = "acts_app.view_act"
+    model = ActAttachment
+    template_name = "acts_app/protocol_list.html"
+    context_object_name = "rows"
+    paginate_by = 50
+
+    SORT_MAP = {
+        "doc_no": "doc_no",
+        "doc_date": "doc_date",
+        "act_no": "act__number",
+    }
+
+    def get_queryset(self):
+        qs = (
+            ActAttachment.objects
+            .filter(is_protocol=True)  # протоколы
+            .select_related("act")
+            .prefetch_related("act__projects")
+        )
+
+        # --- фильтр по шифру проекта (project_id) ---
+        project_id = (self.request.GET.get("project") or "").strip()
+        if project_id.isdigit():
+            qs = qs.filter(act__projects__id=int(project_id)).distinct()
+
+        # --- поиск ---
+        q = (self.request.GET.get("q") or "").strip()
+        if q:
+            cond = (
+                    Q(doc_no__icontains=q) |
+                    Q(title__icontains=q) |
+                    Q(act__number__icontains=q)
+            )
+
+            # поиск по шифрам проектов (full_code/code/cipher/number — что есть)
+            if Project is not None:
+                project_fields = {f.name for f in Project._meta.get_fields() if getattr(f, "concrete", False)}
+                proj_q = Q()
+                for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
+                    if fname in project_fields:
+                        proj_q |= Q(**{f"act__projects__{fname}__icontains": q})
+                if proj_q:
+                    cond |= proj_q
+
+            # если ввели дату — ищем по doc_date
+            parsed = _parse_search_date(q) or _parse_iso_date(q)
+            if parsed:
+                cond |= Q(doc_date=parsed)
+
+            qs = qs.filter(cond).distinct()
+
+        # --- сортировка ---
+        sort = (self.request.GET.get("sort") or "doc_no").strip()
+        direction = (self.request.GET.get("dir") or "asc").strip()
+
+        order_field = self.SORT_MAP.get(sort, "doc_no")
+        if direction == "desc":
+            order_field = "-" + order_field
+
+        # стабильность
+        return qs.order_by(order_field, "id")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+
+        # список проектов для фильтра (если Project подключен)
+        ctx["projects_for_filter"] = []
+        if Project is not None:
+            ctx["projects_for_filter"] = list(Project.objects.order_by("full_code").only("id", "full_code"))
+
+        ctx["q"] = (self.request.GET.get("q") or "").strip()
+        ctx["project_selected"] = (self.request.GET.get("project") or "").strip()
+        ctx["sort"] = (self.request.GET.get("sort") or "doc_no").strip()
+        ctx["dir"] = (self.request.GET.get("dir") or "asc").strip()
         return ctx
 
 

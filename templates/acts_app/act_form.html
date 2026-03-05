@@ -254,7 +254,18 @@
                                         <td>
                                             <input type="number"
                                                    class="form-control form-control-sm"
-                                                   name="approval_sheets_{% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
+                                                   name="approval_sheets_
+
+
+
+
+
+
+
+
+
+
+                                                           {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
                                         </td>
@@ -506,20 +517,29 @@
 
                                         <td class="text-end">
                                             {% if forloop.first %}
+                                                {{ f.is_original.as_hidden }}
                                                 <span class="text-muted small"></span>
                                             {% else %}
+
+                                                {{ f.is_original }}
+
+                                                <button type="button"
+                                                        class="btn btn-sm js-att-original-btn me-1"
+                                                        data-manual="0"
+                                                        title="Оригинал / Копия">
+                                                    <i class="bi js-att-original-icon"></i>
+                                                </button>
                                                 {% if f.instance.pk %}
-                                                    <div class="form-check">
-                                                        {{ f.DELETE }}
-                                                        <label class="form-check-label small">Удалить</label>
-                                                    </div>
-                                                {% else %}
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-danger js-remove-row">
-                                                        <i class="bi bi-x-lg"></i>
-                                                    </button>
+                                                    <div style="display:none;">{{ f.DELETE }}</div>
                                                 {% endif %}
+
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-danger js-remove-row"
+                                                        title="Удалить">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
                                             {% endif %}
+
                                             {{ f.id }}
                                         </td>
                                     </tr>
@@ -541,9 +561,20 @@
                                 </td>
                                 <td>{{ attachment_formset.empty_form.sheets_count }}</td>
                                 <td class="text-end">
-                                    <button type="button" class="btn btn-sm btn-outline-danger js-remove-row">
-                                        <i class="bi bi-x-lg"></i>
+                                    {{ attachment_formset.empty_form.is_original }}
+
+                                    <button type="button"
+                                            class="btn btn-sm js-att-original-btn me-1"
+                                            data-manual="0"
+                                            title="Оригинал / Копия">
+                                        <i class="bi js-att-original-icon"></i>
                                     </button>
+
+                                    <button type="button" class="btn btn-sm btn-outline-danger js-remove-row"
+                                            title="Удалить">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+
                                     {{ attachment_formset.empty_form.id }}
                                 </td>
                             </tr>
@@ -996,6 +1027,95 @@
 
             window.__actsAddRow = addRow;
 
+// ---------- ORIGINAL / COPY (attachments) ----------
+            function isProtocolTitle(s) {
+                return String(s || "").toLowerCase().includes("протокол");
+            }
+
+            function parseBoolLike(v) {
+                const s = String(v || "").toLowerCase();
+                return (s === "true" || s === "1" || s === "on" || s === "yes");
+            }
+
+            function setMarkerVisible(row, visible) {
+                const btn = row.querySelector(".js-att-original-btn");
+                if (!btn) return;
+                btn.style.display = visible ? "" : "none";
+            }
+
+            function setOriginalUI(row, isOriginal) {
+                const btn = row.querySelector(".js-att-original-btn");
+                const hidden = row.querySelector("input.js-att-original");
+                const icon = row.querySelector(".js-att-original-icon");
+                if (!btn || !hidden || !icon) return;
+
+                hidden.value = isOriginal ? "True" : "False";
+
+                btn.classList.remove("btn-success", "btn-danger");
+                btn.classList.add(isOriginal ? "btn-success" : "btn-danger");
+
+                icon.classList.remove("bi-check-circle-fill", "bi-x-circle-fill");
+                icon.classList.add(isOriginal ? "bi-check-circle-fill" : "bi-x-circle-fill");
+            }
+
+            function initOriginalControls(row) {
+                if (!row || row.classList.contains("scheme-row")) return;
+
+                const title = row.querySelector('input[name$="-title"]');
+                const btn = row.querySelector(".js-att-original-btn");
+                const hidden = row.querySelector("input.js-att-original");
+                if (!btn || !hidden) return;
+
+                const isProt = isProtocolTitle(title?.value || "");
+
+                // НЕ протокол -> маркера нет вообще + is_original=False
+                if (!isProt) {
+                    setMarkerVisible(row, false);
+                    hidden.value = "False";
+                    return;
+                }
+
+                // протокол -> маркер есть
+                setMarkerVisible(row, true);
+
+                // если кнопку не трогали руками — дефолт ОРИГИНАЛ=True
+                if (btn.dataset.manual !== "1") {
+                    setOriginalUI(row, true);
+                } else {
+                    setOriginalUI(row, parseBoolLike(hidden.value));
+                }
+            }
+
+// toggle by click
+            document.addEventListener("click", function (e) {
+                const btn = e.target.closest(".js-att-original-btn");
+                if (!btn) return;
+
+                const row = btn.closest("tr.attachment-row");
+                if (!row) return;
+
+                btn.dataset.manual = "1";
+
+                const hidden = row.querySelector("input.js-att-original");
+                const cur = parseBoolLike(hidden ? hidden.value : "");
+                setOriginalUI(row, !cur);
+            });
+
+// show/hide by title input (до ручного клика)
+            document.addEventListener("input", function (e) {
+                const inp = e.target;
+                if (!inp || !inp.matches('input[name$="-title"]')) return;
+
+                const row = inp.closest("tr.attachment-row");
+                if (!row) return;
+
+                const btn = row.querySelector(".js-att-original-btn");
+                if (btn) btn.dataset.manual = "0"; // при правке текста снова авто-режим
+                initOriginalControls(row);
+            });
+
+            document.querySelectorAll("#attachments-table tbody tr.attachment-row").forEach(initOriginalControls);
+
 
             // ---------- REMOVE ROWS CORRECTLY (formsets) ----------
             function _isRowMarkedDeleted(row, prefix) {
@@ -1173,7 +1293,8 @@
                     return;
                 }
 
-                addRow("attachments-table", "attachment-empty-form", "att");
+                const newRow = addRow("attachments-table", "attachment-empty-form", "att");
+                if (newRow) initOriginalControls(newRow);
             });
 
             document.getElementById("act-form")?.addEventListener("submit", function (e) {

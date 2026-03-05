@@ -298,8 +298,8 @@ ActMaterialFormSet = inlineformset_factory(
 class ActAttachmentForm(forms.ModelForm):
     class Meta:
         model = ActAttachment
-        fields = ("title", "doc_no", "doc_date", "doc_date_to", "sheets_count", "file")
-        widgets = {"doc_date": iso_date_widget(), "doc_date_to": iso_date_widget()}
+        fields = ("title", "doc_no", "doc_date", "doc_date_to", "sheets_count", "file", "is_original")
+        widgets = {"doc_date": iso_date_widget(), "doc_date_to": iso_date_widget(), "is_original": forms.HiddenInput()}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -310,6 +310,13 @@ class ActAttachmentForm(forms.ModelForm):
             force_iso_date_field(self.fields["doc_date_to"])
 
         _bootstrapify(self)
+
+        if "title" in self.fields:
+            self.fields["title"].widget.attrs.setdefault("class", "")
+            self.fields["title"].widget.attrs["class"] += " js-att-title"
+        if "is_original" in self.fields:
+            self.fields["is_original"].widget.attrs.setdefault("class", "")
+            self.fields["is_original"].widget.attrs["class"] += " js-att-original"
 
     def clean(self):
         cleaned = super().clean()
