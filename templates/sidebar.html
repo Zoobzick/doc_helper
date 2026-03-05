@@ -36,35 +36,50 @@
             <!-- end Documents -->
             {# --- Акты (acts_app) --- #}
             {% if user.is_superuser or perms.acts_app.view_act or perms.acts_app.add_act %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#acts-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-file-earmark-text"></i>
-                        <span>Акты</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
+                {% with app=request.resolver_match.app_name rn=request.resolver_match.url_name %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'acts_app' %}{% else %}collapsed{% endif %}"
+                           data-bs-target="#acts-nav" data-bs-toggle="collapse" href="#">
+                            <i class="bi bi-file-earmark-text"></i>
+                            <span>Акты</span>
+                            <i class="bi bi-chevron-down ms-auto"></i>
+                        </a>
 
-                    <ul id="acts-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+                        <ul id="acts-nav"
+                            class="nav-content collapse {% if app == 'acts_app' %}show{% endif %}"
+                            data-bs-parent="#sidebar-nav">
 
-                        {% if user.is_superuser or perms.acts_app.view_act %}
-                            <li>
-                                <a href="{% url 'acts_app:act_list' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Все акты</span>
-                                </a>
-                            </li>
-                        {% endif %}
+                            {% if user.is_superuser or perms.acts_app.view_act %}
+                                <li>
+                                    <a href="{% url 'acts_app:act_list' %}"
+                                       class="{% if rn == 'act_list' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Все акты</span>
+                                    </a>
+                                </li>
 
-                        {% if user.is_superuser or perms.acts_app.add_act %}
-                            <li>
-                                <a href="{% url 'acts_app:act_create' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Создать акт</span>
-                                </a>
-                            </li>
-                        {% endif %}
+                                <li>
+                                    <a href="{% url 'acts_app:protocol_list' %}"
+                                       class="{% if rn == 'protocol_list' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Протоколы</span>
+                                    </a>
+                                </li>
+                            {% endif %}
 
-                    </ul>
-                </li>
+                            {% if user.is_superuser or perms.acts_app.add_act %}
+                                <li>
+                                    <a href="{% url 'acts_app:act_create' %}"
+                                       class="{% if rn == 'act_create' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Создать акт</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                        </ul>
+                    </li>
+                {% endwith %}
             {% endif %}
             {# --- end Акты --- #}
 
