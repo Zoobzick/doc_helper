@@ -341,15 +341,15 @@ class ActAttachment(models.Model):
     sheets_count = models.PositiveIntegerField("Листов", validators=[MinValueValidator(1)])
 
     file = models.FileField("Файл", upload_to=act_attachment_upload_to, blank=True, null=True)
-    is_protocol = models.BooleanField(
-        "Это протокол",
-        default=False,
-        db_index=True,
-    )
 
-    is_original = models.BooleanField(
-        "Оригинал документа",
-        default=True,
+    class OriginalState(models.IntegerChoices):
+        COPY = 0, "Копия"
+        ORIGINAL = 1, "Оригинал"
+        IGNORE = 2, "Не отслеживать"
+
+    original_state = models.PositiveSmallIntegerField(
+        choices=OriginalState.choices,
+        default=OriginalState.IGNORE,
         db_index=True,
     )
 
@@ -374,14 +374,6 @@ class ActAttachment(models.Model):
         return " ".join(parts)
 
     def save(self, *args, **kwargs):
-        title = (self.title or "").strip().lower()
-
-        if "протокол" in title:
-            self.is_protocol = True
-        else:
-            self.is_protocol = False
-            self.is_original = False
-
         super().save(*args, **kwargs)
 
 

@@ -265,6 +265,9 @@
 
 
 
+
+
+
                                                            {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
@@ -517,16 +520,16 @@
 
                                         <td class="text-end">
                                             {% if forloop.first %}
-                                                {{ f.is_original.as_hidden }}
+                                                {{ f.original_state }}
                                                 <span class="text-muted small"></span>
                                             {% else %}
 
-                                                {{ f.is_original }}
+                                                {{ f.original_state }}
 
                                                 <button type="button"
                                                         class="btn btn-sm js-att-original-btn me-1"
                                                         data-manual="0"
-                                                        title="Оригинал / Копия">
+                                                        title="Оригинал / Копия / Не отслеживать">
                                                     <i class="bi js-att-original-icon"></i>
                                                 </button>
                                                 {% if f.instance.pk %}
@@ -561,8 +564,7 @@
                                 </td>
                                 <td>{{ attachment_formset.empty_form.sheets_count }}</td>
                                 <td class="text-end">
-                                    {{ attachment_formset.empty_form.is_original }}
-
+                                    {{ attachment_formset.empty_form.original_state }}
                                     <button type="button"
                                             class="btn btn-sm js-att-original-btn me-1"
                                             data-manual="0"
@@ -1027,14 +1029,25 @@
 
             window.__actsAddRow = addRow;
 
-// ---------- ORIGINAL / COPY (attachments) ----------
+// ---------- ORIGINAL STATE (attachments): 3 состояния ----------
+            const ORIG = 1;   // Оригинал
+            const COPY = 0;   // Копия
+            const IGNORE = 2; // Не отслеживать (серый)
+
             function isProtocolTitle(s) {
                 return String(s || "").toLowerCase().includes("протокол");
             }
 
-            function parseBoolLike(v) {
-                const s = String(v || "").toLowerCase();
-                return (s === "true" || s === "1" || s === "on" || s === "yes");
+            function parseIntSafe(v, defVal) {
+                const n = parseInt(String(v ?? ""), 10);
+                return Number.isFinite(n) ? n : defVal;
+            }
+
+            function nextState(state) {
+                // Оригинал -> Копия -> Не отслеживать -> Оригинал
+                if (state === ORIG) return COPY;
+                if (state === COPY) return IGNORE;
+                return ORIG;
             }
 
             function setMarkerVisible(row, visible) {
@@ -1043,19 +1056,30 @@
                 btn.style.display = visible ? "" : "none";
             }
 
-            function setOriginalUI(row, isOriginal) {
+            function applyOriginalStateUI(row, state) {
                 const btn = row.querySelector(".js-att-original-btn");
-                const hidden = row.querySelector("input.js-att-original");
+                const hidden = row.querySelector("input.js-att-original-state");
                 const icon = row.querySelector(".js-att-original-icon");
                 if (!btn || !hidden || !icon) return;
 
-                hidden.value = isOriginal ? "True" : "False";
+                hidden.value = String(state);
 
-                btn.classList.remove("btn-success", "btn-danger");
-                btn.classList.add(isOriginal ? "btn-success" : "btn-danger");
+                btn.classList.remove("btn-success", "btn-danger", "btn-secondary");
+                icon.classList.remove("bi-check-circle-fill", "bi-x-circle-fill", "bi-dash-circle-fill");
 
-                icon.classList.remove("bi-check-circle-fill", "bi-x-circle-fill");
-                icon.classList.add(isOriginal ? "bi-check-circle-fill" : "bi-x-circle-fill");
+                if (state === ORIG) {
+                    btn.classList.add("btn-success");
+                    icon.classList.add("bi-check-circle-fill");
+                    btn.title = "Оригинал";
+                } else if (state === COPY) {
+                    btn.classList.add("btn-danger");
+                    icon.classList.add("bi-x-circle-fill");
+                    btn.title = "Копия";
+                } else {
+                    btn.classList.add("btn-secondary");
+                    icon.classList.add("bi-dash-circle-fill");
+                    btn.title = "Не отслеживать";
+                }
             }
 
             function initOriginalControls(row) {
@@ -1063,26 +1087,36 @@
 
                 const title = row.querySelector('input[name$="-title"]');
                 const btn = row.querySelector(".js-att-original-btn");
-                const hidden = row.querySelector("input.js-att-original");
+                const hidden = row.querySelector("input.js-att-original-state");
                 if (!btn || !hidden) return;
 
                 const isProt = isProtocolTitle(title?.value || "");
 
-                // НЕ протокол -> маркера нет вообще + is_original=False
+                // НЕ протокол -> маркера нет + ставим IGNORE
                 if (!isProt) {
                     setMarkerVisible(row, false);
-                    hidden.value = "False";
+                    applyOriginalStateUI(row, IGNORE);
                     return;
                 }
 
                 // протокол -> маркер есть
                 setMarkerVisible(row, true);
 
-                // если кнопку не трогали руками — дефолт ОРИГИНАЛ=True
+// если это существующая строка (есть id) — всегда показываем сохранённое значение из hidden
+                const idInput = row.querySelector('input[name$="-id"]');
+                const isExisting = !!((idInput?.value || "").trim());
+
+                if (isExisting) {
+                    btn.dataset.manual = "1"; // блокируем авто-дефолт
+                    applyOriginalStateUI(row, parseIntSafe(hidden.value, ORIG));
+                    return;
+                }
+
+// новая строка: если руками не трогали — дефолт ОРИГИНАЛ, иначе берём hidden
                 if (btn.dataset.manual !== "1") {
-                    setOriginalUI(row, true);
+                    applyOriginalStateUI(row, ORIG);
                 } else {
-                    setOriginalUI(row, parseBoolLike(hidden.value));
+                    applyOriginalStateUI(row, parseIntSafe(hidden.value, ORIG));
                 }
             }
 
@@ -1096,9 +1130,9 @@
 
                 btn.dataset.manual = "1";
 
-                const hidden = row.querySelector("input.js-att-original");
-                const cur = parseBoolLike(hidden ? hidden.value : "");
-                setOriginalUI(row, !cur);
+                const hidden = row.querySelector("input.js-att-original-state");
+                const cur = parseIntSafe(hidden?.value, ORIG);
+                applyOriginalStateUI(row, nextState(cur));
             });
 
 // show/hide by title input (до ручного клика)
@@ -1114,8 +1148,8 @@
                 initOriginalControls(row);
             });
 
+// init all
             document.querySelectorAll("#attachments-table tbody tr.attachment-row").forEach(initOriginalControls);
-
 
             // ---------- REMOVE ROWS CORRECTLY (formsets) ----------
             function _isRowMarkedDeleted(row, prefix) {

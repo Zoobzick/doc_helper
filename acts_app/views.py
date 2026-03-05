@@ -933,7 +933,7 @@ class ProtocolListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     def get_queryset(self):
         qs = (
             ActAttachment.objects
-            .filter(is_protocol=True)  # протоколы
+            .exclude(original_state=ActAttachment.OriginalState.IGNORE)  # всё кроме "Не отслеживать"
             .select_related("act")
             .prefetch_related("act__projects")
         )
