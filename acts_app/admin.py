@@ -26,9 +26,7 @@ class ActAdmin(admin.ModelAdmin):
     readonly_fields = ("uuid", "act_year", "act_month", "created_at", "updated_at")
 
     fieldsets = (
-        ("Основное", {
-            "fields": ("uuid", "number", "act_date", "status", "projects"),
-        }),
+        ("Основное", {"fields": ("uuid", "number", "act_date", "status", "projects")}),
         ("Работы", {
             "fields": (
                 "work_name",
@@ -39,12 +37,8 @@ class ActAdmin(admin.ModelAdmin):
                 "extra_info_text",
             )
         }),
-        ("Дополнительно", {
-            "fields": ("approvals", "copies_count", "sheets_total")
-        }),
-        ("Системные поля", {
-            "fields": ("act_year", "act_month", "created_at", "updated_at")
-        }),
+        ("Дополнительно", {"fields": ("approvals", "copies_count", "sheets_total")}),
+        ("Системные поля", {"fields": ("act_year", "act_month", "created_at", "updated_at")}),
     )
 
 
@@ -57,24 +51,21 @@ class ActAttachmentAdmin(admin.ModelAdmin):
         "doc_no",
         "doc_date",
         "type",
-        "is_protocol",
         "original_badge",
         "has_file",
         "created_at",
     )
-    list_filter = ("is_protocol", "is_original", "type", "created_at")
+    list_filter = ("original_state", "type", "created_at")
     search_fields = ("title", "doc_no", "act__number", "act__projects__full_code")
     ordering = ("-created_at", "-id")
     autocomplete_fields = ("act",)
     readonly_fields = ("uuid", "created_at")
-
     list_select_related = ("act",)
 
     actions = (
-        "action_mark_protocol",
-        "action_unmark_protocol",
         "action_mark_original",
         "action_mark_copy",
+        "action_mark_ignore",
     )
 
     def act_link(self, obj: ActAttachment):
@@ -89,26 +80,25 @@ class ActAttachmentAdmin(admin.ModelAdmin):
     has_file.short_description = "Файл"
 
     def original_badge(self, obj: ActAttachment):
-        if obj.is_original:
+        st = getattr(obj, "original_state", None)
+        if st == ActAttachment.OriginalState.ORIGINAL:
             return format_html("<span style='color:#198754;font-weight:600;'>Оригинал</span>")
-        return format_html("<span style='color:#dc3545;font-weight:600;'>Копия</span>")
-    original_badge.short_description = "Оригинал"
+        if st == ActAttachment.OriginalState.COPY:
+            return format_html("<span style='color:#dc3545;font-weight:600;'>Копия</span>")
+        return format_html("<span style='color:#6c757d;font-weight:600;'>Не отслеживать</span>")
+    original_badge.short_description = "Статус"
 
-    @admin.action(description="Пометить как протокол (is_protocol=True)")
-    def action_mark_protocol(self, request, queryset):
-        queryset.update(is_protocol=True)
-
-    @admin.action(description="Снять признак протокола (is_protocol=False)")
-    def action_unmark_protocol(self, request, queryset):
-        queryset.update(is_protocol=False)
-
-    @admin.action(description="Пометить как оригинал (is_original=True)")
+    @admin.action(description="Пометить как ОРИГИНАЛ")
     def action_mark_original(self, request, queryset):
-        queryset.update(is_original=True)
+        queryset.update(original_state=ActAttachment.OriginalState.ORIGINAL)
 
-    @admin.action(description="Пометить как копия (is_original=False)")
+    @admin.action(description="Пометить как КОПИЯ")
     def action_mark_copy(self, request, queryset):
-        queryset.update(is_original=False)
+        queryset.update(original_state=ActAttachment.OriginalState.COPY)
+
+    @admin.action(description="Не отслеживать (серый)")
+    def action_mark_ignore(self, request, queryset):
+        queryset.update(original_state=ActAttachment.OriginalState.IGNORE)
 
 
 @admin.register(ActMaterialItem)

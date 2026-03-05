@@ -21,7 +21,7 @@
             <div class="card-body pt-3">
 
                 <style>
-                    .protocols-filter-sticky{
+                    .protocols-filter-sticky {
                         position: sticky;
                         top: 70px;
                         z-index: 1020;
@@ -29,21 +29,41 @@
                         padding-top: .5rem;
                         padding-bottom: .5rem;
                     }
-                    .protocols-filter-card{
-                        border: 1px solid rgba(0,0,0,.08);
+
+                    .protocols-filter-card {
+                        border: 1px solid rgba(0, 0, 0, .08);
                         border-radius: .75rem;
                         padding: .75rem;
-                        box-shadow: 0 2px 10px rgba(0,0,0,.04);
+                        box-shadow: 0 2px 10px rgba(0, 0, 0, .04);
                     }
 
                     /* Фикс-таблица: важные колонки фиксированы, проекты — резина */
-                    .protocols-table { table-layout: fixed; width: 100%; }
+                    .protocols-table {
+                        table-layout: fixed;
+                        width: 100%;
+                    }
 
                     /* ВАЖНЫЕ колонки (всегда видны) */
-                    .p-col-docno    { width: 190px; }   /* № протокола */
-                    .p-col-date     { width: 130px; }   /* Дата */
-                    .p-col-act      { width: 260px; }   /* № акта */
-                    .p-col-original { width: 110px; }   /* Оригинал */
+                    .p-col-docno {
+                        width: 190px;
+                    }
+
+                    /* № протокола */
+                    .p-col-date {
+                        width: 130px;
+                    }
+
+                    /* Дата */
+                    .p-col-act {
+                        width: 260px;
+                    }
+
+                    /* № акта */
+                    .p-col-original {
+                        width: 110px;
+                    }
+
+                    /* Оригинал */
                     /* .p-col-project без width => остаток */
 
                     /* Заголовки кликабельны, но не выглядят как ссылки */
@@ -55,7 +75,11 @@
                         align-items: center;
                         gap: .35rem;
                     }
-                    .th-sort:hover { text-decoration: none; color: inherit; }
+
+                    .th-sort:hover {
+                        text-decoration: none;
+                        color: inherit;
+                    }
 
                     /* важные колонки всегда в одну строку */
                     .protocols-table th:nth-child(1),
@@ -89,7 +113,7 @@
                         display: inline-flex;
                         align-items: center;
                         max-width: 100%;
-                        border: 1px solid rgba(0,0,0,.12);
+                        border: 1px solid rgba(0, 0, 0, .12);
                         background: var(--bs-body-bg);
                         color: var(--bs-body-color);
                         text-decoration: none;
@@ -98,8 +122,9 @@
                         text-overflow: ellipsis;
                         white-space: nowrap;
                     }
+
                     .badge-project:hover {
-                        background: rgba(0,0,0,.03);
+                        background: rgba(0, 0, 0, .03);
                         text-decoration: none;
                         color: var(--bs-body-color);
                     }
@@ -136,7 +161,8 @@
                                 <select name="project" class="form-select">
                                     <option value="">Проект (все)</option>
                                     {% for p in projects_for_filter %}
-                                        <option value="{{ p.id }}" {% if project_selected == p.id|stringformat:"s" %}selected{% endif %}>
+                                        <option value="{{ p.id }}"
+                                                {% if project_selected == p.id|stringformat:"s" %}selected{% endif %}>
                                             {{ p.full_code }}
                                         </option>
                                     {% endfor %}
@@ -147,7 +173,8 @@
                                 <button class="btn btn-primary w-100" type="submit">
                                     <i class="bi bi-search me-1"></i>Найти
                                 </button>
-                                <a class="btn btn-outline-secondary" href="{% url 'acts_app:protocol_list' %}" title="Сброс">
+                                <a class="btn btn-outline-secondary" href="{% url 'acts_app:protocol_list' %}"
+                                   title="Сброс">
                                     <i class="bi bi-x-lg"></i>
                                 </a>
                             </div>
@@ -213,7 +240,8 @@
                                 </td>
 
                                 <td class="text-nowrap text-center">
-                                    {% if a.doc_date %}{{ a.doc_date|date:"d.m.Y" }}{% else %}<span class="text-muted">—</span>{% endif %}
+                                    {% if a.doc_date %}{{ a.doc_date|date:"d.m.Y" }}{% else %}
+                                        <span class="text-muted">—</span>{% endif %}
                                 </td>
 
                                 <td class="text-center text-nowrap">
@@ -229,7 +257,8 @@
                                             <div class="projects-stack">
                                                 {% for p in projs %}
                                                     <a class="badge badge-project rounded-pill px-2 py-1"
-                                                       href="?project={{ p.id }}&sort={{ sort|urlencode }}&dir={{ dir|urlencode }}{% if q %}&q={{ q|urlencode }}{% endif %}"
+                                                       href="?project={{ p.id }}&sort={{ sort|urlencode }}&dir=
+                                                               {{ dir|urlencode }}{% if q %}&q={{ q|urlencode }}{% endif %}"
                                                        title="{{ p.full_code }}">
                                                         {{ p.full_code }}
                                                     </a>
@@ -242,14 +271,18 @@
                                 </td>
 
                                 <td class="text-center">
-                                    {% if a.is_original %}
+                                    {% if a.original_state == 1 %}
                                         <span class="btn btn-sm btn-success icon-pill" title="Оригинал">
-                                            <i class="bi bi-check-circle-fill"></i>
-                                        </span>
-                                    {% else %}
+            <i class="bi bi-check-circle-fill"></i>
+        </span>
+                                    {% elif a.original_state == 0 %}
                                         <span class="btn btn-sm btn-danger icon-pill" title="Копия">
-                                            <i class="bi bi-x-circle-fill"></i>
-                                        </span>
+            <i class="bi bi-x-circle-fill"></i>
+        </span>
+                                    {% else %}
+                                        <span class="btn btn-sm btn-secondary icon-pill" title="Не отслеживать">
+            <i class="bi bi-dash-circle-fill"></i>
+        </span>
                                     {% endif %}
                                 </td>
                             </tr>
@@ -270,7 +303,8 @@
                             {% if page_obj.has_previous %}
                                 <li class="page-item">
                                     <a class="page-link"
-                                       href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if project_selected %}&project={{ project_selected|urlencode }}{% endif %}&sort={{ sort|urlencode }}&dir={{ dir|urlencode }}">
+                                       href="?page=
+                                               {{ page_obj.previous_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if project_selected %}&project={{ project_selected|urlencode }}{% endif %}&sort={{ sort|urlencode }}&dir={{ dir|urlencode }}">
                                         Назад
                                     </a>
                                 </li>
@@ -287,7 +321,8 @@
                             {% if page_obj.has_next %}
                                 <li class="page-item">
                                     <a class="page-link"
-                                       href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if project_selected %}&project={{ project_selected|urlencode }}{% endif %}&sort={{ sort|urlencode }}&dir={{ dir|urlencode }}">
+                                       href="?page=
+                                               {{ page_obj.next_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if project_selected %}&project={{ project_selected|urlencode }}{% endif %}&sort={{ sort|urlencode }}&dir={{ dir|urlencode }}">
                                         Вперёд
                                     </a>
                                 </li>
