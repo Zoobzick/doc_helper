@@ -39,7 +39,7 @@ class Act(models.Model):
     )
 
     number = models.CharField("№ Акта", max_length=64)
-    act_date = models.DateField("Дата акта", default=timezone.localdate)
+    act_date = models.DateField("Дата акта")
 
     work_name = models.CharField("Наименование работ", max_length=512)
 
@@ -97,7 +97,7 @@ class Act(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        d: date = self.act_date or timezone.localdate()
+        d: date = self.act_date
         self.act_year = int(d.year)
         self.act_month = int(d.month)
         super().save(*args, **kwargs)
