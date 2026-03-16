@@ -234,9 +234,9 @@
                                             <input type="hidden" name="approvals" value="{{ item.id }}">
 
                                             <div class="d-flex gap-2">
-                  <textarea class="form-control form-control-sm"
-                            name="approval_label_{% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
-                            rows="2">{{ item.label }}</textarea>
+                                          <textarea class="form-control form-control-sm"
+                                                    name="approval_label_{{ item.id }}"
+                                                    rows="2">{{ item.label }}</textarea>
 
                                                 <button type="button"
                                                         class="btn btn-outline-danger btn-sm js-approval-remove"
@@ -254,21 +254,7 @@
                                         <td>
                                             <input type="number"
                                                    class="form-control form-control-sm"
-                                                   name="approval_sheets_
-
-
-
-
-
-
-
-
-
-
-
-
-
-                                                           {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
+                                                   name="approval_sheets_{{ item.id }}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
                                         </td>

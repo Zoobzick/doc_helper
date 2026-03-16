@@ -1195,7 +1195,10 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         approval_items = [
             {
                 "id": item.approval_id,
-                "label": (item.label_override or _approval_auto_label(item.approval)),
+                "label": (
+                        (item.label_override or "").strip()
+                        or (getattr(item.approval, "description", "") or "").strip()
+                ),
                 "sheets": int(item.sheets_count or 1),
             }
             for item in act.approval_items.select_related("approval", "approval__project").order_by("position", "id")
