@@ -293,12 +293,24 @@ def _act_parties_context_for_date(act: Act, date_override) -> dict:
 
 
 def _approval_items_from_post(request: HttpRequest) -> list[dict]:
+    from approvals_app.models import Approval  # noqa: WPS433
+
+    ids = _parse_int_list_from_post(request, "approvals")
+    approvals_map = {
+        a.id: a
+        for a in Approval.objects.filter(id__in=ids).only("id", "description")
+    }
+
     items = []
-    for aid in _parse_int_list_from_post(request, "approvals"):
+    for aid in ids:
+        approval = approvals_map.get(aid)
+        fallback = (getattr(approval, "description", "") or "").strip()
+
         items.append(
             {
                 "id": int(aid),
                 "label": (request.POST.get(f"approval_label_{aid}", "") or "").strip(),
+                "fallback": fallback,
                 "sheets": int(request.POST.get(f"approval_sheets_{aid}", 1)),
             }
         )
@@ -1202,6 +1214,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                         (item.label_override or "").strip()
                         or (getattr(item.approval, "description", "") or "").strip()
                 ),
+                "fallback": (getattr(item.approval, "description", "") or "").strip(),
                 "sheets": int(item.sheets_count or 1),
             }
             for item in act.approval_items.select_related("approval", "approval__project").order_by("position", "id")

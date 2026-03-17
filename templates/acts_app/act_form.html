@@ -235,9 +235,10 @@
 
                                             <div class="d-flex gap-2">
                                                 <input type="text"
-                                                       class="form-control form-control-sm"
+                                                       class="form-control js-approval-label"
                                                        name="approval_label_{{ item.id }}"
-                                                       value="{{ item.label }}">
+                                                       value="{{ item.label }}"
+                                                       data-fallback="{{ item.fallback|default:'' }}">
 
                                                 <button type="button"
                                                         class="btn btn-outline-danger btn-sm js-approval-remove"
@@ -249,7 +250,7 @@
 
                                         <td>
                                             <input type="number"
-                                                   class="form-control form-control-sm"
+                                                   class="form-control"
                                                    name="approval_sheets_{{ item.id }}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
@@ -1602,20 +1603,22 @@
   <td>
     <input type="hidden" name="approvals" value="">
     <div class="d-flex gap-2">
-      <input type="text" class="form-control form-control-sm">
+      <input type="text" class="form-control js-approval-label">
       <button type="button" class="btn btn-outline-danger btn-sm js-approval-remove" title="Удалить">
         <i class="bi bi-trash"></i>
       </button>
     </div>
-    <div class="form-text">Можно переписать текст — так он и будет отображаться в приложении.</div>
   </td>
   <td>
-    <input type="number" class="form-control form-control-sm" min="1" value="1">
+    <input type="number" class="form-control" min="1" value="1">
   </td>
 `;
                 tr.querySelector('input[name="approvals"]').value = String(id);
-                tr.querySelector('input[type="text"]').name = "approval_label_" + String(id);
-                tr.querySelector('input[type="text"]').value = label || "";
+                const labelInput = tr.querySelector('input[type="text"]');
+                labelInput.name = "approval_label_" + String(id);
+                labelInput.value = label || "";
+                labelInput.dataset.fallback = label || "";
+
                 tr.querySelector('input[type="number"]').name = "approval_sheets_" + String(id);
 
                 tbody.appendChild(tr);
@@ -1644,37 +1647,37 @@
                     lengthChange: false,
                     ajax: {url: "{% url 'acts_app:approvals_datatable' %}", type: "GET"},
                     columns: [
-{
-    data: "project",
-    render: function (data, type, row) {
-        const text = data || "—";
-        const safe = (s) => $('<div>').text(s || '').html();
+                        {
+                            data: "project",
+                            render: function (data, type, row) {
+                                const text = data || "—";
+                                const safe = (s) => $('<div>').text(s || '').html();
 
-        if (type !== "display") {
-            return text;
-        }
+                                if (type !== "display") {
+                                    return text;
+                                }
 
-        return `<span style="display:block; min-width:240px; white-space:normal; word-break:break-word;">
+                                return `<span style="display:block; min-width:240px; white-space:normal; word-break:break-word;">
                     ${safe(text)}
                 </span>`;
-    }
-},                        {data: "construction"},
-{
-    data: "description",
-    render: function (data, type, row) {
-        const text = data || "—";
-        const safe = (s) => $('<div>').text(s || '').html();
+                            }
+                        }, {data: "construction"},
+                        {
+                            data: "description",
+                            render: function (data, type, row) {
+                                const text = data || "—";
+                                const safe = (s) => $('<div>').text(s || '').html();
 
-        if (type !== "display") {
-            return text;
-        }
+                                if (type !== "display") {
+                                    return text;
+                                }
 
-        return `<span title="${safe(row.description_full || text)}"
+                                return `<span title="${safe(row.description_full || text)}"
                       style="display:block; max-width:420px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                     ${safe(text)}
                 </span>`;
-    }
-},                        {
+                            }
+                        }, {
                             data: null,
                             orderable: false,
                             searchable: false,
@@ -1684,7 +1687,7 @@
 
                                 return `
                 <button type="button"
-                        class="btn btn-sm btn-primary js-add-approval"
+                        class="btn btn-sm btn-primary js-approval-add"
                         data-id="${row.id}"
                         data-desc="${safe(row.description_full)}"
                         ${disabled}>
@@ -1798,7 +1801,7 @@
 
                 // СОГЛАСОВАНИЯ (из БД) — делаем “зелёное как заполненное”
                 document.querySelectorAll('#approvalsTable tbody tr[data-approval-id]').forEach((row) => {
-                    const ta = row.querySelector("textarea");
+                    const ta = row.querySelector('textarea, input[type="text"]');
                     const sheets = row.querySelector('input[type="number"]');
                     if (ta) setState(ta, "input-valid");
                     if (sheets) setState(sheets, "input-valid");
@@ -1813,6 +1816,36 @@
                 else setState(input, "input-required");
             }
 
+            function updateApprovalPlaceholder(input) {
+                if (!input) return;
+
+                const fallback = input.dataset.fallback || "";
+
+                if (!String(input.value || "").trim()) {
+                    input.placeholder = fallback;
+                } else {
+                    input.placeholder = "";
+                }
+            }
+
+            function updateApprovalRow(row) {
+                if (!row) return;
+
+                const label = row.querySelector('.js-approval-label');
+                const sheets = row.querySelector('input[type="number"]');
+
+                if (label) {
+                    if (isFilled(label)) setState(label, "input-valid");
+                    else setState(label, "input-required");
+
+                    updateApprovalPlaceholder(label);
+                }
+
+                if (sheets) {
+                    if (isFilled(sheets)) setState(sheets, "input-valid");
+                    else setState(sheets, "input-required");
+                }
+            }
 
             function updateMaterialRow(row) {
                 if (!row) return;
@@ -1924,6 +1957,7 @@
                 document.querySelectorAll(".js-required").forEach(updateSimpleRequired);
                 document.querySelectorAll('#materials-table tbody tr.material-row').forEach(updateMaterialRow);
                 document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach(updateAttachmentRow);
+                document.querySelectorAll('#approvalsTable tbody tr[data-approval-id]').forEach(updateApprovalRow);
             }
 
             // init
@@ -1941,8 +1975,10 @@
 
                 const attRow = el.closest && el.closest('#attachments-table tr.attachment-row');
                 if (attRow) updateAttachmentRow(attRow);
-            });
 
+                const approvalRow = el.closest && el.closest('#approvalsTable tr[data-approval-id]');
+                if (approvalRow) updateApprovalRow(approvalRow);
+            });
             document.addEventListener("change", function (e) {
                 const el = e.target;
                 if (!el) return;
@@ -1952,8 +1988,10 @@
 
                 const attRow = el.closest && el.closest('#attachments-table tr.attachment-row');
                 if (attRow) updateAttachmentRow(attRow);
-            });
 
+                const approvalRow = el.closest && el.closest('#approvalsTable tr[data-approval-id]');
+                if (approvalRow) updateApprovalRow(approvalRow);
+            });
             document.getElementById("act-form")?.addEventListener("submit", function () {
                 document.querySelectorAll(".is-invalid, .soft-invalid").forEach(function (el) {
                     el.classList.remove("input-required", "input-valid");
@@ -1962,7 +2000,7 @@
             });
 
             document.addEventListener("click", function (e) {
-                const btn = e.target.closest("#add-material, #add-material-from-db, #add-attachment, #btnPickPassports");
+                const btn = e.target.closest("#add-material, #add-material-from-db, #add-attachment, #btnPickPassports, .js-approval-add");
                 if (!btn) return;
                 setTimeout(refreshAll, 0);
             });
