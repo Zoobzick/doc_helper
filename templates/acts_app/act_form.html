@@ -38,7 +38,7 @@
     </div>
 
     <section class="section">
-        <form method="post" enctype="multipart/form-data" id="act-form">
+        <form method="post" enctype="multipart/form-data" id="act-form" novalidate>
             {% csrf_token %}
 
             {% if projects_form.non_field_errors %}
@@ -721,18 +721,6 @@
     <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
 
-    <style>
-        .soft-invalid {
-            box-shadow: 0 0 0 .2rem rgba(220, 53, 69, .15);
-            border-color: rgba(220, 53, 69, .6);
-        }
-
-        .soft-hint {
-            color: #dc3545;
-            font-size: .85rem;
-            margin-top: .25rem;
-        }
-    </style>
 
     <style>
         /* чипы выбранных проектов */
@@ -1232,99 +1220,16 @@
                 }
             });
 
-            // ---------- SOFT VALIDATION (attachments) ----------
-            function isRowHiddenOrDeleted(row) {
-                if (!row) return true;
-                if (row.style.display === "none") return true;
-                const delCb = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
-                return !!(delCb && delCb.checked);
-            }
-
-            function softMarkInvalid(input, message) {
-                if (!input) return;
-                input.classList.add("soft-invalid");
-                let hint = input.closest("td")?.querySelector(".soft-hint");
-                if (!hint) {
-                    hint = document.createElement("div");
-                    hint.className = "soft-hint";
-                    input.closest("td")?.appendChild(hint);
-                }
-                hint.textContent = message;
-            }
-
-            function softClearInvalid(input) {
-                if (!input) return;
-                input.classList.remove("soft-invalid");
-                const hint = input.closest("td")?.querySelector(".soft-hint");
-                if (hint) hint.remove();
-            }
-
-            function validateAttachmentRow(row) {
-                if (!row || row.classList.contains("scheme-row")) return true;
-                if (isRowHiddenOrDeleted(row)) return true;
-
-                const title = row.querySelector('input[name$="-title"], textarea[name$="-title"], select[name$="-title"]');
-                const date = row.querySelector('input[name$="-doc_date"]');
-
-                const titleVal = (title?.value || "").trim();
-                const dateVal = (date?.value || "").trim();
-
-                let ok = true;
-                softClearInvalid(title);
-                softClearInvalid(date);
-
-                if (!titleVal) {
-                    softMarkInvalid(title, "Укажи наименование документа");
-                    ok = false;
-                }
-                if (!dateVal) {
-                    softMarkInvalid(date, "Укажи дату документа");
-                    ok = false;
-                }
-
-                return ok;
-            }
-
-            document.addEventListener("input", (e) => {
-                if (!(e.target instanceof HTMLElement)) return;
-                if (e.target.matches('input[name$="-title"], input[name$="-doc_date"]')) softClearInvalid(e.target);
-            });
-            document.addEventListener("change", (e) => {
-                if (!(e.target instanceof HTMLElement)) return;
-                if (e.target.matches('input[name$="-title"], input[name$="-doc_date"]')) softClearInvalid(e.target);
-            });
 
             document.getElementById("add-material")?.addEventListener("click", function () {
                 addRow("materials-table", "material-empty-form", "mat");
             });
 
             document.getElementById("add-attachment")?.addEventListener("click", function () {
-                const tbody = document.querySelector("#attachments-table tbody");
-                const rows = Array.from(tbody?.querySelectorAll("tr.attachment-row") || [])
-                    .filter(r => !r.classList.contains("scheme-row") && !isRowHiddenOrDeleted(r));
-                const last = rows.length ? rows[rows.length - 1] : null;
-
-                if (last && !validateAttachmentRow(last)) {
-                    last.querySelector('input[name$="-title"]')?.focus();
-                    return;
-                }
-
                 const newRow = addRow("attachments-table", "attachment-empty-form", "att");
                 if (newRow) initOriginalControls(newRow);
             });
 
-            document.getElementById("act-form")?.addEventListener("submit", function (e) {
-                const rows = Array.from(document.querySelectorAll("#attachments-table tbody tr.attachment-row"))
-                    .filter(r => !r.classList.contains("scheme-row") && !isRowHiddenOrDeleted(r));
-
-                let ok = true;
-                for (const r of rows) if (!validateAttachmentRow(r)) ok = false;
-
-                if (!ok) {
-                    e.preventDefault();
-                    document.getElementById("attachments-table")?.scrollIntoView({behavior: "smooth", block: "center"});
-                }
-            });
 
             // ---------- PASSPORT MODAL (DataTables MULTISELECT, PERSISTED) ----------
             const modalEl = document.getElementById("passportModal");
@@ -1725,26 +1630,26 @@
     </script>
     <script>
         (function () {
-            // ---------- helpers ----------
+            let formWasSubmitted = false;
+
             function isFilled(input) {
                 if (!input) return false;
 
-                // file input
-                if (input.type === "file") return (input.files && input.files.length > 0);
-
+                if (input.type === "file") return !!(input.files && input.files.length);
                 if (input.type === "checkbox") return input.checked;
-                return (input.value || "").trim() !== "";
+
+                return String(input.value || "").trim() !== "";
+            }
+
+            function clearState(input) {
+                if (!input) return;
+                input.classList.remove("input-required", "input-valid", "input-error");
             }
 
             function setState(input, state) {
                 if (!input) return;
-                input.classList.remove("input-required", "input-valid", "input-error");
+                clearState(input);
                 if (state) input.classList.add(state);
-            }
-
-            function markRequired(input) {
-                if (!input) return;
-                input.classList.add("js-required");
             }
 
             function setDisabled(input, disabled) {
@@ -1758,100 +1663,110 @@
                 input.classList.toggle("is-strike", !!strike);
             }
 
-            // ---------- 1) tag required fields (by selectors) ----------
-            function tagRequiredFields() {
-                // ОСНОВНОЕ (твои required)
-                [
-                    "#id_number",
-                    "#id_act_date",
-                    "#id_work_start_date",
-                    "#id_work_end_date",
-                    "#id_allow_next_works_text",
-                    "#id_work_name",
-                ].forEach((sel) => markRequired(document.querySelector(sel)));
+            function isDeletedRow(row, prefix) {
+                if (!row) return true;
+                if (row.style.display === "none") return true;
 
-                // МАТЕРИАЛЫ: помечаем все "кандидаты", а логику required решаем по row (паспорт/ручной)
-                document.querySelectorAll('#materials-table tbody tr.material-row').forEach((row) => {
-                    markRequired(row.querySelector('input[name$="-manual_name"]'));
-                    markRequired(row.querySelector('input[name$="-manual_doc_name"]'));
-                    markRequired(row.querySelector('input[name$="-manual_doc_no"]'));
-                    markRequired(row.querySelector('input[name$="-manual_doc_date"]'));
-                    markRequired(row.querySelector('input[name$="-manual_doc_date_text"]'));
-                    markRequired(row.querySelector('input[name$="-sheets_count"]'));
-                    markRequired(row.querySelector('input[name$="-concrete_volume_m3"]'));
-                });
+                const delCb = row.querySelector(`input[type="checkbox"][name^="${prefix}-"][name$="-DELETE"]`);
+                if (delCb && delCb.checked) return true;
 
-                // ДОКУМЕНТЫ
-                document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach((row) => {
-                    const isScheme = row.classList.contains("scheme-row");
+                const anyNamed = row.querySelector(`[name^="${prefix}-"][name*="-"]`);
+                if (!anyNamed) return false;
 
-                    if (isScheme) {
-                        // только дата+листы
-                        markRequired(row.querySelector('input[name$="-doc_date"]'));
-                        markRequired(row.querySelector('input[name$="-sheets_count"]'));
-                        return;
-                    }
+                const m = anyNamed.getAttribute("name")?.match(new RegExp(`^${prefix}-(\\d+)-`));
+                if (!m) return false;
 
-                    // остальные документы — всё кроме doc_date_to
-                    markRequired(row.querySelector('input[name$="-title"]'));
-                    markRequired(row.querySelector('input[name$="-doc_no"]'));
-                    markRequired(row.querySelector('input[name$="-doc_date"]'));
-                    markRequired(row.querySelector('input[name$="-sheets_count"]'));
-                });
-
-                // СОГЛАСОВАНИЯ (из БД) — делаем “зелёное как заполненное”
-                document.querySelectorAll('#approvalsTable tbody tr[data-approval-id]').forEach((row) => {
-                    const ta = row.querySelector('textarea, input[type="text"]');
-                    const sheets = row.querySelector('input[type="number"]');
-                    if (ta) setState(ta, "input-valid");
-                    if (sheets) setState(sheets, "input-valid");
-                });
+                const idx = m[1];
+                const hiddenName = `${prefix}-${idx}-DELETE`;
+                const hidden = row.querySelector(`input[type="hidden"][name="${hiddenName}"]`);
+                return !!(hidden && String(hidden.value || "").toLowerCase() === "on");
             }
 
-            // ---------- 2) update states ----------
-            function updateSimpleRequired(input) {
-                if (!input || !input.classList.contains("js-required")) return;
+            function applyRequiredState(input, required) {
+                if (!input) return;
+
+                if (input.disabled) {
+                    clearState(input);
+                    return;
+                }
+
+                if (!required) {
+                    if (isFilled(input)) setState(input, "input-valid");
+                    else clearState(input);
+                    return;
+                }
+
+                if (isFilled(input)) {
+                    setState(input, "input-valid");
+                } else {
+                    setState(input, formWasSubmitted ? "input-error" : "input-required");
+                }
+            }
+
+            function applyOptionalBlueGreenState(input) {
+                if (!input) return;
 
                 if (isFilled(input)) setState(input, "input-valid");
                 else setState(input, "input-required");
             }
 
+            function markServerInvalids() {
+                document.querySelectorAll(".invalid-feedback.d-block").forEach(function (err) {
+                    const wrap = err.closest("td, .col-12, .col-6, .col-lg-3, .col-lg-6, .mb-2, .mb-3");
+                    if (!wrap) return;
+
+                    const input = wrap.querySelector('input:not([type="hidden"]), textarea, select');
+                    if (!input) return;
+
+                    input.classList.remove("input-required", "input-valid");
+                    input.classList.add("input-error");
+                });
+
+                document.querySelectorAll(".is-invalid").forEach(function (input) {
+                    input.classList.remove("input-required", "input-valid");
+                    input.classList.add("input-error");
+                });
+            }
+
+            function updateMainFields() {
+                applyRequiredState(document.querySelector("#id_number"), true);
+                applyRequiredState(document.querySelector("#id_act_date"), true);
+                applyRequiredState(document.querySelector("#id_work_name"), true);
+                applyRequiredState(document.querySelector("#id_work_start_date"), true);
+                applyRequiredState(document.querySelector("#id_work_end_date"), true);
+
+                // некритичное поле: только синий/зелёный
+                applyOptionalBlueGreenState(document.querySelector("#id_allow_next_works_text"));
+            }
+
             function updateApprovalPlaceholder(input) {
                 if (!input) return;
-
                 const fallback = input.dataset.fallback || "";
-
-                if (!String(input.value || "").trim()) {
-                    input.placeholder = fallback;
-                } else {
-                    input.placeholder = "";
-                }
+                input.placeholder = isFilled(input) ? "" : fallback;
             }
 
             function updateApprovalRow(row) {
-                if (!row) return;
+                if (!row || isDeletedRow(row, "approval")) return;
 
-                const label = row.querySelector('.js-approval-label');
+                const label = row.querySelector(".js-approval-label");
                 const sheets = row.querySelector('input[type="number"]');
 
-                if (label) {
-                    if (isFilled(label)) setState(label, "input-valid");
-                    else setState(label, "input-required");
+                applyRequiredState(label, true);
+                applyRequiredState(sheets, true);
+                updateApprovalPlaceholder(label);
+            }
 
-                    updateApprovalPlaceholder(label);
-                }
-
-                if (sheets) {
-                    if (isFilled(sheets)) setState(sheets, "input-valid");
-                    else setState(sheets, "input-required");
-                }
+            function isConcreteOrMortar(materialName) {
+                const s = String(materialName || "").trim().toLowerCase();
+                if (!s) return false;
+                return s.includes("бетон") || s.includes("бетонн") || s.includes("раствор");
             }
 
             function updateMaterialRow(row) {
-                if (!row) return;
+                if (!row || isDeletedRow(row, "mat")) return;
 
                 const passport = row.querySelector('input[type="hidden"][id$="-passport"]');
-                const hasPassport = (passport && (passport.value || "").trim() !== "");
+                const hasPassport = !!(passport && String(passport.value || "").trim());
 
                 const name = row.querySelector('input[name$="-manual_name"]');
                 const docName = row.querySelector('input[name$="-manual_doc_name"]');
@@ -1859,150 +1774,180 @@
                 const date = row.querySelector('input[name$="-manual_doc_date"]');
                 const dateText = row.querySelector('input[name$="-manual_doc_date_text"]');
                 const sheets = row.querySelector('input[name$="-sheets_count"]');
-                const v = row.querySelector('input[name$="-concrete_volume_m3"]');
+                const volume = row.querySelector('input[name$="-concrete_volume_m3"]');
                 const dupBtn = row.querySelector(".js-duplicate-material");
+
                 if (dupBtn) dupBtn.style.display = hasPassport ? "none" : "";
 
-
-                function isConcreteOrMortar(materialName) {
-                    const s = (materialName || "").trim().toLowerCase();
-                    if (!s) return false;
-                    return (s.includes("бетон") || s.includes("бетонн") || s.includes("раствор"));
-                }
-
-                // 1) Паспорт из БД: V всегда запрещён
                 if (hasPassport) {
-                    if (v) {
-                        v.value = "";
-                        setDisabled(v, true);
-                        setStrike(v, true);
-                        v.classList.remove("input-required", "input-error");
-                        setState(v, "input-valid");
+                    [name, docName, docNo, date, dateText].forEach(function (el) {
+                        setDisabled(el, false);
+                        setStrike(el, false);
+                        setState(el, "input-valid");
+                    });
+
+                    if (volume) {
+                        volume.value = "";
+                        setDisabled(volume, true);
+                        setStrike(volume, true);
+                        setState(volume, "input-valid");
                     }
-                    [name, docName, docNo, date, dateText, sheets].forEach((el) => setState(el, "input-valid"));
+
+                    applyRequiredState(sheets, true);
                     return;
                 }
 
-                // 2) Ручной ввод: V включаем ТОЛЬКО если бетон/раствор, иначе блокируем
-                const needV = isConcreteOrMortar(name?.value || "");
+                [name, docName, docNo, sheets].forEach(function (el) {
+                    setDisabled(el, false);
+                    setStrike(el, false);
+                    applyRequiredState(el, true);
+                });
 
-                if (v) {
-                    setStrike(v, false); // для ручных не перечёркиваем
+                const needVolume = isConcreteOrMortar(name?.value || "");
 
-                    if (!needV) {
-                        v.value = "";
-                        setDisabled(v, true);
-                        v.classList.remove("input-required", "input-valid", "input-error");
+                if (volume) {
+                    setStrike(volume, false);
+
+                    if (needVolume) {
+                        setDisabled(volume, false);
+                        applyRequiredState(volume, true);
                     } else {
-                        setDisabled(v, false);
-                        if (isFilled(v)) setState(v, "input-valid");
-                        else setState(v, "input-required");
+                        volume.value = "";
+                        setDisabled(volume, true);
+                        clearState(volume);
                     }
                 }
 
-                // ручной ввод: обязательные колонки
-                [name, docName, docNo, sheets].forEach((el) => {
-                    if (isFilled(el)) setState(el, "input-valid");
-                    else setState(el, "input-required");
-                });
+                setDisabled(date, false);
+                setDisabled(dateText, false);
 
-                // дата: достаточно одного из двух
                 const dateOk = isFilled(date) || isFilled(dateText);
+
                 if (dateOk) {
-                    if (isFilled(date)) setState(date, "input-valid"); else setState(date, "input-required");
-                    if (isFilled(dateText)) setState(dateText, "input-valid"); else setState(dateText, "input-required");
+                    if (isFilled(date)) setState(date, "input-valid");
+                    else setState(date, formWasSubmitted ? "input-error" : "input-required");
+
+                    if (isFilled(dateText)) setState(dateText, "input-valid");
+                    else setState(dateText, formWasSubmitted ? "input-error" : "input-required");
                 } else {
-                    setState(date, "input-required");
-                    setState(dateText, "input-required");
+                    setState(date, formWasSubmitted ? "input-error" : "input-required");
+                    setState(dateText, formWasSubmitted ? "input-error" : "input-required");
                 }
 
-                // если ввели dateText — очищаем обычную дату
                 if (isFilled(dateText) && date) {
                     date.value = "";
-                    setState(date, "input-required");
+                    setState(date, formWasSubmitted ? "input-error" : "input-required");
                 }
             }
 
             function updateAttachmentRow(row) {
-                if (!row) return;
+                if (!row || isDeletedRow(row, "att")) return;
+
                 const isScheme = row.classList.contains("scheme-row");
 
-                const title = row.querySelector('input[name$="-title"]');
-                const docNo = row.querySelector('input[name$="-doc_no"]');
-                const dFrom = row.querySelector('input[name$="-doc_date"]');
-                const dTo = row.querySelector('input[name$="-doc_date_to"]');
+                const title = isScheme
+                    ? row.querySelector('td:first-child input.form-control[readonly]')
+                    : row.querySelector('input[name$="-title"]');
+
+                const docNo = isScheme
+                    ? row.querySelector('#scheme-doc-no')
+                    : row.querySelector('input[name$="-doc_no"]');
+                const dateFrom = row.querySelector('input[name$="-doc_date"]');
+                const dateTo = row.querySelector('input[name$="-doc_date_to"]');
                 const sheets = row.querySelector('input[name$="-sheets_count"]');
 
                 if (isScheme) {
-                    [dFrom, sheets].forEach((el) => {
-                        if (isFilled(el)) setState(el, "input-valid");
-                        else setState(el, "input-required");
-                    });
+                    if (title) setState(title, "input-valid");
+                    if (docNo) setState(docNo, "input-valid");
+
+                    applyRequiredState(dateFrom, true);
+                    applyRequiredState(sheets, true);
+
+                    if (dateTo) clearState(dateTo);
                     return;
                 }
 
-                [title, docNo, dFrom, sheets].forEach((el) => {
-                    if (isFilled(el)) setState(el, "input-valid");
-                    else setState(el, "input-required");
-                });
+                applyRequiredState(title, true);
+                applyRequiredState(docNo, true);
+                applyRequiredState(dateFrom, true);
+                applyRequiredState(sheets, true);
 
-                if (dTo) {
-                    if (isFilled(dTo)) setState(dTo, "input-valid");
-                    else dTo.classList.remove("input-required", "input-valid", "input-error");
+                if (dateTo) {
+                    if (isFilled(dateTo)) setState(dateTo, "input-valid");
+                    else clearState(dateTo);
                 }
             }
 
-            function refreshAll() {
-                tagRequiredFields();
-                document.querySelectorAll(".js-required").forEach(updateSimpleRequired);
+            function refreshAllStates() {
+                updateMainFields();
+
+                document.querySelectorAll('#approvalsTable tbody tr[data-approval-id]').forEach(updateApprovalRow);
                 document.querySelectorAll('#materials-table tbody tr.material-row').forEach(updateMaterialRow);
                 document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach(updateAttachmentRow);
-                document.querySelectorAll('#approvalsTable tbody tr[data-approval-id]').forEach(updateApprovalRow);
+
+                markServerInvalids();
             }
 
-            // init
-            refreshAll();
+            function hasClientErrors() {
+                return !!document.querySelector(
+                    "#act-form .input-error"
+                );
+            }
 
-            // live updates
+            refreshAllStates();
+
             document.addEventListener("input", function (e) {
                 const el = e.target;
                 if (!el) return;
 
-                updateSimpleRequired(el);
+                updateMainFields();
 
-                const matRow = el.closest && el.closest('#materials-table tr.material-row');
+                const approvalRow = el.closest?.('#approvalsTable tr[data-approval-id]');
+                if (approvalRow) updateApprovalRow(approvalRow);
+
+                const matRow = el.closest?.('#materials-table tr.material-row');
                 if (matRow) updateMaterialRow(matRow);
 
-                const attRow = el.closest && el.closest('#attachments-table tr.attachment-row');
+                const attRow = el.closest?.('#attachments-table tr.attachment-row');
                 if (attRow) updateAttachmentRow(attRow);
-
-                const approvalRow = el.closest && el.closest('#approvalsTable tr[data-approval-id]');
-                if (approvalRow) updateApprovalRow(approvalRow);
             });
+
             document.addEventListener("change", function (e) {
                 const el = e.target;
                 if (!el) return;
 
-                const matRow = el.closest && el.closest('#materials-table tr.material-row');
+                updateMainFields();
+
+                const approvalRow = el.closest?.('#approvalsTable tr[data-approval-id]');
+                if (approvalRow) updateApprovalRow(approvalRow);
+
+                const matRow = el.closest?.('#materials-table tr.material-row');
                 if (matRow) updateMaterialRow(matRow);
 
-                const attRow = el.closest && el.closest('#attachments-table tr.attachment-row');
+                const attRow = el.closest?.('#attachments-table tr.attachment-row');
                 if (attRow) updateAttachmentRow(attRow);
-
-                const approvalRow = el.closest && el.closest('#approvalsTable tr[data-approval-id]');
-                if (approvalRow) updateApprovalRow(approvalRow);
-            });
-            document.getElementById("act-form")?.addEventListener("submit", function () {
-                document.querySelectorAll(".is-invalid, .soft-invalid").forEach(function (el) {
-                    el.classList.remove("input-required", "input-valid");
-                    el.classList.add("input-error");
-                });
             });
 
             document.addEventListener("click", function (e) {
-                const btn = e.target.closest("#add-material, #add-material-from-db, #add-attachment, #btnPickPassports, .js-approval-add");
+                const btn = e.target.closest(
+                    "#add-material, #add-material-from-db, #add-attachment, #btnPickPassports, .js-approval-add, .js-approval-remove, .js-remove-row, .js-duplicate-material"
+                );
                 if (!btn) return;
-                setTimeout(refreshAll, 0);
+
+                setTimeout(refreshAllStates, 0);
+            });
+
+            const form = document.getElementById("act-form");
+            form?.addEventListener("submit", function (e) {
+                formWasSubmitted = true;
+                refreshAllStates();
+
+                if (hasClientErrors()) {
+                    e.preventDefault();
+
+                    const firstError = form.querySelector(".input-error");
+                    firstError?.focus();
+                }
             });
             document.addEventListener("click", function (e) {
                 const btn = e.target.closest(".js-duplicate-material");
@@ -2010,17 +1955,13 @@
 
                 const srcRow = btn.closest('#materials-table tr.material-row');
                 if (!srcRow) return;
-
                 if (srcRow.style.display === "none") return;
 
                 const passport = srcRow.querySelector('input[type="hidden"][id$="-passport"]');
-                const hasPassport = (passport && (passport.value || "").trim() !== "");
-                if (hasPassport) return;
+                const hasPassport = !!(passport && (passport.value || "").trim());
+                if (hasPassport) return; // дублируем только ручные материалы
 
-                const addRowFn = window.__actsAddRow;
-                if (typeof addRowFn !== "function") return;
-
-                const newRow = addRowFn("materials-table", "material-empty-form", "mat");
+                const newRow = window.__actsAddRow("materials-table", "material-empty-form", "mat");
                 if (!newRow) return;
 
                 const get = (row, sel) => row.querySelector(sel);
@@ -2041,19 +1982,8 @@
                 updateMaterialRow(newRow);
 
                 const docNo = get(newRow, 'input[name$="-manual_doc_no"]');
-                const date = get(newRow, 'input[name$="-manual_doc_date"]');
-                const dateText = get(newRow, 'input[name$="-manual_doc_date_text"]');
-                const v = get(newRow, 'input[name$="-concrete_volume_m3"]');
-
-                if (docNo) setState(docNo, "input-required");
-                if (date) setState(date, "input-required");
-                if (dateText) setState(dateText, "input-required");
-                if (v && !v.disabled) setState(v, "input-required");
-
                 docNo?.focus();
-                setTimeout(refreshAll, 0);
             });
-
         })();
     </script>
 
