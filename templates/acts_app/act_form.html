@@ -1821,23 +1821,11 @@
                 setDisabled(date, false);
                 setDisabled(dateText, false);
 
-                const dateOk = isFilled(date) || isFilled(dateText);
+                // Дата обязательная
+                applyRequiredState(date, true);
 
-                if (dateOk) {
-                    if (isFilled(date)) setState(date, "input-valid");
-                    else setState(date, formWasSubmitted ? "input-error" : "input-required");
-
-                    if (isFilled(dateText)) setState(dateText, "input-valid");
-                    else setState(dateText, formWasSubmitted ? "input-error" : "input-required");
-                } else {
-                    setState(date, formWasSubmitted ? "input-error" : "input-required");
-                    setState(dateText, formWasSubmitted ? "input-error" : "input-required");
-                }
-
-                if (isFilled(dateText) && date) {
-                    date.value = "";
-                    setState(date, formWasSubmitted ? "input-error" : "input-required");
-                }
+                // Отображение не обязательное: только синий/зелёный
+                applyOptionalBlueGreenState(dateText);
             }
 
             function updateAttachmentRow(row) {
