@@ -483,6 +483,7 @@ class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             "id",
             "status",
             "created_at",
+            "construction",
             "description",
             "project__full_code",
         )
@@ -507,11 +508,13 @@ class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             created = a.created_at.strftime("%d.%m.%Y") if a.created_at else "—"
             desc_full = (a.description or "").strip()
             desc_short = desc_full or "—"
+            construction = (a.construction or "").strip() or "—"
 
             data.append(
                 {
                     "id": a.id,
                     "project": proj,
+                    "construction": construction,
                     "status": status,
                     "created_at": created,
                     "description": desc_short,
