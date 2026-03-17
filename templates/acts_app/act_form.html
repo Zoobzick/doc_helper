@@ -223,7 +223,7 @@
                             <table class="table table-sm align-middle w-100" id="approvalsTable">
                                 <thead>
                                 <tr>
-                                    <th>Согласование (отображение)</th>
+                                    <th>Согласование</th>
                                     <th style="width: 140px;">Листов</th>
                                 </tr>
                                 </thead>
@@ -234,9 +234,10 @@
                                             <input type="hidden" name="approvals" value="{{ item.id }}">
 
                                             <div class="d-flex gap-2">
-                  <textarea class="form-control form-control-sm"
-                            name="approval_label_{% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
-                            rows="2">{{ item.label }}</textarea>
+                                                <input type="text"
+                                                       class="form-control form-control-sm"
+                                                       name="approval_label_{{ item.id }}"
+                                                       value="{{ item.label }}">
 
                                                 <button type="button"
                                                         class="btn btn-outline-danger btn-sm js-approval-remove"
@@ -244,31 +245,12 @@
                                                     <i class="bi bi-trash"></i>
                                                 </button>
                                             </div>
-
-                                            <div class="form-text">
-                                                Можно переписать текст — так он и будет отображаться в
-                                                приложении.
-                                            </div>
                                         </td>
 
                                         <td>
                                             <input type="number"
                                                    class="form-control form-control-sm"
-                                                   name="approval_sheets_
-
-
-
-
-
-
-
-
-
-
-
-
-
-                                                           {% templatetag openbrace %}{{ item.id }}{% templatetag closebrace %}"
+                                                   name="approval_sheets_{{ item.id }}"
                                                    value="{{ item.sheets|default:1 }}"
                                                    min="1">
                                         </td>
@@ -704,11 +686,10 @@
                         <table class="table table-sm table-hover align-middle w-100" id="approvalsDatatable">
                             <thead>
                             <tr>
-                                <th style="width:1%;">Выбрать</th>
                                 <th>Проект</th>
-                                <th>Статус</th>
-                                <th>Дата</th>
+                                <th>Конструкция</th>
                                 <th>Описание</th>
+                                <th style="width:70px;">Добавить</th>
                             </tr>
                             </thead>
                             <tbody></tbody>
@@ -1618,24 +1599,23 @@
                 const tr = document.createElement("tr");
                 tr.setAttribute("data-approval-id", String(id));
                 tr.innerHTML = `
-      <td>
-        <input type="hidden" name="approvals" value="">
-        <div class="d-flex gap-2">
-          <textarea class="form-control form-control-sm" rows="2"></textarea>
-          <button type="button" class="btn btn-outline-danger btn-sm js-approval-remove" title="Удалить">
-            <i class="bi bi-trash"></i>
-          </button>
-        </div>
-        <div class="form-text">Можно переписать текст — так он и будет отображаться в приложении.</div>
-      </td>
-      <td>
-        <input type="number" class="form-control form-control-sm" min="1" value="1">
-      </td>
-    `;
-
+  <td>
+    <input type="hidden" name="approvals" value="">
+    <div class="d-flex gap-2">
+      <input type="text" class="form-control form-control-sm">
+      <button type="button" class="btn btn-outline-danger btn-sm js-approval-remove" title="Удалить">
+        <i class="bi bi-trash"></i>
+      </button>
+    </div>
+    <div class="form-text">Можно переписать текст — так он и будет отображаться в приложении.</div>
+  </td>
+  <td>
+    <input type="number" class="form-control form-control-sm" min="1" value="1">
+  </td>
+`;
                 tr.querySelector('input[name="approvals"]').value = String(id);
-                tr.querySelector("textarea").name = "approval_label_" + String(id);
-                tr.querySelector("textarea").value = label || "";
+                tr.querySelector('input[type="text"]').name = "approval_label_" + String(id);
+                tr.querySelector('input[type="text"]').value = label || "";
                 tr.querySelector('input[type="number"]').name = "approval_sheets_" + String(id);
 
                 tbody.appendChild(tr);
@@ -1664,30 +1644,57 @@
                     lengthChange: false,
                     ajax: {url: "{% url 'acts_app:approvals_datatable' %}", type: "GET"},
                     columns: [
-                        {
-                            data: "id",
+{
+    data: "project",
+    render: function (data, type, row) {
+        const text = data || "—";
+        const safe = (s) => $('<div>').text(s || '').html();
+
+        if (type !== "display") {
+            return text;
+        }
+
+        return `<span style="display:block; min-width:240px; white-space:normal; word-break:break-word;">
+                    ${safe(text)}
+                </span>`;
+    }
+},                        {data: "construction"},
+{
+    data: "description",
+    render: function (data, type, row) {
+        const text = data || "—";
+        const safe = (s) => $('<div>').text(s || '').html();
+
+        if (type !== "display") {
+            return text;
+        }
+
+        return `<span title="${safe(row.description_full || text)}"
+                      style="display:block; max-width:420px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    ${safe(text)}
+                </span>`;
+    }
+},                        {
+                            data: null,
                             orderable: false,
+                            searchable: false,
                             render: function (data, type, row) {
                                 const disabled = isSelected(row.id) ? "disabled" : "";
                                 const safe = (s) => $('<div>').text(s || '').html();
 
-                                return `<button type="button"
-                  class="btn btn-outline-primary btn-sm js-approval-add"
-                  data-id="${row.id}"
-                  data-label="${safe(row.label)}"
-                  data-desc="${safe(row.description_full)}"
-                  ${disabled}>
-            Добавить
-          </button>`;
+                                return `
+                <button type="button"
+                        class="btn btn-sm btn-primary js-add-approval"
+                        data-id="${row.id}"
+                        data-desc="${safe(row.description_full)}"
+                        ${disabled}>
+                    Добавить
+                </button>
+            `;
                             }
-
                         },
-                        {data: "project"},
-                        {data: "status"},
-                        {data: "created_at"},
-                        {data: "description"},
                     ],
-                    order: [[3, "desc"]],
+                    order: [[0, "asc"]],
                 });
             }
 

@@ -483,6 +483,7 @@ class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             "id",
             "status",
             "created_at",
+            "construction",
             "description",
             "project__full_code",
         )
@@ -507,11 +508,13 @@ class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             created = a.created_at.strftime("%d.%m.%Y") if a.created_at else "—"
             desc_full = (a.description or "").strip()
             desc_short = desc_full or "—"
+            construction = (a.construction or "").strip() or "—"
 
             data.append(
                 {
                     "id": a.id,
                     "project": proj,
+                    "construction": construction,
                     "status": status,
                     "created_at": created,
                     "description": desc_short,
@@ -1195,7 +1198,10 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         approval_items = [
             {
                 "id": item.approval_id,
-                "label": (item.label_override or _approval_auto_label(item.approval)),
+                "label": (
+                        (item.label_override or "").strip()
+                        or (getattr(item.approval, "description", "") or "").strip()
+                ),
                 "sheets": int(item.sheets_count or 1),
             }
             for item in act.approval_items.select_related("approval", "approval__project").order_by("position", "id")
