@@ -15,24 +15,44 @@
 
         {% if user.is_authenticated %}
             <!-- Документы -->
-            {% if user.is_superuser or perms.documents_app.view_box_label_page %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#documents-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-folder2-open"></i>
-                        <span>Документы</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
+            {% with app=request.resolver_match.app_name rn=request.resolver_match.url_name %}
+                {% if user.is_superuser or perms.documents_app.view_box_label_page or perms.documents_app.add_documentbatch or perms.documents_app.view_documentbatch %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'documents' %}{% else %}collapsed{% endif %}"
+                           data-bs-target="#documents-nav" data-bs-toggle="collapse" href="#">
+                            <i class="bi bi-folder2-open"></i>
+                            <span>Документы</span>
+                            <i class="bi bi-chevron-down ms-auto"></i>
+                        </a>
 
-                    <ul id="documents-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-                        <li>
-                            <a href="{% url 'documents:box_label_page' %}">
-                                <i class="bi bi-circle"></i>
-                                <span>Наклейка на коробку</span>
-                            </a>
-                        </li>
-                    </ul>
-                </li>
-            {% endif %}
+                        <ul id="documents-nav"
+                            class="nav-content collapse {% if app == 'documents' %}show{% endif %}"
+                            data-bs-parent="#sidebar-nav">
+
+                            {% if user.is_superuser or perms.documents_app.view_box_label_page %}
+                                <li>
+                                    <a href="{% url 'documents:box_label_page' %}"
+                                       class="{% if rn == 'box_label_page' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Наклейка на коробку</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                            {% if user.is_superuser or perms.documents_app.add_documentbatch %}
+                                <li>
+                                    <a href="{% url 'documents:id_handover_batch_create' %}"
+                                       class="{% if rn == 'id_handover_batch_create' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Комплекты</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                        </ul>
+                    </li>
+                {% endif %}
+            {% endwith %}
             <!-- end Documents -->
             {# --- Акты (acts_app) --- #}
             {% if user.is_superuser or perms.acts_app.view_act or perms.acts_app.add_act %}
