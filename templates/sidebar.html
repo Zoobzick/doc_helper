@@ -1,10 +1,7 @@
 {% load static %}
 
 <aside id="sidebar" class="sidebar">
-
     <ul class="sidebar-nav" id="sidebar-nav">
-
-        <!-- Главная -->
         <li class="nav-item">
             <a class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% else %}collapsed{% endif %}"
                href="{% url 'authapp:home' %}">
@@ -14,32 +11,23 @@
         </li>
 
         {% if user.is_authenticated %}
-            <!-- Документы -->
-            {% if user.is_superuser or perms.documents_app.view_box_label_page %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#documents-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-folder2-open"></i>
-                        <span>Документы</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
-
-                    <ul id="documents-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-                        <li>
-                            <a href="{% url 'documents:box_label_page' %}">
-                                <i class="bi bi-circle"></i>
-                                <span>Наклейка на коробку</span>
-                            </a>
-                        </li>
-                    </ul>
-                </li>
-            {% endif %}
-            <!-- end Documents -->
-            {# --- Акты (acts_app) --- #}
-            {% if user.is_superuser or perms.acts_app.view_act or perms.acts_app.add_act %}
-                {% with app=request.resolver_match.app_name rn=request.resolver_match.url_name %}
+            {% with app=request.resolver_match.app_name rn=request.resolver_match.url_name %}
+                {% if user.is_superuser or perms.documents_app.view_box_label_page %}
                     <li class="nav-item">
-                        <a class="nav-link {% if app == 'acts_app' %}{% else %}collapsed{% endif %}"
-                           data-bs-target="#acts-nav" data-bs-toggle="collapse" href="#">
+                        <a class="nav-link {% if app == 'documents' %}active{% else %}collapsed{% endif %}"
+                           href="{% url 'documents:box_label_page' %}">
+                            <i class="bi bi-folder2-open"></i>
+                            <span>Документы</span>
+                        </a>
+                    </li>
+                {% endif %}
+
+                {% if user.is_superuser or perms.acts_app.view_act or perms.acts_app.add_act %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'acts_app' %}active{% else %}collapsed{% endif %}"
+                           data-bs-target="#acts-nav"
+                           data-bs-toggle="collapse"
+                           href="#">
                             <i class="bi bi-file-earmark-text"></i>
                             <span>Акты</span>
                             <i class="bi bi-chevron-down ms-auto"></i>
@@ -48,7 +36,6 @@
                         <ul id="acts-nav"
                             class="nav-content collapse {% if app == 'acts_app' %}show{% endif %}"
                             data-bs-parent="#sidebar-nav">
-
                             {% if user.is_superuser or perms.acts_app.view_act %}
                                 <li>
                                     <a href="{% url 'acts_app:act_list' %}"
@@ -66,265 +53,125 @@
                                     </a>
                                 </li>
                             {% endif %}
+                        </ul>
+                    </li>
+                {% endif %}
 
-                            {% if user.is_superuser or perms.acts_app.add_act %}
+                {% if user.is_superuser or perms.passports_app.view_passports_page %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'passports' and rn == 'passports_list' %}active{% else %}collapsed{% endif %}"
+                           href="{% url 'passports:passports_list' %}">
+                            <i class="bi bi-journal-text"></i>
+                            <span>Паспорта</span>
+                        </a>
+                    </li>
+                {% endif %}
+
+                {% if user.is_superuser or perms.projects_app.view_projects_page %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'projects' and rn == 'projects_list' %}active{% else %}collapsed{% endif %}"
+                           href="{% url 'projects:projects_list' %}">
+                            <i class="bi bi-hdd-stack"></i>
+                            <span>Проекты</span>
+                        </a>
+                    </li>
+                {% endif %}
+
+                {% if user.is_superuser or perms.directive_app.view_directive %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'directive_app' and rn == 'directive_list' %}active{% else %}collapsed{% endif %}"
+                           href="{% url 'directive_app:directive_list' %}">
+                            <i class="bi bi-person-square"></i>
+                            <span>Приказы</span>
+                        </a>
+                    </li>
+                {% endif %}
+
+                {% if user.is_superuser or perms.orgs_app.view_organization or perms.orgs_app.view_person or perms.orgs_app.view_personnrs %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'orgs_app' %}active{% else %}collapsed{% endif %}"
+                           data-bs-target="#orgs-app-nav"
+                           data-bs-toggle="collapse"
+                           href="#">
+                            <i class="bi bi-building"></i>
+                            <span>Организации</span>
+                            <i class="bi bi-chevron-down ms-auto"></i>
+                        </a>
+
+                        <ul id="orgs-app-nav"
+                            class="nav-content collapse {% if app == 'orgs_app' %}show{% endif %}"
+                            data-bs-parent="#sidebar-nav">
+                            {% if user.is_superuser or perms.orgs_app.view_organization %}
                                 <li>
-                                    <a href="{% url 'acts_app:act_create' %}"
-                                       class="{% if rn == 'act_create' %}active{% endif %}">
+                                    <a href="{% url 'orgs_app:organization_list' %}"
+                                       class="{% if rn == 'organization_list' %}active{% endif %}">
                                         <i class="bi bi-circle"></i>
-                                        <span>Создать акт</span>
+                                        <span>Организации</span>
                                     </a>
                                 </li>
                             {% endif %}
 
+                            {% if user.is_superuser or perms.orgs_app.view_person %}
+                                <li>
+                                    <a href="{% url 'orgs_app:person_list' %}"
+                                       class="{% if rn == 'person_list' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Люди</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                            {% if user.is_superuser or perms.orgs_app.view_personnrs %}
+                                <li>
+                                    <a href="{% url 'orgs_app:personnrs_list' %}"
+                                       class="{% if rn == 'personnrs_list' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>НРС</span>
+                                    </a>
+                                </li>
+                            {% endif %}
                         </ul>
                     </li>
-                {% endwith %}
-            {% endif %}
-            {# --- end Акты --- #}
+                {% endif %}
 
+                {% if user.is_superuser or perms.approvals_app.view_approvals_done_page or perms.approvals_app.view_approvals_pending_page %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'approvals' %}active{% else %}collapsed{% endif %}"
+                           data-bs-target="#approval-nav"
+                           data-bs-toggle="collapse"
+                           href="#">
+                            <i class="bi bi-briefcase-fill"></i>
+                            <span>Согласования</span>
+                            <i class="bi bi-chevron-down ms-auto"></i>
+                        </a>
 
-            <!-- Паспорта -->
-            {% if user.is_superuser or perms.passports_app.view_passports_page %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#passports-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-journal-text"></i>
-                        <span>Паспорта</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
+                        <ul id="approval-nav"
+                            class="nav-content collapse {% if app == 'approvals' %}show{% endif %}"
+                            data-bs-parent="#sidebar-nav">
+                            {% if user.is_superuser or perms.approvals_app.view_approvals_done_page %}
+                                <li>
+                                    <a href="{% url 'approvals:done' %}"
+                                       class="{% if rn == 'done' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Все согласования</span>
+                                    </a>
+                                </li>
+                            {% endif %}
 
-                    <ul id="passports-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+                            {% if user.is_superuser or perms.approvals_app.view_approvals_pending_page %}
+                                <li>
+                                    <a href="{% url 'approvals:pending' %}"
+                                       class="{% if rn == 'pending' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>На согласовании</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </li>
+                {% endif %}
+            {% endwith %}
 
-                        {% if user.is_superuser or perms.passports_app.view_passports_page %}
-                            <li>
-                                <a href="{% url 'passports:passports_list' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Все паспорта</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                        {% if user.is_superuser or perms.passports_app.add_passport %}
-                            <li>
-                                <a href="{% url 'passports:passports_add' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Добавить паспорта</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-
-                    </ul>
-                </li>
-            {% endif %}
-            <!-- End Passports -->
-
-            <!-- Реестры -->
-            {% if user.is_superuser %}
-
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#registry-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-card-list"></i>
-                        <span>Реестры</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
-                    <ul id="registry-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-                        <li>
-                            <a href="{% url 'passports:passports_list' %}">
-                                <i class="bi bi-circle"></i>
-                                <span>Создать реестр</span>
-                            </a>
-                        </li>
-
-                    </ul>
-                </li>
-            {% endif %}
-
-            <!-- Проекты -->
-            {% if user.is_superuser or perms.projects_app.view_projects_page %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#projects-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-hdd-stack"></i>
-                        <span>Проекты</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
-                    <ul id="projects-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-
-                        <li>
-                            <a href="{% url 'projects:projects_list' %}">
-                                <i class="bi bi-circle"></i>
-                                <span>Все проекты</span>
-                            </a>
-                        </li>
-
-                        <li>
-                            <a href="{% url 'projects:project_create' %}">
-                                <i class="bi bi-circle"></i><span>Добавить проект</span>
-                            </a>
-                        </li>
-
-                    </ul>
-
-                </li>
-            {% endif %}
-
-            <!-- Приказы -->
-            {# --- Приказы (Directive) --- #}
-            {% if user.is_superuser or perms.directive_app.view_directive or perms.directive_app.add_directive %}
-                <li class="nav-item">
-                    <a class="nav-link {% if directives_open %}{% else %}collapsed{% endif %}"
-                       data-bs-target="#directive-nav"
-                       data-bs-toggle="collapse"
-                       href="#">
-                        <i class="bi bi-person-square"></i>
-                        <span>Приказы</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
-
-                    <ul id="directive-nav"
-                        class="nav-content collapse {% if directives_open %}show{% endif %}"
-                        data-bs-parent="#sidebar-nav">
-
-                        {% if user.is_superuser or perms.directive_app.view_directive %}
-                            <li>
-                                <a href="{% url 'directive_app:directive_list' %}"
-                                   class="{% if rn == 'directive_list' %}active{% endif %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Все приказы</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                        {% if user.is_superuser or perms.directive_app.add_directive %}
-                            <li>
-                                <a href="{% url 'directive_app:directive_create' %}"
-                                   class="{% if rn == 'directive_create' %}active{% endif %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Добавить приказ</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                    </ul>
-                </li>
-            {% endif %}
-            {# --- end Приказы --- #}
-            <!-- End Directives -->
-
-            {# --- Организации (Организации / Люди / НРС) --- #}
-            {% if user.is_superuser or perms.orgs_app.view_organization or perms.orgs_app.view_person or perms.orgs_app.view_personnrs %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#orgs-app-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-building"></i>
-                        <span>Организации</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
-
-                    <ul id="orgs-app-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-
-                        {% if user.is_superuser or perms.orgs_app.view_organization %}
-                            <li>
-                                <a href="{% url 'orgs_app:organization_list' %}">
-                                    <i class="bi bi-circle"></i><span>Организации</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                        {% if user.is_superuser or perms.orgs_app.view_person %}
-                            <li>
-                                <a href="{% url 'orgs_app:person_list' %}">
-                                    <i class="bi bi-circle"></i><span>Люди</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                        {% if user.is_superuser or perms.orgs_app.view_personnrs %}
-                            <li>
-                                <a href="{% url 'orgs_app:personnrs_list' %}">
-                                    <i class="bi bi-circle"></i><span>НРС</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                    </ul>
-                </li>
-            {% endif %}
-
-            <!-- Согласования -->
-            {% if user.is_superuser or perms.approvals_app.view_approvals_done_page or perms.approvals_app.view_approvals_pending_page %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#approval-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-briefcase-fill"></i>
-                        <span>Согласования</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
-                    <ul id="approval-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-
-                        {% if user.is_superuser or perms.approvals_app.view_approvals_done_page %}
-                            <li>
-                                <a href="{% url 'approvals:done' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Все согласования</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                        {% if user.is_superuser or perms.approvals_app.view_approvals_pending_page %}
-                            <li>
-                                <a href="{% url 'approvals:pending' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>На согласовании</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                    </ul>
-                </li>
-            {% endif %}
-
-            <!-- Checker -->
-            {% if user.is_superuser or perms.checker_app.view_checker_section or perms.checker_app.check_projects_and_folder_page or perms.checker_app.check_doc_acts_page or perms.checker_app.check_directive_checker_page %}
-                <li class="nav-item">
-                    <a class="nav-link collapsed" data-bs-target="#checker-nav" data-bs-toggle="collapse" href="#">
-                        <i class="bi bi-check-circle"></i>
-                        <span>Checker</span>
-                        <i class="bi bi-chevron-down ms-auto"></i>
-                    </a>
-                    <ul id="checker-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-
-                        {% if user.is_superuser or perms.checker_app.check_projects_and_folder_page %}
-                            <li>
-                                <a href="{% url 'checker_app_check_projects_and_folder' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Проверить шифр в актах</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-                        {% if user.is_superuser or perms.checker_app.check_doc_acts_page %}
-                            <li>
-                                <a href="{% url 'check_doc_acts' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Проверить наличие .doc</span>
-                                </a>
-                            </li>
-                        {% endif %}
-                        {% if user.is_superuser or perms.checker_app.check_doc_structure %}
-                            <li>
-                                <a href="{% url 'act_structure_page' %}">
-                                    <i class="bi bi-circle"></i>
-                                    <span>Структура документа</span>
-                                </a>
-                            </li>
-                        {% endif %}
-
-
-                    </ul>
-                </li>
-            {% endif %}
-            <!-- End Checker -->
-
-            <!-- Админка -->
             {% if user.is_staff %}
                 <li class="nav-item">
                     <a class="nav-link collapsed" href="{% url 'admin:index' %}">
@@ -334,7 +181,6 @@
                 </li>
             {% endif %}
 
-            <!-- Аккаунт -->
             <li class="nav-heading">Аккаунт</li>
 
             <li class="nav-item">
@@ -350,18 +196,13 @@
                     <span>Выйти</span>
                 </a>
             </li>
-
         {% else %}
-
             <li class="nav-item">
                 <a class="nav-link collapsed" href="{% url 'authapp:login' %}">
                     <i class="bi bi-box-arrow-in-right"></i>
                     <span>Войти</span>
                 </a>
             </li>
-
         {% endif %}
-
     </ul>
-
 </aside>
