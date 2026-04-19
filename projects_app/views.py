@@ -42,6 +42,7 @@ from .services import (
     ensure_project_files_named,
     normalize_full_code,
     process_single_pdf,
+    safe_zip_relpath,
     set_revision_in_production,
     sync_needs_review, normalize_zip_filename,
 )
@@ -444,7 +445,11 @@ class ProjectUploadArchiveView(PermissionRequiredMixin, View):
                         continue
 
                     fixed_name = normalize_zip_filename(info)
-                    target_path = tmpdir / fixed_name
+                    safe_name = safe_zip_relpath(fixed_name)
+                    if safe_name is None:
+                        continue
+
+                    target_path = tmpdir / safe_name
                     target_path.parent.mkdir(parents=True, exist_ok=True)
 
                     with zf.open(info) as src, target_path.open("wb") as dst:
