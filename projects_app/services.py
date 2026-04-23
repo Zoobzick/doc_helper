@@ -415,3 +415,27 @@ def normalize_zip_filename(info) -> str:
             pass
 
     return raw.decode("cp1251", errors="replace")
+
+
+def safe_zip_relpath(name: str) -> str | None:
+    """
+    Возвращает безопасный относительный путь для файла из ZIP или None.
+
+    Защита от Zip Slip:
+    - запрещаем абсолютные пути
+    - запрещаем пустые имена и директории
+    - запрещаем `..` в пути
+    """
+    normalized = (name or "").replace("\\", "/").strip()
+    if not normalized or normalized.endswith("/"):
+        return None
+    if normalized.startswith(("/", "//")):
+        return None
+
+    path = Path(normalized)
+    if path.is_absolute():
+        return None
+    if ".." in path.parts:
+        return None
+
+    return normalized

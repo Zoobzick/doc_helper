@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Django settings for settings project.
 
