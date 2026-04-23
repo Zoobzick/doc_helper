@@ -24,16 +24,27 @@ from documents_app.utils.pdf_utils import convert_xlsx_to_pdf, get_pdf_pages_cou
 @dataclass(slots=True)
 class ProjectRegistryGenerationResult:
     """
-    Результат генерации XLSX-реестра по одному project внутри batch.
+    Результат генерации реестра по одному project внутри batch.
+
+    xlsx_document (GeneratedDocument): основной XLSX-реестр
+    pdf_document (GeneratedDocument): preview PDF этого же реестра
+    context (dict): контекст, по которому строился реестр
+    dependency_signature (str): сигнатура зависимостей для XLSX/PDF
+    xlsx_created (bool): был ли создан новый GeneratedDocument XLSX
+    pdf_created (bool): был ли создан новый GeneratedDocument PDF
+    pages_count (int): число страниц preview PDF
     """
-    generated_document: GeneratedDocument
+    xlsx_document: GeneratedDocument
+    pdf_document: GeneratedDocument
     context: dict
     dependency_signature: str
-    created: bool
+    xlsx_created: bool
+    pdf_created: bool
+    pages_count: int
 
 
 class ProjectRegistryGenerationServiceError(Exception):
-    """Базовая ошибка сервиса генерации проектного XLSX-реестра."""
+    """Базовая ошибка сервиса генерации проектного реестра."""
 
 
 class ProjectRegistryGenerationValidationError(ProjectRegistryGenerationServiceError):
@@ -42,13 +53,15 @@ class ProjectRegistryGenerationValidationError(ProjectRegistryGenerationServiceE
 
 class ProjectRegistryGenerationService:
     """
-    Генерирует XLSX-реестр для одного project внутри batch
-    и сохраняет его как GeneratedDocument.
+    Генерирует реестр для одного project внутри batch и сохраняет:
+
+    - REGISTRY_XLSX
+    - REGISTRY_PREVIEW_PDF
 
     ВАЖНО:
-    - context строится ровно один раз
-    - renderer получает уже готовый context
-    - другие проекты batch не затрагиваются
+    - context строится один раз
+    - XLSX и PDF получают одну и ту же dependency_signature
+    - pages_count считается по итоговому preview PDF
     """
 
     def __init__(
@@ -71,8 +84,8 @@ class ProjectRegistryGenerationService:
         template_path: str | Path,
     ) -> ProjectRegistryGenerationResult:
         """
-        Генерирует XLSX-реестр для одного project внутри batch
-        и сохраняет его в GeneratedDocument.
+        Генерирует реестр по одному project внутри batch
+        и сохраняет XLSX + preview PDF в GeneratedDocument.
         """
         batch_project = self._get_batch_project_or_raise(
             batch=batch,
@@ -84,47 +97,79 @@ class ProjectRegistryGenerationService:
             project_id=project_id,
         )
 
-        dependency_signature = self.signature_service.build_project_registry_signature(
+        xlsx_dependency_signature = self.signature_service.build_project_registry_signature(
             batch=batch,
             project_id=project_id,
             document_type=GeneratedDocumentType.REGISTRY_XLSX,
         )
+        pdf_dependency_signature = self.signature_service.build_project_registry_signature(
+            batch=batch,
+            project_id=project_id,
+            document_type=GeneratedDocumentType.REGISTRY_PREVIEW_PDF,
+        )
 
-        filename = self._build_output_filename(
+        xlsx_filename = self._build_xlsx_output_filename(
+            batch=batch,
+            project=batch_project.project,
+        )
+        pdf_filename = self._build_pdf_output_filename(
             batch=batch,
             project=batch_project.project,
         )
 
-        generated_document, created = self._get_or_create_generated_document(
+        xlsx_document, xlsx_created = self._get_or_create_generated_document(
             batch=batch,
             project=batch_project.project,
+            document_type=GeneratedDocumentType.REGISTRY_XLSX,
+        )
+        pdf_document, pdf_created = self._get_or_create_generated_document(
+            batch=batch,
+            project=batch_project.project,
+            document_type=GeneratedDocumentType.REGISTRY_PREVIEW_PDF,
         )
 
-        rendered_bytes, pages_count = self._render_context_to_bytes_and_pages(
+        rendered_xlsx_bytes, rendered_pdf_bytes, pages_count = self._render_context_to_files(
             context=context,
             template_path=template_path,
             project_id=project_id,
         )
 
         self._save_file_to_generated_document(
-            generated_document=generated_document,
-            filename=filename,
-            content=rendered_bytes,
+            generated_document=xlsx_document,
+            filename=xlsx_filename,
+            content=rendered_xlsx_bytes,
+        )
+        self._save_file_to_generated_document(
+            generated_document=pdf_document,
+            filename=pdf_filename,
+            content=rendered_pdf_bytes,
         )
 
-        generated_document.source_kind = GeneratedDocumentSourceKind.GENERATED
-        generated_document.dependency_signature = dependency_signature
-        generated_document.pages_count = pages_count
-        generated_document.is_actual = True
-        generated_document.created_by = batch.created_by
-        generated_document.generated_at = timezone.now()
-        generated_document.save()
+        generated_at = timezone.now()
+
+        self._apply_generated_document_meta(
+            generated_document=xlsx_document,
+            batch=batch,
+            dependency_signature=xlsx_dependency_signature,
+            pages_count=pages_count,
+            generated_at=generated_at,
+        )
+        self._apply_generated_document_meta(
+            generated_document=pdf_document,
+            batch=batch,
+            dependency_signature=pdf_dependency_signature,
+            pages_count=pages_count,
+            generated_at=generated_at,
+        )
 
         return ProjectRegistryGenerationResult(
-            generated_document=generated_document,
+            xlsx_document=xlsx_document,
+            pdf_document=pdf_document,
             context=context,
-            dependency_signature=dependency_signature,
-            created=created,
+            dependency_signature=xlsx_dependency_signature,
+            xlsx_created=xlsx_created,
+            pdf_created=pdf_created,
+            pages_count=pages_count,
         )
 
     def _get_batch_project_or_raise(
@@ -150,11 +195,12 @@ class ProjectRegistryGenerationService:
         *,
         batch: DocumentBatch,
         project,
+        document_type: str,
     ) -> tuple[GeneratedDocument, bool]:
         generated_document, created = GeneratedDocument.objects.get_or_create(
             batch=batch,
             project=project,
-            document_type=GeneratedDocumentType.REGISTRY_XLSX,
+            document_type=document_type,
             defaults={
                 "source_kind": GeneratedDocumentSourceKind.GENERATED,
                 "created_by": batch.created_by,
@@ -163,13 +209,19 @@ class ProjectRegistryGenerationService:
         )
         return generated_document, created
 
-    def _render_context_to_bytes_and_pages(
+    def _render_context_to_files(
         self,
         *,
         context: dict,
         template_path: str | Path,
         project_id: int,
-    ) -> tuple[bytes, int]:
+    ) -> tuple[bytes, bytes, int]:
+        """
+        Возвращает:
+        - xlsx bytes
+        - pdf bytes
+        - pages_count
+        """
         template_path = Path(template_path)
         if not template_path.exists():
             raise ProjectRegistryGenerationValidationError(
@@ -194,7 +246,11 @@ class ProjectRegistryGenerationService:
             )
             pages_count = get_pdf_pages_count(pdf_path)
 
-            return rendered_path.read_bytes(), pages_count
+            return (
+                rendered_path.read_bytes(),
+                pdf_path.read_bytes(),
+                pages_count,
+            )
 
     def _save_file_to_generated_document(
         self,
@@ -216,7 +272,24 @@ class ProjectRegistryGenerationService:
         )
         generated_document.original_name = filename
 
-    def _build_output_filename(
+    def _apply_generated_document_meta(
+        self,
+        *,
+        generated_document: GeneratedDocument,
+        batch: DocumentBatch,
+        dependency_signature: str,
+        pages_count: int,
+        generated_at,
+    ) -> None:
+        generated_document.source_kind = GeneratedDocumentSourceKind.GENERATED
+        generated_document.dependency_signature = dependency_signature
+        generated_document.pages_count = pages_count
+        generated_document.is_actual = True
+        generated_document.created_by = batch.created_by
+        generated_document.generated_at = generated_at
+        generated_document.save()
+
+    def _build_xlsx_output_filename(
         self,
         *,
         batch: DocumentBatch,
@@ -225,6 +298,16 @@ class ProjectRegistryGenerationService:
         project_code = (getattr(project, "full_code", "") or "").strip()
         safe_project_code = self._sanitize_filename_part(project_code) or f"project_{project.id}"
         return f"Реестр ИД {safe_project_code} batch_{batch.id}.xlsx"
+
+    def _build_pdf_output_filename(
+        self,
+        *,
+        batch: DocumentBatch,
+        project,
+    ) -> str:
+        project_code = (getattr(project, "full_code", "") or "").strip()
+        safe_project_code = self._sanitize_filename_part(project_code) or f"project_{project.id}"
+        return f"Реестр ИД {safe_project_code} batch_{batch.id}.pdf"
 
     @staticmethod
     def _sanitize_filename_part(value: str) -> str:

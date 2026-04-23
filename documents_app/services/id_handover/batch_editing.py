@@ -64,16 +64,19 @@ class DocumentBatchEditingService:
     Сервис редактирования состава комплекта сдачи ИД.
 
     Поддерживает:
-    - ручное добавление акта в проект batch
-    - удаление вручную добавленного акта
+    - ручное добавление акта в уже существующий проект batch
+    - удаление акта из текущего состава проекта batch
     - изменение порядка актов внутри проекта
     - нормализацию порядков внутри проекта
 
     ВАЖНО:
-    - порядок всегда считается только внутри одного проекта
-    - auto-акты удалять нельзя
+    - порядок актов считается только внутри одного проекта
     - act должен быть привязан к project через Act.projects
+    - вручную можно добавить акт вне периода, но только в проект,
+      который уже входит в batch
     """
+
+    TEMP_ORDER_GAP = 10000
 
     @transaction.atomic
     def add_manual_act(self, params: BatchManualActAddParams) -> DocumentBatchAct:
@@ -81,12 +84,15 @@ class DocumentBatchEditingService:
         Ручное добавление акта в конкретный проект комплекта.
 
         Логика:
-        1. Проверяем, что project есть в batch
-        2. Проверяем, что act существует
-        3. Проверяем, что act привязан к project через M2M Act.projects
-        4. Проверяем, что связка (batch, project, act) ещё не существует
-        5. Вставляем акт либо в конец, либо на нужную позицию
-        6. Сдвигаем order у хвоста вниз
+        1. Проверяем, что project уже входит в batch
+        2. Проверяем, что act существует и относится к project
+        3. Проверяем, что связка (batch, project, act) ещё не существует
+        4. Создаём новый DocumentBatchAct
+        5. Полностью безопасно перестраиваем порядок внутри проекта
+
+        ВАЖНО:
+        - здесь НЕТ ограничения по периоду акта
+        - если акт относится к проекту batch, его можно добавить вручную
         """
         batch = params.batch
         project_id = params.project_id
@@ -108,8 +114,13 @@ class DocumentBatchEditingService:
                 "Этот акт уже добавлен в указанный проект данного комплекта."
             )
 
-        project_items_qs = self._get_project_items_queryset(batch=batch, project_id=project_id)
-        items_count = project_items_qs.count()
+        existing_items = list(
+            self._get_project_items_queryset(batch=batch, project_id=project_id)
+            .select_related("act", "project", "batch")
+            .order_by("order", "id")
+        )
+
+        items_count = len(existing_items)
 
         if requested_order is None:
             final_order = items_count + 1
@@ -120,24 +131,63 @@ class DocumentBatchEditingService:
                 )
             final_order = min(requested_order, items_count + 1)
 
-        if final_order <= items_count:
-            items_to_shift = list(
-                project_items_qs.filter(order__gte=final_order).order_by("-order")
-            )
-            for item in items_to_shift:
-                item.order += 1
-            DocumentBatchAct.objects.bulk_update(items_to_shift, ["order"])
+        temp_order = self._get_safe_temp_order(items_count=items_count)
 
         batch_act = DocumentBatchAct.objects.create(
             batch=batch,
             project_id=project_id,
             act=act,
-            order=final_order,
+            order=temp_order,
             source=DocumentBatchActSource.MANUAL,
             added_by=added_by,
         )
 
+        reordered_items = existing_items[:]
+        insert_index = final_order - 1
+        reordered_items.insert(insert_index, batch_act)
+
+        self._apply_dense_order(
+            batch=batch,
+            project_id=project_id,
+            ordered_items=reordered_items,
+        )
+
+        batch_act.refresh_from_db(fields=["order"])
         return batch_act
+
+    @transaction.atomic
+    def remove_act(
+        self,
+        *,
+        batch: DocumentBatch,
+        project_id: int,
+        batch_act_id: int,
+    ) -> None:
+        """
+        Удаляет любой акт из текущего состава проекта batch.
+
+        Это удаление строки DocumentBatchAct из комплекта,
+        а НЕ удаление самого акта из acts_app.
+        """
+        batch_act = self._get_batch_act_or_raise(
+            batch=batch,
+            project_id=project_id,
+            batch_act_id=batch_act_id,
+        )
+
+        batch_act.delete()
+
+        remaining_items = list(
+            self._get_project_items_queryset(batch=batch, project_id=project_id)
+            .select_related("act", "project", "batch")
+            .order_by("order", "id")
+        )
+
+        self._apply_dense_order(
+            batch=batch,
+            project_id=project_id,
+            ordered_items=remaining_items,
+        )
 
     @transaction.atomic
     def remove_manual_act(
@@ -150,7 +200,7 @@ class DocumentBatchEditingService:
         """
         Удаляет только вручную добавленный акт из проекта batch.
 
-        После удаления нормализует порядок внутри проекта.
+        Оставлен для обратной совместимости.
         """
         batch_act = self._get_batch_act_or_raise(
             batch=batch,
@@ -163,19 +213,11 @@ class DocumentBatchEditingService:
                 "Можно удалять только акты, добавленные вручную."
             )
 
-        removed_order = batch_act.order
-        batch_act.delete()
-
-        tail_items = list(
-            self._get_project_items_queryset(batch=batch, project_id=project_id)
-            .filter(order__gt=removed_order)
-            .order_by("order", "id")
+        self.remove_act(
+            batch=batch,
+            project_id=project_id,
+            batch_act_id=batch_act_id,
         )
-        for item in tail_items:
-            item.order -= 1
-
-        if tail_items:
-            DocumentBatchAct.objects.bulk_update(tail_items, ["order"])
 
     @transaction.atomic
     def move_act_within_project(self, params: BatchActMoveParams) -> None:
@@ -197,14 +239,21 @@ class DocumentBatchEditingService:
                 "Новая позиция должна быть числом не меньше 1."
             )
 
+        self._ensure_project_in_batch(batch=batch, project_id=project_id)
+
         batch_act = self._get_batch_act_or_raise(
             batch=batch,
             project_id=project_id,
             batch_act_id=batch_act_id,
         )
 
-        project_items_qs = self._get_project_items_queryset(batch=batch, project_id=project_id)
-        items_count = project_items_qs.count()
+        project_items = list(
+            self._get_project_items_queryset(batch=batch, project_id=project_id)
+            .select_related("act", "project", "batch")
+            .order_by("order", "id")
+        )
+
+        items_count = len(project_items)
 
         if items_count == 0:
             raise DocumentBatchEditingValidationError(
@@ -212,35 +261,31 @@ class DocumentBatchEditingService:
             )
 
         normalized_new_order = min(new_order, items_count)
-        old_order = batch_act.order
+        old_index = None
 
-        if normalized_new_order == old_order:
+        for index, item in enumerate(project_items):
+            if item.id == batch_act.id:
+                old_index = index
+                break
+
+        if old_index is None:
+            raise DocumentBatchEditingValidationError(
+                "Не найден акт для перемещения внутри проекта."
+            )
+
+        new_index = normalized_new_order - 1
+
+        if new_index == old_index:
             return
 
-        if normalized_new_order < old_order:
-            affected_items = list(
-                project_items_qs.filter(
-                    order__gte=normalized_new_order,
-                    order__lt=old_order,
-                ).exclude(pk=batch_act.pk).order_by("-order")
-            )
-            for item in affected_items:
-                item.order += 1
-        else:
-            affected_items = list(
-                project_items_qs.filter(
-                    order__gt=old_order,
-                    order__lte=normalized_new_order,
-                ).exclude(pk=batch_act.pk).order_by("order")
-            )
-            for item in affected_items:
-                item.order -= 1
+        moving_item = project_items.pop(old_index)
+        project_items.insert(new_index, moving_item)
 
-        if affected_items:
-            DocumentBatchAct.objects.bulk_update(affected_items, ["order"])
-
-        batch_act.order = normalized_new_order
-        batch_act.save(update_fields=["order"])
+        self._apply_dense_order(
+            batch=batch,
+            project_id=project_id,
+            ordered_items=project_items,
+        )
 
     @transaction.atomic
     def normalize_project_order(
@@ -251,31 +296,61 @@ class DocumentBatchEditingService:
     ) -> None:
         """
         Жёстко пересчитывает порядок актов внутри проекта как 1..N.
-
-        Полезно как технический safeguard:
-        - после ручных правок
-        - после аварийного кейса
-        - перед генерацией, если нужно гарантировать плотный порядок
         """
         items = list(
             self._get_project_items_queryset(batch=batch, project_id=project_id)
+            .select_related("act", "project", "batch")
             .order_by("order", "id")
         )
 
-        changed_items: list[DocumentBatchAct] = []
+        self._apply_dense_order(
+            batch=batch,
+            project_id=project_id,
+            ordered_items=items,
+        )
 
-        for index, item in enumerate(items, start=1):
+    def _apply_dense_order(
+        self,
+        *,
+        batch: DocumentBatch,
+        project_id: int,
+        ordered_items: list[DocumentBatchAct],
+    ) -> None:
+        """
+        Безопасно выставляет плотный порядок 1..N.
+
+        В 2 фазы:
+        1. Сначала уводим все order во временную безопасную зону
+        2. Затем ставим финальные значения 1..N
+        """
+        if not ordered_items:
+            return
+
+        temp_base = self._get_safe_temp_order(items_count=len(ordered_items))
+
+        temp_changed_items: list[DocumentBatchAct] = []
+        for index, item in enumerate(ordered_items, start=1):
+            temp_order = temp_base + index
+            if item.order != temp_order:
+                item.order = temp_order
+                temp_changed_items.append(item)
+
+        if temp_changed_items:
+            DocumentBatchAct.objects.bulk_update(temp_changed_items, ["order"])
+
+        final_changed_items: list[DocumentBatchAct] = []
+        for index, item in enumerate(ordered_items, start=1):
             if item.order != index:
                 item.order = index
-                changed_items.append(item)
+                final_changed_items.append(item)
 
-        if changed_items:
-            DocumentBatchAct.objects.bulk_update(changed_items, ["order"])
+        if final_changed_items:
+            DocumentBatchAct.objects.bulk_update(final_changed_items, ["order"])
+
+    def _get_safe_temp_order(self, *, items_count: int) -> int:
+        return self.TEMP_ORDER_GAP + items_count
 
     def _ensure_project_in_batch(self, *, batch: DocumentBatch, project_id: int) -> None:
-        """
-        Проверяет, что проект входит в состав batch.
-        """
         exists = DocumentBatchProject.objects.filter(
             batch=batch,
             project_id=project_id,
@@ -287,9 +362,6 @@ class DocumentBatchEditingService:
             )
 
     def _get_act_for_project(self, *, act_id: int, project_id: int) -> Act:
-        """
-        Возвращает акт, если он существует и привязан к нужному проекту.
-        """
         act = (
             Act.objects.filter(id=act_id, projects__id=project_id)
             .distinct()
@@ -308,9 +380,6 @@ class DocumentBatchEditingService:
         project_id: int,
         batch_act_id: int,
     ) -> DocumentBatchAct:
-        """
-        Возвращает DocumentBatchAct внутри конкретного проекта batch.
-        """
         batch_act = (
             DocumentBatchAct.objects.filter(
                 id=batch_act_id,
@@ -332,9 +401,6 @@ class DocumentBatchEditingService:
         batch: DocumentBatch,
         project_id: int,
     ):
-        """
-        Базовый queryset строк DocumentBatchAct внутри одного проекта batch.
-        """
         return DocumentBatchAct.objects.filter(
             batch=batch,
             project_id=project_id,

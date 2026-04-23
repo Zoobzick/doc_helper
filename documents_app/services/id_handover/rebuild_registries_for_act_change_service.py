@@ -12,6 +12,7 @@ from documents_app.models import (
     DocumentBatchAct,
     DocumentBatchGenerationMode,
 )
+from documents_app.services.id_handover.document_signatures import DocumentSignatureService
 from documents_app.services.id_handover.project_registry_generation_service import (
     ProjectRegistryGenerationResult,
     ProjectRegistryGenerationService,
@@ -91,10 +92,12 @@ class RebuildRegistriesForActChangeService:
         self,
         *,
         registry_generation_service: ProjectRegistryGenerationService | None = None,
+        signature_service: DocumentSignatureService | None = None,
     ) -> None:
         self.registry_generation_service = (
             registry_generation_service or ProjectRegistryGenerationService()
         )
+        self.signature_service = signature_service or DocumentSignatureService()
 
     @transaction.atomic
     def rebuild_for_act(
@@ -129,6 +132,7 @@ class RebuildRegistriesForActChangeService:
 
         rebuilt_items: list[RebuiltRegistryItemResult] = []
         skipped_batch_ids: set[int] = set()
+        touched_batch_ids: set[int] = set()
 
         current_batch_id: int | None = None
         current_batch: DocumentBatch | None = None
@@ -150,7 +154,6 @@ class RebuildRegistriesForActChangeService:
                 project_id=row.project_id,
                 template_path=template_path,
             )
-
             rebuilt_items.append(
                 RebuiltRegistryItemResult(
                     batch_id=current_batch.id,
@@ -158,6 +161,12 @@ class RebuildRegistriesForActChangeService:
                     generation_result=generation_result,
                 )
             )
+            touched_batch_ids.add(current_batch.id)
+
+        if touched_batch_ids:
+            touched_batches = DocumentBatch.objects.filter(id__in=touched_batch_ids)
+            for batch in touched_batches:
+                self.signature_service.refresh_batch_documents_actuality(batch=batch)
 
         return RebuildRegistriesForActChangeResult(
             act_id=act.id,

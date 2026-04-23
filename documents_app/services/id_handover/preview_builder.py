@@ -17,22 +17,23 @@ from documents_app.models import (
 
 
 @dataclass(slots=True)
-class RegistryPreviewRow:
+class DocumentPreviewRow:
     """
-    Одна строка preview реестра.
+    Одна строка preview состава проекта.
 
-    row_type (тип строки: act / appendix)
-    position (сквозная позиция строки внутри реестра проекта)
-    act_position (позиция акта внутри проекта)
-    act_id (id акта)
-    act_number (номер акта)
-    act_date (дата акта в формате dd.mm.yyyy)
-    label (что печатаем в строке)
-    sheets_count (количество листов)
-    appendix_position (позиция приложения внутри акта, если строка приложения)
-    source_batch_act_id (id строки DocumentBatchAct)
-    source_appendix_line_id (id строки ActAppendixLine, если это приложение)
-    source_kind (auto/manual для акта из batch)
+    row_type:
+        - "act"
+        - "appendix"
+
+    position:
+        Сквозной номер строки внутри проекта.
+
+    act_position:
+        Позиция акта внутри проекта (DocumentBatchAct.order).
+
+    sheets_count:
+        Количество листов документа.
+        Для акта всегда 1.
     """
     row_type: str
     position: int
@@ -40,27 +41,33 @@ class RegistryPreviewRow:
     act_id: int
     act_number: str
     act_date: str
-    label: str
+    document_name: str
     sheets_count: int
-    appendix_position: int | None
     source_batch_act_id: int
     source_appendix_line_id: int | None
     source_kind: str
+    appendix_position: int | None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "row_type": self.row_type,
+            "is_act": self.row_type == "act",
+            "is_appendix": self.row_type == "appendix",
             "position": self.position,
             "act_position": self.act_position,
             "act_id": self.act_id,
             "act_number": self.act_number,
             "act_date": self.act_date,
-            "label": self.label,
+            "document_name": self.document_name,
+            "label": self.document_name,
             "sheets_count": self.sheets_count,
-            "appendix_position": self.appendix_position,
             "source_batch_act_id": self.source_batch_act_id,
             "source_appendix_line_id": self.source_appendix_line_id,
             "source_kind": self.source_kind,
+            "appendix_position": self.appendix_position,
+            "can_move_up": self.row_type == "act",
+            "can_move_down": self.row_type == "act",
+            "can_delete": self.row_type == "act",
         }
 
 
@@ -72,17 +79,20 @@ class DocumentBatchPreviewBuilder:
     """
     Строит web-preview для комплекта сдачи ИД.
 
-    Что входит в preview:
+    Новый формат preview:
     - шапка batch
     - список проектов
     - внутри каждого проекта:
-      - список актов в порядке DocumentBatchAct.order
-      - для каждого акта:
-        - первая строка реестра = сам акт (всегда 1 лист)
-        - далее строки ActAppendixLine в порядке position
+      - плоский список документов в том порядке, в котором они реально
+        укладываются в папку:
+            1) акт (всегда 1 лист)
+            2) все приложения этого акта
+            3) следующий акт
+            4) его приложения
+            ...
 
     ВАЖНО:
-    - preview не редактирует исходные данные
+    - preview ничего не изменяет в БД
     - preview только читает DocumentBatch / DocumentBatchAct / ActAppendixLine
     """
 
@@ -103,11 +113,11 @@ class DocumentBatchPreviewBuilder:
 
         for batch_project in batch_projects:
             project_id = batch_project.project_id
-            project_items = batch_acts_by_project.get(project_id, [])
+            project_batch_acts = batch_acts_by_project.get(project_id, [])
 
             project_payload = self._build_project_payload(
                 batch_project=batch_project,
-                batch_acts=project_items,
+                batch_acts=project_batch_acts,
             )
 
             projects_payload.append(project_payload)
@@ -144,7 +154,8 @@ class DocumentBatchPreviewBuilder:
         Загружает проекты batch в порядке order.
         """
         return list(
-            DocumentBatchProject.objects.filter(batch=batch)
+            DocumentBatchProject.objects
+            .filter(batch=batch)
             .select_related("project")
             .order_by("order", "id")
         )
@@ -161,7 +172,8 @@ class DocumentBatchPreviewBuilder:
         )
 
         batch_acts = list(
-            DocumentBatchAct.objects.filter(batch=batch)
+            DocumentBatchAct.objects
+            .filter(batch=batch)
             .select_related("project", "act")
             .prefetch_related(appendix_prefetch)
             .order_by("project_id", "order", "id")
@@ -202,30 +214,30 @@ class DocumentBatchPreviewBuilder:
         }
 
     def _build_project_payload(
-            self,
-            *,
-            batch_project: DocumentBatchProject,
-            batch_acts: list[DocumentBatchAct],
+        self,
+        *,
+        batch_project: DocumentBatchProject,
+        batch_acts: list[DocumentBatchAct],
     ) -> dict[str, Any]:
         """
         Строит preview по одному проекту batch.
         """
-        registry_rows: list[dict[str, Any]] = []
+        document_rows: list[dict[str, Any]] = []
         acts_payload: list[dict[str, Any]] = []
 
-        current_registry_row_position = 0
+        current_position = 0
         total_sheets_count = 0
 
         for batch_act in batch_acts:
-            act_payload, act_rows = self._build_act_payload_and_rows(
+            act_payload, rows = self._build_act_payload_and_document_rows(
                 batch_act=batch_act,
-                current_registry_row_position=current_registry_row_position,
+                current_position=current_position,
             )
 
             acts_payload.append(act_payload)
-            registry_rows.extend([row.to_dict() for row in act_rows])
+            document_rows.extend([row.to_dict() for row in rows])
 
-            current_registry_row_position += len(act_rows)
+            current_position += len(rows)
             total_sheets_count += act_payload["total_sheets_count"]
 
         project = batch_project.project
@@ -242,26 +254,32 @@ class DocumentBatchPreviewBuilder:
             },
             "summary": {
                 "acts_count": len(acts_payload),
-                "registry_rows_count": len(registry_rows),
+                "registry_rows_count": len(document_rows),
+                "documents_count": len(document_rows),
                 "total_sheets_count": total_sheets_count,
             },
+            "project_id": project.id,
+            "project_code": getattr(project, "full_code", ""),
+            "project_name": project_name,
             "acts_count": len(acts_payload),
-            "registry_rows_count": len(registry_rows),
+            "registry_rows_count": len(document_rows),
+            "documents_count": len(document_rows),
             "total_sheets_count": total_sheets_count,
             "acts": acts_payload,
-            "registry_rows": registry_rows,
+            "registry_rows": document_rows,
+            "document_rows": document_rows,
         }
 
-    def _build_act_payload_and_rows(
-            self,
-            *,
-            batch_act: DocumentBatchAct,
-            current_registry_row_position: int,
-    ) -> tuple[dict[str, Any], list[RegistryPreviewRow]]:
+    def _build_act_payload_and_document_rows(
+        self,
+        *,
+        batch_act: DocumentBatchAct,
+        current_position: int,
+    ) -> tuple[dict[str, Any], list[DocumentPreviewRow]]:
         """
         Строит:
         1. payload по одному акту
-        2. строки реестра по этому акту
+        2. плоские строки документов по этому акту
 
         Правило:
         - первая строка = сам акт, всегда 1 лист
@@ -270,45 +288,45 @@ class DocumentBatchPreviewBuilder:
         act = batch_act.act
         appendix_lines = list(act.appendix_lines.all())
 
-        rows: list[RegistryPreviewRow] = []
+        rows: list[DocumentPreviewRow] = []
 
-        act_label = self._build_act_registry_label(batch_act=batch_act)
+        act_document_name = self._build_act_document_name(batch_act=batch_act)
 
-        act_row = RegistryPreviewRow(
+        act_row = DocumentPreviewRow(
             row_type="act",
-            position=current_registry_row_position + 1,
+            position=current_position + 1,
             act_position=batch_act.order,
             act_id=act.id,
             act_number=act.number,
             act_date=self._format_date(act.act_date),
-            label=act_label,
+            document_name=act_document_name,
             sheets_count=1,
-            appendix_position=None,
             source_batch_act_id=batch_act.id,
             source_appendix_line_id=None,
             source_kind=batch_act.source,
+            appendix_position=None,
         )
         rows.append(act_row)
 
         for appendix_line in appendix_lines:
-            appendix_label = self._build_appendix_registry_label(
+            appendix_document_name = self._build_appendix_document_name(
                 batch_act=batch_act,
                 appendix_line=appendix_line,
             )
 
-            appendix_row = RegistryPreviewRow(
+            appendix_row = DocumentPreviewRow(
                 row_type="appendix",
-                position=current_registry_row_position + len(rows) + 1,
+                position=current_position + len(rows) + 1,
                 act_position=batch_act.order,
                 act_id=act.id,
                 act_number=act.number,
                 act_date=self._format_date(act.act_date),
-                label=appendix_label,
-                sheets_count=appendix_line.sheets_count,
-                appendix_position=appendix_line.position,
+                document_name=appendix_document_name,
+                sheets_count=self._normalize_sheets_count(appendix_line.sheets_count),
                 source_batch_act_id=batch_act.id,
                 source_appendix_line_id=appendix_line.id,
                 source_kind=batch_act.source,
+                appendix_position=appendix_line.position,
             )
             rows.append(appendix_row)
 
@@ -320,34 +338,38 @@ class DocumentBatchPreviewBuilder:
             "order": batch_act.order,
             "source": batch_act.source,
             "source_display": batch_act.get_source_display(),
-            "act": {
-                "id": act.id,
-                "uuid": str(act.uuid),
-                "number": act.number,
-                "act_date": self._format_date(act.act_date),
-                "work_name": act.work_name,
-                "work_start_date": self._format_date(act.work_start_date),
-                "work_end_date": self._format_date(act.work_end_date),
-                "sheets_total": getattr(act, "sheets_total", 0),
-                "status": act.status,
-                "status_display": act.get_status_display(),
-            },
+            "position": batch_act.order,
+            "act_id": act.id,
+            "act_uuid": str(act.uuid),
+            "act_number": act.number,
+            "act_date": self._format_date(act.act_date),
+            "document_name": act_document_name,
+            "label": act_document_name,
+            "work_name": act.work_name,
+            "work_start_date": self._format_date(act.work_start_date),
+            "work_end_date": self._format_date(act.work_end_date),
+            "sheets_total": getattr(act, "sheets_total", 0),
+            "status": act.status,
+            "status_display": act.get_status_display(),
             "summary": {
                 "appendix_lines_count": len(appendix_lines),
                 "registry_rows_count": len(rows),
+                "documents_count": len(rows),
                 "total_sheets_count": total_sheets_count,
             },
             "appendix_lines_count": len(appendix_lines),
             "registry_rows_count": len(rows),
+            "documents_count": len(rows),
             "total_sheets_count": total_sheets_count,
+            "document_rows": [row.to_dict() for row in rows],
             "registry_rows": [row.to_dict() for row in rows],
         }
 
         return act_payload, rows
 
-    def _build_act_registry_label(self, *, batch_act: DocumentBatchAct) -> str:
+    def _build_act_document_name(self, *, batch_act: DocumentBatchAct) -> str:
         """
-        Первая строка реестра по акту.
+        Отдельная строка для самого акта.
 
         Формат:
         Акт освидетельствования скрытых работ №{number} от {date}г.
@@ -362,20 +384,20 @@ class DocumentBatchPreviewBuilder:
             return f"{first_line}\n{work_name}"
         return first_line
 
-    def _build_appendix_registry_label(
-            self,
-            *,
-            batch_act: DocumentBatchAct,
-            appendix_line: ActAppendixLine,
+    def _build_appendix_document_name(
+        self,
+        *,
+        batch_act: DocumentBatchAct,
+        appendix_line: ActAppendixLine,
     ) -> str:
         """
-        Возвращает текст строки приложения для реестра.
+        Возвращает текст строки приложения.
 
         Особое правило:
         если строка начинается с "Исполнительная схема ...",
         то после даты схемы добавляем перевод строки и work_name.
 
-        Ожидаемый формат:
+        Формат:
         Исполнительная схема №... от ...г.
         {work_name}
 
@@ -420,11 +442,6 @@ class DocumentBatchPreviewBuilder:
 
         Стало:
         без изменений
-
-        Логика:
-        - если work_name пустой, возвращаем исходный label
-        - если в label уже есть перенос строки и после него что-то есть,
-          не дублируем work_name
         """
         if not work_name:
             return label
@@ -437,14 +454,27 @@ class DocumentBatchPreviewBuilder:
                 return normalized_label
             return f"{first_line}\n{work_name}"
 
-        # Пытаемся аккуратно вставить после шаблона "...г."
         match = re.match(r"^(.*?г\.)\s*$", normalized_label, flags=re.IGNORECASE)
         if match:
             first_line = match.group(1).strip()
             return f"{first_line}\n{work_name}"
 
-        # Запасной вариант: просто добавляем перенос строки
         return f"{normalized_label}\n{work_name}"
+
+    @staticmethod
+    def _normalize_sheets_count(value) -> int:
+        """
+        Приводит количество листов к безопасному целому числу >= 0.
+        """
+        if value in (None, ""):
+            return 0
+
+        try:
+            result = int(value)
+        except (TypeError, ValueError):
+            return 0
+
+        return max(result, 0)
 
     @staticmethod
     def _format_date(value) -> str:

@@ -111,35 +111,74 @@ MONTH_CODE_VALIDATOR = RegexValidator(
 )
 
 
+def _sanitize_path_part(value: str) -> str:
+    invalid_chars = '<>:"/\\|?*'
+    cleaned = "".join("_" if ch in invalid_chars else ch for ch in str(value))
+    cleaned = cleaned.strip().strip(".")
+    return cleaned or "undefined"
+
+
+def _get_batch_month_folder(batch) -> str:
+    if getattr(batch, "created_at", None):
+        return batch.created_at.strftime("%m.%Y")
+    return "без_даты"
+
+
+def _get_batch_title_folder(batch) -> str:
+    title = (getattr(batch, "title", "") or "").strip()
+    if title:
+        return _sanitize_path_part(title)
+
+    if getattr(batch, "pk", None):
+        return f"batch_{batch.pk}"
+
+    return f"batch_{getattr(batch, 'uuid', 'unsaved')}"
+
+
 def batch_document_upload_to(instance, filename):
     """
-    Путь хранения файла GeneratedDocument.
+    Путь хранения файла GeneratedDocument относительно MEDIA_ROOT.
 
-    instance (экземпляр GeneratedDocument)
-    filename (исходное имя загружаемого файла)
+    Целевой формат:
+    DOCUMENTS_DIR / "Комплекты" / month / batch_title / ...
+
+    Так как MEDIA_ROOT = BASE_ID_DIR, функция должна возвращать
+    относительный путь вида:
+    "Документы/Комплекты/..."
     """
     extension = Path(filename).suffix.lower()
-    batch_uuid = str(instance.batch.uuid)
+
+    documents_root_relative = Path(settings.DOCUMENTS_DIR).relative_to(settings.MEDIA_ROOT)
+    month_folder = _get_batch_month_folder(instance.batch)
+    batch_folder = _get_batch_title_folder(instance.batch)
+
+    base_path = (
+        documents_root_relative
+        / "Комплекты"
+        / month_folder
+        / batch_folder
+    )
 
     if instance.project_id:
         project_code = getattr(instance.project, "full_code", None) or f"project-{instance.project_id}"
-        project_code = str(project_code).replace("/", "_").replace("\\", "_").strip()
-        return (
-            f"documents_app/id_handover/"
-            f"batch_{batch_uuid}/"
-            f"{project_code}/"
-            f"{instance.document_type}/"
-            f"{instance.uuid}{extension}"
+        project_folder = _sanitize_path_part(project_code)
+
+        relative_path = (
+            base_path
+            / "Проекты"
+            / project_folder
+            / instance.document_type
+            / f"{instance.uuid}{extension}"
         )
+        return relative_path.as_posix()
 
-    return (
-        f"documents_app/id_handover/"
-        f"batch_{batch_uuid}/"
-        f"common/"
-        f"{instance.document_type}/"
-        f"{instance.uuid}{extension}"
+    relative_path = (
+        base_path
+        / "Общие"
+        / instance.document_type
+        / f"{instance.uuid}{extension}"
     )
-
+    return relative_path.as_posix()
 
 class DocumentBatchSelectionMode(models.TextChoices):
     ALL_TIME = "all_time", "За весь период"
@@ -574,6 +613,7 @@ class GeneratedDocument(models.Model):
     file = models.FileField(
         upload_to=batch_document_upload_to,
         verbose_name="Файл",
+        max_length=500
     )
     original_name = models.CharField(
         max_length=255,

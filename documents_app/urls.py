@@ -4,11 +4,20 @@ from documents_app.views import (
     BoxLabelGenerateView,
     BoxLabelPageView,
     BoxLabelProjectSearchView,
+    DocumentBatchAddManualActView,
     DocumentBatchCreateDraftView,
     DocumentBatchDetailView,
     DocumentBatchGenerateView,
+    DocumentBatchListView,
     DocumentBatchMasterView,
+    DocumentBatchMoveActDownView,
+    DocumentBatchMoveActUpView,
+    DocumentBatchProjectActsLookupView,
+    DocumentBatchRefreshCompositionView,
+    DocumentBatchRemoveActView,
+    DocumentBatchUpdateDraftView,
     TitleSheetOpenPdfView,
+    id_handover_batch_acts_lookup,
 )
 
 app_name = "documents"
@@ -29,13 +38,20 @@ urlpatterns = [
         BoxLabelGenerateView.as_view(),
         name="box_label_generate",
     ),
-
     path(
         "title-sheet/<int:project_id>/<str:doc_type>/open/",
         TitleSheetOpenPdfView.as_view(),
         name="title_sheet_open",
     ),
 
+    # -----------------------------
+    # ID handover batch list / master
+    # -----------------------------
+    path(
+        "id-handover/batches/",
+        DocumentBatchListView.as_view(),
+        name="id_handover_batch_list",
+    ),
     path(
         "id-handover/master/",
         DocumentBatchMasterView.as_view(),
@@ -46,11 +62,60 @@ urlpatterns = [
         DocumentBatchCreateDraftView.as_view(),
         name="id_handover_create_draft",
     ),
+
     path(
         "id-handover/batches/<int:batch_id>/master/",
         DocumentBatchMasterView.as_view(),
         name="id_handover_batch_master",
     ),
+    path(
+        "id-handover/batches/<int:batch_id>/update-draft/",
+        DocumentBatchUpdateDraftView.as_view(),
+        name="id_handover_batch_update_draft",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/refresh-composition/",
+        DocumentBatchRefreshCompositionView.as_view(),
+        name="id_handover_batch_refresh_composition",
+    ),
+
+    # -----------------------------
+    # Step 2 actions
+    # -----------------------------
+    path(
+        "id-handover/batches/<int:batch_id>/projects/acts-lookup/",
+        DocumentBatchProjectActsLookupView.as_view(),
+        name="id_handover_batch_project_acts_lookup",
+    ),
+    path(
+        "id-handover/batch/<int:batch_id>/acts-lookup/",
+        id_handover_batch_acts_lookup,
+        name="id_handover_batch_acts_lookup",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/acts/add-manual/",
+        DocumentBatchAddManualActView.as_view(),
+        name="id_handover_batch_add_manual_act",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/acts/<int:batch_act_id>/move-up/",
+        DocumentBatchMoveActUpView.as_view(),
+        name="id_handover_batch_move_act_up",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/acts/<int:batch_act_id>/move-down/",
+        DocumentBatchMoveActDownView.as_view(),
+        name="id_handover_batch_move_act_down",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/acts/<int:batch_act_id>/remove/",
+        DocumentBatchRemoveActView.as_view(),
+        name="id_handover_batch_remove_act",
+    ),
+
+    # -----------------------------
+    # Step 3 / result
+    # -----------------------------
     path(
         "id-handover/batches/<int:batch_id>/generate/",
         DocumentBatchGenerateView.as_view(),

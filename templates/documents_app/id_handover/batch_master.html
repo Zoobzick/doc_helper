@@ -5,6 +5,7 @@
 
 {% block content %}
 
+
     <div class="pagetitle">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
             <div>
@@ -105,16 +106,17 @@
                                 </h5>
 
                                 {% if batch %}
-                                    <a href="{% url 'documents:id_handover_master' %}" class="btn btn-outline-secondary btn-sm">
+                                    <a href="{% url 'documents:id_handover_master' %}"
+                                       class="btn btn-outline-secondary btn-sm">
                                         Новый комплект
                                     </a>
                                 {% endif %}
                             </div>
 
-                            <form method="post"
-                                  action="{% url 'documents:id_handover_create_draft' %}"
-                                  id="batchMasterCreateForm"
-                                  novalidate>
+                                <form method="post"
+                                      action="{% if batch %}{% url 'documents:id_handover_batch_update_draft' batch.id %}{% else %}{% url 'documents:id_handover_create_draft' %}{% endif %}"
+                                      id="batchMasterCreateForm"
+                                      novalidate>
                                 {% csrf_token %}
 
                                 <div class="row g-3 mt-1">
@@ -257,25 +259,40 @@
 
                                 <div id="autoProjectsBlock" class="project-scope-block">
                                     <div class="alert alert-info mb-0">
-                                        Проекты будут определены автоматически по найденным актам с учётом выбранного периода.
+                                        Проекты будут определены автоматически по найденным актам с учётом выбранного
+                                        периода.
                                     </div>
                                 </div>
 
                                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4">
-                                    <a href="/" class="btn btn-outline-secondary">
-                                        Назад
-                                    </a>
+                                    <div class="text-muted small">
+                                        {% if batch %}
+                                            Изменение параметров пересоберёт состав комплекта и пометит ранее
+                                            сгенерированные файлы как неактуальные.
+                                        {% else %}
+                                            После создания черновика откроется шаг 2 — состав комплекта.
+                                        {% endif %}
+                                    </div>
 
-                                    {% if not batch %}
-                                        <button type="submit" class="btn btn-primary">
-                                            <i class="bi bi-arrow-right-circle me-1"></i>
-                                            Проверить состав
-                                        </button>
-                                    {% else %}
-                                        <div class="text-muted small">
-                                            Черновик уже создан. Позже добавим редактирование параметров.
-                                        </div>
-                                    {% endif %}
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <a href="/" class="btn btn-outline-secondary">
+                                            Назад
+                                        </a>
+
+                                        {% if batch %}
+                                            {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="bi bi-save me-1"></i>
+                                                    Сохранить изменения
+                                                </button>
+                                            {% endif %}
+                                        {% else %}
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="bi bi-arrow-right-circle me-1"></i>
+                                                Создать черновик и открыть состав
+                                            </button>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </form>
                         </div>
@@ -338,14 +355,17 @@
 
                                 {% if batch %}
                                     <div class="d-flex gap-2 flex-wrap">
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" disabled>
-                                            <i class="bi bi-arrow-repeat me-1"></i>
-                                            Обновить состав
-                                        </button>
-                                        <button type="button" class="btn btn-outline-primary btn-sm" disabled>
-                                            <i class="bi bi-plus-circle me-1"></i>
-                                            Добавить акт
-                                        </button>
+                                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                            <form method="post"
+                                                  action="{% url 'documents:id_handover_batch_refresh_composition' batch.id %}"
+                                                  class="d-inline">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-outline-secondary btn-sm">
+                                                    <i class="bi bi-arrow-repeat me-1"></i>
+                                                    Обновить состав
+                                                </button>
+                                            </form>
+                                        {% endif %}
                                     </div>
                                 {% endif %}
                             </div>
@@ -370,7 +390,7 @@
                                     </div>
                                     <div class="col-md-3">
                                         <div class="border rounded p-3 h-100">
-                                            <div class="small text-muted">Строк реестра</div>
+                                            <div class="small text-muted">Строк документов</div>
                                             <div class="fs-5 fw-bold">{{ preview_data.summary.registry_rows_count }}</div>
                                         </div>
                                     </div>
@@ -383,67 +403,156 @@
                                 </div>
 
                                 {% for project in preview_data.projects %}
-                                    <div class="border rounded p-3 mb-4">
-                                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-                                            <div>
-                                                <div class="fw-bold">{{ project.project_code }}</div>
-                                                <div class="text-muted small">{{ project.project_name|default:"" }}</div>
+                                    <div class="border rounded p-3 mb-4" id="project-{{ project.project_id }}">
+                                        <div class="project-header-row mb-3">
+                                            <div class="project-header-main">
+                                                <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                                                    <div>
+                                                        <div class="project-code">{{ project.project_code }}</div>
+                                                        <div class="small text-muted mt-1">
+                                                            {% if batch.selection_mode == "range" %}
+                                                                Можно вручную добавить акты этого же проекта, которые не
+                                                                попали в выбранный период.
+                                                            {% else %}
+                                                                Можно вручную добавить акты этого же проекта, которых
+                                                                ещё нет в составе комплекта.
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                    {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                                        <div class="project-header-actions">
+                                                            <button type="button"
+                                                                    class="btn btn-outline-primary btn-sm js-open-add-act-modal"
+                                                                    data-project-id="{{ project.project_id }}"
+                                                                    data-project-code="{{ project.project_code }}"
+                                                                    data-project-acts-count="{{ project.acts_count }}"
+                                                                    data-lookup-url="{% url 'documents:id_handover_batch_acts_lookup' batch.id %}?project_id={{ project.project_id }}">
+                                                                <i class="bi bi-plus-circle me-1"></i>
+                                                                Добавить акт
+                                                            </button>
+                                                        </div>
+                                                    {% endif %}                                                </div>
                                             </div>
-                                            <div class="text-end small text-muted">
-                                                Актов: {{ project.acts_count }}<br>
-                                                Строк реестра: {{ project.registry_rows_count }}<br>
-                                                Листов: {{ project.total_sheets_count }}
+
+                                            <div class="project-stats-row">
+                                                <div class="project-stat-pill">
+                                                    <span class="project-stat-label">Актов</span>
+                                                    <span class="project-stat-value">{{ project.acts_count }}</span>
+                                                </div>
+                                                <div class="project-stat-pill">
+                                                    <span class="project-stat-label">Строк документов</span>
+                                                    <span class="project-stat-value">{{ project.documents_count|default:project.registry_rows_count }}</span>
+                                                </div>
+                                                <div class="project-stat-pill">
+                                                    <span class="project-stat-label">Листов</span>
+                                                    <span class="project-stat-value">{{ project.total_sheets_count }}</span>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        {% if project.acts %}
+                                        {% if project.document_rows %}
                                             <div class="table-responsive">
-                                                <table class="table table-sm table-bordered align-middle">
+                                                <table class="table table-sm table-bordered align-middle batch-documents-table mb-0">
                                                     <thead>
                                                     <tr>
                                                         <th style="width: 70px;">№</th>
-                                                        <th style="width: 130px;">Дата акта</th>
-                                                        <th>Акт / приложение</th>
-                                                        <th style="width: 100px;">Листов</th>
-                                                        <th style="width: 140px;">Действия</th>
+                                                        <th>Наименование документа</th>
+                                                        <th style="width: 110px;">Листов</th>
+                                                        <th style="width: 190px;">Действия</th>
                                                     </tr>
                                                     </thead>
                                                     <tbody>
-                                                    {% for act in project.acts %}
-                                                        <tr class="table-light">
-                                                            <td>{{ act.position }}</td>
-                                                            <td>{{ act.act_date|default:"—" }}</td>
+                                                    {% for row in project.document_rows %}
+                                                        <tr class="{% if row.is_act %}batch-row-act{% else %}batch-row-appendix{% endif %}"
+                                                            {% if row.is_act %}id="batch-act-{{ row.source_batch_act_id }}"{% endif %}>
+                                                            <td class="text-center fw-semibold">{{ row.position }}</td>
+
                                                             <td>
-                                                                <strong>Акт №{{ act.act_number }}</strong><br>
-                                                                <span class="text-muted small">{{ act.label }}</span>
+                                                                {% if row.is_act %}
+                                                                    <div class="d-flex flex-column gap-2">
+                                                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                                            <span class="badge bg-primary-subtle text-primary-emphasis border">Акт</span>
+                                                                            {% if row.source_kind == "manual" %}
+                                                                                <span class="badge bg-warning text-dark">Manual</span>
+                                                                            {% else %}
+                                                                                <span class="badge bg-light text-dark border">Auto</span>
+                                                                            {% endif %}
+                                                                        </div>
+
+                                                                        <div class="fw-semibold batch-document-name">{{ row.document_name|linebreaksbr }}</div>
+                                                                    </div>
+                                                                {% else %}
+                                                                    <div class="batch-document-name">{{ row.document_name|linebreaksbr }}</div>
+                                                                {% endif %}
                                                             </td>
-                                                            <td>{{ act.total_sheets_count }}</td>
+
+                                                            <td class="text-center">
+                                                                {{ row.sheets_count }}
+                                                            </td>
+
                                                             <td>
-                                                                <div class="d-flex gap-1">
-                                                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled>↑</button>
-                                                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled>↓</button>
-                                                                    <button type="button" class="btn btn-sm btn-outline-danger" disabled>×</button>
-                                                                </div>
+                                                                {% if row.is_act %}
+                                                                    <div class="d-flex gap-1 flex-wrap">
+                                                                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                                                            <form method="post"
+                                                                                  action="{% url 'documents:id_handover_batch_move_act_up' batch.id row.source_batch_act_id %}#batch-act-{{ row.source_batch_act_id }}"
+                                                                                  class="d-inline">
+                                                                                {% csrf_token %}
+                                                                                <button type="submit"
+                                                                                        class="btn btn-sm btn-outline-secondary"
+                                                                                        {% if not row.can_move_up %}disabled{% endif %}>
+                                                                                    ↑
+                                                                                </button>
+                                                                            </form>
+
+                                                                            <form method="post"
+                                                                                  action="{% url 'documents:id_handover_batch_move_act_down' batch.id row.source_batch_act_id %}#batch-act-{{ row.source_batch_act_id }}"
+                                                                                  class="d-inline">
+                                                                                {% csrf_token %}
+                                                                                <button type="submit"
+                                                                                        class="btn btn-sm btn-outline-secondary"
+                                                                                        {% if not row.can_move_down %}disabled{% endif %}>
+                                                                                    ↓
+                                                                                </button>
+                                                                            </form>
+
+                                                                            <form method="post"
+                                                                                  action="{% url 'documents:id_handover_batch_remove_act' batch.id row.source_batch_act_id %}#project-{{ project.project_id }}"
+                                                                                  class="d-inline">
+                                                                                {% csrf_token %}
+                                                                                <button type="submit"
+                                                                                        class="btn btn-sm btn-outline-danger"
+                                                                                        {% if not row.can_delete %}disabled{% endif %}
+                                                                                        onclick="return confirm('Удалить этот акт из комплекта?');">
+                                                                                    ×
+                                                                                </button>
+                                                                            </form>
+                                                                        {% endif %}
+                                                                    </div>
+                                                                {% else %}
+                                                                    <span class="text-muted small">—</span>
+                                                                {% endif %}
                                                             </td>
                                                         </tr>
-
-                                                        {% if act.registry_rows %}
-                                                            {% for row in act.registry_rows %}
-                                                                <tr>
-                                                                    <td>{{ row.position }}</td>
-                                                                    <td>{{ row.act_date|default:"—" }}</td>
-                                                                    <td>{{ row.label }}</td>
-                                                                    <td>{{ row.sheets_count }}</td>
-                                                                    <td></td>
-                                                                </tr>
-                                                            {% endfor %}
-                                                        {% endif %}
                                                     {% endfor %}
                                                     </tbody>
                                                 </table>
                                             </div>
                                         {% else %}
-                                            <div class="text-muted">По проекту пока нет актов.</div>
+                                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                                <div class="text-muted">По проекту пока нет актов.</div>
+
+                                                {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                                    <button type="button"
+                                                            class="btn btn-outline-primary btn-sm js-open-add-act-modal"
+                                                            data-project-id="{{ project.project_id }}"
+                                                            data-project-code="{{ project.project_code }}"
+                                                            data-project-acts-count="{{ project.acts_count }}"
+                                                            data-lookup-url="{% url 'documents:id_handover_batch_acts_lookup' batch.id %}?project_id={{ project.project_id }}">
+                                                        <i class="bi bi-plus-circle me-1"></i>
+                                                        Добавить акт
+                                                    </button>
+                                                {% endif %}                                            </div>
                                         {% endif %}
                                     </div>
                                 {% endfor %}
@@ -502,17 +611,19 @@
 
                                 <div class="d-flex gap-2 flex-wrap">
                                     {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                                        <form method="post" action="{% url 'documents:id_handover_batch_generate' batch.id %}">
+                                        <form method="post"
+                                              action="{% url 'documents:id_handover_batch_generate' batch.id %}">
                                             {% csrf_token %}
                                             <button type="submit" class="btn btn-success">
                                                 <i class="bi bi-gear-fill me-1"></i>
-                                                Сформировать комплект
+                                                Сформировать документы
                                             </button>
                                         </form>
                                     {% endif %}
 
                                     {% if user.is_superuser or perms.documents_app.view_documentbatch %}
-                                        <a href="{% url 'documents:id_handover_batch_detail' batch.id %}" class="btn btn-outline-primary">
+                                        <a href="{% url 'documents:id_handover_batch_detail' batch.id %}"
+                                           class="btn btn-outline-primary">
                                             <i class="bi bi-box-arrow-up-right me-1"></i>
                                             Открыть карточку комплекта
                                         </a>
@@ -526,22 +637,35 @@
                 <div class="col-lg-4">
                     <div class="card">
                         <div class="card-body pt-3">
-                            <h5 class="card-title">Сгенерированные документы</h5>
-
+                            <h5 class="card-title">Файлы комплекта</h5>
                             {% if generated_documents %}
                                 <div class="list-group list-group-flush">
                                     {% for document in generated_documents %}
                                         <div class="list-group-item px-0">
-                                            <div class="fw-semibold">
-                                                {{ document.get_document_type_display|default:document.document_type }}
+                                            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                                <div class="fw-semibold">
+                                                    {{ document.get_document_type_display|default:document.document_type }}
+                                                </div>
+
+                                                {% if document.calculated_is_actual %}
+                                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                актуален
+            </span>
+                                                {% else %}
+                                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                устарел
+            </span>
+                                                {% endif %}
                                             </div>
+
                                             <div class="small text-muted mb-1">
                                                 {% if document.project %}
                                                     {{ document.project.full_code }}
                                                 {% else %}
-                                                    batch-level
+                                                    Общий документ комплекта
                                                 {% endif %}
                                             </div>
+
                                             {% if document.file %}
                                                 <a href="{{ document.file.url }}" target="_blank">
                                                     {{ document.original_name|default:"Открыть файл" }}
@@ -549,8 +673,7 @@
                                             {% else %}
                                                 <span class="text-muted">Файл отсутствует</span>
                                             {% endif %}
-                                        </div>
-                                    {% endfor %}
+                                        </div>                                    {% endfor %}
                                 </div>
                             {% else %}
                                 <div class="text-muted">
@@ -584,245 +707,666 @@
             </div>
         </div>
 
+        {% if batch %}
+            <div class="modal fade" id="addActModal" tabindex="-1" aria-labelledby="addActModalLabel"
+                 aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <form method="post" action="{% url 'documents:id_handover_batch_add_manual_act' batch.id %}"
+                              id="addActForm">
+                            {% csrf_token %}
+
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="addActModalLabel">Добавить акт</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                        aria-label="Закрыть"></button>
+                            </div>
+
+                            <div class="modal-body">
+                                <input type="hidden" name="project_id" id="addActProjectIdInput">
+
+                                <div class="row g-3">
+                                    <div class="col-md-7">
+                                        <label class="form-label">Проект</label>
+                                        <div class="form-control bg-light" id="addActProjectCodeDisplay">—</div>
+                                    </div>
+
+                                    <div class="col-md-5">
+                                        <label for="addActOrderInput" class="form-label">Позиция</label>
+                                        <input type="number"
+                                               name="order"
+                                               id="addActOrderInput"
+                                               class="form-control"
+                                               min="1"
+                                               step="1"
+                                               placeholder="В конец">
+                                        <div class="form-text" id="addActOrderHint">
+                                            Если оставить пустым — акт добавится в конец проекта.
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12">
+                                        <label for="addActSelect" class="form-label">Акт</label>
+                                        <select name="act_id" id="addActSelect" class="form-select" required disabled>
+                                            <option value="">Выберите проект</option>
+                                        </select>
+                                        <div class="form-text" id="addActHelpText">
+                                            Загрузка списка актов...
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12">
+                                        <div id="addActLoadingState" class="alert alert-info py-2 mb-0 d-none">
+                                            Загружаю акты проекта...
+                                        </div>
+
+                                        <div id="addActEmptyState" class="alert alert-warning py-2 mb-0 d-none">
+                                            Нет доступных актов для добавления.
+                                        </div>
+
+                                        <div id="addActErrorState" class="alert alert-danger py-2 mb-0 d-none">
+                                            Не удалось загрузить список актов.
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12">
+                                        <div class="border rounded p-3 bg-light-subtle small">
+                                            <div class="fw-semibold mb-2">Выбранный акт</div>
+                                            <div id="selectedActPreview" class="text-muted">
+                                                Акт не выбран.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="modal-footer d-flex justify-content-between">
+                                <div class="small text-muted" id="addActProjectSummary">
+                                    Выберите акт.
+                                </div>
+
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                        Отмена
+                                    </button>
+                                    <button type="submit" class="btn btn-primary" id="submitAddActBtn" disabled>
+                                        Добавить в комплект
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
     </section>
 
-<style>
-    .wizard-steps {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-    }
 
-    .wizard-step {
-        border: 1px solid #dee2e6;
-        background: #fff;
-        border-radius: 10px;
-        padding: 10px 14px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        min-width: 220px;
-        cursor: pointer;
-        transition: 0.2s ease;
-    }
+    <style>
+        .wizard-steps {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
 
-    .wizard-step.active {
-        border-color: #0d6efd;
-        background: rgba(13, 110, 253, 0.06);
-    }
-
-    .wizard-step.disabled-step {
-        opacity: 0.6;
-    }
-
-    .wizard-step-number {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: #f1f3f5;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 700;
-    }
-
-    .wizard-step.active .wizard-step-number {
-        background: #0d6efd;
-        color: #fff;
-    }
-
-    .wizard-step-text {
-        display: flex;
-        flex-direction: column;
-        line-height: 1.2;
-        text-align: left;
-    }
-
-    .wizard-step-text small {
-        color: #6c757d;
-    }
-
-    .wizard-panel {
-        display: none;
-    }
-
-    .wizard-panel.active {
-        display: block;
-    }
-
-    .batch-radio-group ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: grid;
-        gap: 10px;
-    }
-
-    .batch-radio-group li {
-        margin: 0;
-    }
-
-    .batch-radio-group label {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        border: 1px solid #dee2e6;
-        border-radius: 10px;
-        padding: 10px 12px;
-        cursor: pointer;
-        transition: 0.2s ease;
-        background: #fff;
-    }
-
-    .batch-radio-group input[type="radio"] {
-        margin: 0;
-    }
-
-    .project-scope-block {
-        display: none;
-        margin-top: 16px;
-    }
-
-    .wizard-actions-sticky {
-        position: sticky;
-        bottom: 16px;
-        z-index: 1000;
-        margin-top: 20px;
-    }
-
-    @media (max-width: 768px) {
         .wizard-step {
-            min-width: 100%;
-        }
-    }
-</style>
-
-<script>
-    (function () {
-        const createForm = document.getElementById("batchMasterCreateForm");
-        const panels = Array.from(document.querySelectorAll(".wizard-panel"));
-        const stepButtons = Array.from(document.querySelectorAll(".wizard-step"));
-        const prevBtn = document.getElementById("prevStepBtn");
-        const nextBtn = document.getElementById("nextStepBtn");
-
-        const hasBatch = {{ is_edit_mode|yesno:"true,false" }};
-        let currentStep = 1;
-
-        function getCheckedValue(name) {
-            if (!createForm) return "";
-            const field = createForm.querySelector(`[name="${name}"]:checked`);
-            return field ? field.value : "";
+            border: 1px solid #dee2e6;
+            background: #fff;
+            border-radius: 10px;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 220px;
+            cursor: pointer;
+            transition: 0.2s ease;
         }
 
-        function getValue(name) {
-            if (!createForm) return "";
-            const field = createForm.querySelector(`[name="${name}"]`);
-            return field ? field.value : "";
+        .wizard-step.active {
+            border-color: #0d6efd;
+            background: rgba(13, 110, 253, 0.06);
         }
 
-        function showStep(step) {
-            if (!hasBatch && step > 1) {
-                step = 1;
+        .wizard-step.disabled-step {
+            opacity: 0.6;
+        }
+
+        .wizard-step-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #f1f3f5;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+
+        .wizard-step.active .wizard-step-number {
+            background: #0d6efd;
+            color: #fff;
+        }
+
+        .wizard-step-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+            text-align: left;
+        }
+
+        .wizard-step-text small {
+            color: #6c757d;
+        }
+
+        .wizard-panel {
+            display: none;
+        }
+
+        .wizard-panel.active {
+            display: block;
+        }
+
+        .batch-radio-group ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 10px;
+        }
+
+        .batch-radio-group li {
+            margin: 0;
+        }
+
+        .batch-radio-group label {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            padding: 10px 12px;
+            cursor: pointer;
+            transition: 0.2s ease;
+            background: #fff;
+        }
+
+        .batch-radio-group input[type="radio"] {
+            margin: 0;
+        }
+
+        .project-scope-block {
+            display: none;
+            margin-top: 16px;
+        }
+
+        .wizard-actions-sticky {
+            position: sticky;
+            bottom: 16px;
+            z-index: 1000;
+            margin-top: 20px;
+        }
+
+        .batch-documents-table th,
+        .batch-documents-table td {
+            vertical-align: middle;
+        }
+
+        .batch-row-act td {
+            background: rgba(13, 110, 253, 0.04);
+        }
+
+        .batch-document-name {
+            white-space: pre-line;
+            line-height: 1.35;
+        }
+
+        .project-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+            scroll-margin-top: 90px;
+        }
+
+        .project-header-main {
+            min-width: 260px;
+            flex: 1 1 auto;
+        }
+
+        .project-code {
+            font-size: 1.55rem;
+            font-weight: 700;
+            line-height: 1.2;
+            color: #1f2d3d;
+            word-break: break-word;
+        }
+
+        .project-header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .project-stats-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .project-stat-pill {
+            min-width: 132px;
+            border: 1px solid #dee2e6;
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: #fff;
+            text-align: center;
+        }
+
+        .project-stat-label {
+            display: block;
+            font-size: 0.78rem;
+            color: #6c757d;
+            line-height: 1.1;
+            margin-bottom: 4px;
+        }
+
+        .project-stat-value {
+            display: block;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #212529;
+            line-height: 1.1;
+        }
+
+        tr[id^="batch-act-"] {
+            scroll-margin-top: 90px;
+        }
+
+        div[id^="project-"] {
+            scroll-margin-top: 90px;
+        }
+
+        @media (max-width: 992px) {
+            .project-stats-row {
+                justify-content: flex-start;
             }
 
-            currentStep = step;
-
-            panels.forEach(panel => {
-                panel.classList.toggle("active", Number(panel.dataset.step) === step);
-            });
-
-            stepButtons.forEach(button => {
-                button.classList.toggle("active", Number(button.dataset.stepTarget) === step);
-            });
-
-            prevBtn.disabled = step === 1;
-            nextBtn.disabled = !hasBatch && step === 1;
-            nextBtn.classList.toggle("d-none", hasBatch && step === 3);
-        }
-
-        function updatePeriodVisibility() {
-            if (!createForm) return;
-            const selectionMode = getCheckedValue("selection_mode");
-            const block = document.getElementById("periodFields");
-            if (block) {
-                block.style.display = selectionMode === "range" ? "flex" : "none";
+            .project-header-actions {
+                justify-content: flex-start;
             }
         }
 
-        function updateLetterVisibility() {
-            if (!createForm) return;
-            const generationMode = getValue("generation_mode");
-            const visible = generationMode === "letter_only" || generationMode === "full_set";
-
-            document.querySelectorAll(".letter-fields").forEach(el => {
-                el.style.display = visible ? "block" : "none";
-            });
-        }
-
-        function updateProjectScopeVisibility() {
-            if (!createForm) return;
-            const scope = getCheckedValue("project_scope");
-
-            const oneProjectBlock = document.getElementById("oneProjectBlock");
-            const multipleProjectsBlock = document.getElementById("multipleProjectsBlock");
-            const autoProjectsBlock = document.getElementById("autoProjectsBlock");
-
-            if (oneProjectBlock) {
-                oneProjectBlock.style.display = scope === "one_project" ? "block" : "none";
+        @media (max-width: 768px) {
+            .wizard-step {
+                min-width: 100%;
             }
-            if (multipleProjectsBlock) {
-                multipleProjectsBlock.style.display = scope === "multi_project" ? "block" : "none";
+
+            .project-code {
+                font-size: 1.2rem;
             }
-            if (autoProjectsBlock) {
-                autoProjectsBlock.style.display = scope === "auto_by_period" ? "block" : "none";
+
+            .project-stat-pill {
+                min-width: 110px;
             }
         }
+    </style>
 
-        stepButtons.forEach(button => {
-            button.addEventListener("click", () => {
-                const targetStep = Number(button.dataset.stepTarget);
-                if (!hasBatch && targetStep > 1) {
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            (function () {
+                const createForm = document.getElementById("batchMasterCreateForm");
+                const panels = Array.from(document.querySelectorAll(".wizard-panel"));
+                const stepButtons = Array.from(document.querySelectorAll(".wizard-step"));
+                const prevBtn = document.getElementById("prevStepBtn");
+                const nextBtn = document.getElementById("nextStepBtn");
+
+                const hasBatch = {{ is_edit_mode|yesno:"true,false" }};
+                const requestedStep = {{ requested_step|default:1 }};
+                let currentStep = 1;
+
+                function getCheckedValue(name) {
+                    if (!createForm) return "";
+                    const field = createForm.querySelector(`[name="${name}"]:checked`);
+                    return field ? field.value : "";
+                }
+
+                function getValue(name) {
+                    if (!createForm) return "";
+                    const field = createForm.querySelector(`[name="${name}"]`);
+                    return field ? field.value : "";
+                }
+
+                function showStep(step) {
+                    if (!hasBatch && step > 1) {
+                        step = 1;
+                    }
+
+                    currentStep = step;
+
+                    panels.forEach(panel => {
+                        panel.classList.toggle("active", Number(panel.dataset.step) === step);
+                    });
+
+                    stepButtons.forEach(button => {
+                        button.classList.toggle("active", Number(button.dataset.stepTarget) === step);
+                    });
+
+                    if (prevBtn) {
+                        prevBtn.disabled = step === 1;
+                    }
+
+                    if (nextBtn) {
+                        nextBtn.disabled = !hasBatch && step === 1;
+                        nextBtn.classList.toggle("d-none", hasBatch && step === 3);
+                    }
+                }
+
+                function updatePeriodVisibility() {
+                    if (!createForm) return;
+                    const selectionMode = getCheckedValue("selection_mode");
+                    const block = document.getElementById("periodFields");
+                    if (block) {
+                        block.style.display = selectionMode === "range" ? "flex" : "none";
+                    }
+                }
+
+                function updateLetterVisibility() {
+                    if (!createForm) return;
+                    const generationMode = getValue("generation_mode");
+                    const visible = generationMode === "letter_only" || generationMode === "full_set";
+
+                    document.querySelectorAll(".letter-fields").forEach(el => {
+                        el.style.display = visible ? "block" : "none";
+                    });
+                }
+
+                function updateProjectScopeVisibility() {
+                    if (!createForm) return;
+                    const scope = getCheckedValue("project_scope");
+
+                    const oneProjectBlock = document.getElementById("oneProjectBlock");
+                    const multipleProjectsBlock = document.getElementById("multipleProjectsBlock");
+                    const autoProjectsBlock = document.getElementById("autoProjectsBlock");
+
+                    if (oneProjectBlock) {
+                        oneProjectBlock.style.display = scope === "one_project" ? "block" : "none";
+                    }
+                    if (multipleProjectsBlock) {
+                        multipleProjectsBlock.style.display = scope === "multi_project" ? "block" : "none";
+                    }
+                    if (autoProjectsBlock) {
+                        autoProjectsBlock.style.display = scope === "auto_by_period" ? "block" : "none";
+                    }
+                }
+
+                stepButtons.forEach(button => {
+                    button.addEventListener("click", () => {
+                        const targetStep = Number(button.dataset.stepTarget);
+                        if (!hasBatch && targetStep > 1) {
+                            return;
+                        }
+                        showStep(targetStep);
+                    });
+                });
+
+                if (prevBtn) {
+                    prevBtn.addEventListener("click", () => {
+                        if (currentStep > 1) {
+                            showStep(currentStep - 1);
+                        }
+                    });
+                }
+
+                if (nextBtn) {
+                    nextBtn.addEventListener("click", () => {
+                        if (!hasBatch && currentStep === 1) {
+                            return;
+                        }
+                        if (currentStep < 3) {
+                            showStep(currentStep + 1);
+                        }
+                    });
+                }
+
+                if (createForm) {
+                    createForm.querySelectorAll('input[name="selection_mode"]').forEach(el => {
+                        el.addEventListener("change", updatePeriodVisibility);
+                    });
+
+                    createForm.querySelectorAll('input[name="project_scope"]').forEach(el => {
+                        el.addEventListener("change", updateProjectScopeVisibility);
+                    });
+
+                    const generationModeField = createForm.querySelector('[name="generation_mode"]');
+                    if (generationModeField) {
+                        generationModeField.addEventListener("change", updateLetterVisibility);
+                    }
+                }
+
+                updatePeriodVisibility();
+                updateLetterVisibility();
+                updateProjectScopeVisibility();
+
+                if (hasBatch) {
+                    showStep(requestedStep);
+                } else {
+                    showStep(1);
+                }
+            })();
+
+            (function () {
+                const modalElement = document.getElementById("addActModal");
+                const addActForm = document.getElementById("addActForm");
+                const projectIdInput = document.getElementById("addActProjectIdInput");
+                const projectCodeDisplay = document.getElementById("addActProjectCodeDisplay");
+                const actSelect = document.getElementById("addActSelect");
+                const orderInput = document.getElementById("addActOrderInput");
+                const orderHint = document.getElementById("addActOrderHint");
+                const helpText = document.getElementById("addActHelpText");
+                const submitBtn = document.getElementById("submitAddActBtn");
+                const selectedActPreview = document.getElementById("selectedActPreview");
+                const projectSummary = document.getElementById("addActProjectSummary");
+                const loadingState = document.getElementById("addActLoadingState");
+                const emptyState = document.getElementById("addActEmptyState");
+                const errorState = document.getElementById("addActErrorState");
+                const openButtons = Array.from(document.querySelectorAll(".js-open-add-act-modal"));
+
+                if (!modalElement || !addActForm || !projectIdInput || !actSelect || !openButtons.length) {
                     return;
                 }
-                showStep(targetStep);
-            });
+
+                if (!window.bootstrap || !window.bootstrap.Modal) {
+                    console.error("Bootstrap Modal is not available");
+                    openButtons.forEach(button => {
+                        button.addEventListener("click", function () {
+                            alert("Не удалось открыть модальное окно: Bootstrap не инициализирован.");
+                        });
+                    });
+                    return;
+                }
+
+                const bsModal = window.bootstrap.Modal.getOrCreateInstance(modalElement);
+
+                let currentProject = null;
+                let currentActs = [];
+
+                function setHiddenState(el, hidden) {
+                    if (!el) return;
+                    el.classList.toggle("d-none", hidden);
+                }
+
+                function resetModalStates() {
+                    currentActs = [];
+                    actSelect.innerHTML = '<option value="">Выберите акт</option>';
+                    actSelect.disabled = true;
+                    submitBtn.disabled = true;
+                    selectedActPreview.textContent = "Акт не выбран.";
+                    setHiddenState(loadingState, true);
+                    setHiddenState(emptyState, true);
+                    setHiddenState(errorState, true);
+                }
+
+                function setProjectData(button) {
+                    currentProject = {
+                        id: button.dataset.projectId || "",
+                        code: button.dataset.projectCode || "",
+                        actsCount: Number(button.dataset.projectActsCount || 0),
+                        lookupUrl: button.dataset.lookupUrl || ""
+                    };
+
+                    projectIdInput.value = currentProject.id;
+                    projectCodeDisplay.textContent = currentProject.code || "—";
+                    projectSummary.textContent = currentProject.code
+                        ? `Проект ${currentProject.code}`
+                        : "Проект не выбран.";
+
+                    const nextOrder = currentProject.actsCount + 1;
+                    orderInput.value = String(nextOrder);
+                    orderInput.placeholder = String(nextOrder);
+                    orderHint.textContent = `Если оставить пустым — акт добавится в конец проекта. Текущая следующая позиция: ${nextOrder}.`;
+                }
+
+                function buildActOptionText(act) {
+                    const number = act.act_number || "—";
+                    const date = act.act_date || "—";
+                    const workName = (act.work_name || "").trim();
+
+                    if (workName) {
+                        return `№${number} от ${date} — ${workName}`;
+                    }
+                    return `№${number} от ${date}`;
+                }
+
+                function fillActs(acts) {
+                    currentActs = Array.isArray(acts) ? acts : [];
+                    actSelect.innerHTML = "";
+
+                    if (!currentActs.length) {
+                        actSelect.innerHTML = '<option value="">Нет доступных актов</option>';
+                        actSelect.disabled = true;
+                        submitBtn.disabled = true;
+                        selectedActPreview.textContent = "Нет доступных актов для добавления.";
+                        helpText.textContent = "Для этого проекта сейчас нечего добавить.";
+                        setHiddenState(emptyState, false);
+                        return;
+                    }
+
+                    actSelect.innerHTML = '<option value="">Выберите акт</option>';
+
+                    currentActs.forEach(act => {
+                        const option = document.createElement("option");
+                        option.value = act.id || act.act_id || "";
+                        option.textContent = buildActOptionText(act);
+                        option.dataset.actNumber = act.act_number || "";
+                        option.dataset.actDate = act.act_date || "";
+                        option.dataset.workName = act.work_name || "";
+                        option.dataset.actStatus = act.status_display || act.status || "";
+                        actSelect.appendChild(option);
+                    });
+
+                    actSelect.disabled = false;
+                    helpText.textContent = "Показаны доступные акты выбранного проекта.";
+                }
+
+                async function loadActsForCurrentProject() {
+                    if (!currentProject || !currentProject.lookupUrl) {
+                        return;
+                    }
+
+                    resetModalStates();
+                    setHiddenState(loadingState, false);
+                    helpText.textContent = "Загрузка списка актов...";
+
+                    try {
+                        const response = await fetch(currentProject.lookupUrl, {
+                            method: "GET",
+                            headers: {
+                                "X-Requested-With": "XMLHttpRequest",
+                                "Accept": "application/json"
+                            },
+                            credentials: "same-origin"
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        const acts = Array.isArray(data.results)
+                            ? data.results
+                            : (Array.isArray(data.acts) ? data.acts : []);
+
+                        fillActs(acts);
+                    } catch (error) {
+                        console.error("Add act lookup error:", error);
+                        actSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+                        actSelect.disabled = true;
+                        submitBtn.disabled = true;
+                        helpText.textContent = "Не удалось получить список актов.";
+                        setHiddenState(errorState, false);
+                    } finally {
+                        setHiddenState(loadingState, true);
+                    }
+                }
+
+                function updateSelectedActPreview() {
+                    const selectedOption = actSelect.options[actSelect.selectedIndex];
+
+                    if (!selectedOption || !selectedOption.value) {
+                        selectedActPreview.textContent = "Акт не выбран.";
+                        submitBtn.disabled = true;
+                        return;
+                    }
+
+                    const actNumber = selectedOption.dataset.actNumber || "—";
+                    const actDate = selectedOption.dataset.actDate || "—";
+                    const workName = selectedOption.dataset.workName || "";
+                    const actStatus = selectedOption.dataset.actStatus || "";
+
+                    const lines = [
+                        `Проект: ${currentProject && currentProject.code ? currentProject.code : "—"}`,
+                        `Акт №${actNumber} от ${actDate}`
+                    ];
+
+                    if (workName) {
+                        lines.push(workName);
+                    }
+
+                    if (actStatus) {
+                        lines.push(`Статус: ${actStatus}`);
+                    }
+
+                    selectedActPreview.innerHTML = lines.map(line => `<div>${line}</div>`).join("");
+                    submitBtn.disabled = false;
+                }
+
+                openButtons.forEach(button => {
+                    button.addEventListener("click", async function () {
+                        setProjectData(this);
+                        bsModal.show();
+                        await loadActsForCurrentProject();
+                    });
+                });
+
+                actSelect.addEventListener("change", updateSelectedActPreview);
+
+                modalElement.addEventListener("hidden.bs.modal", function () {
+                    currentProject = null;
+                    currentActs = [];
+                    addActForm.reset();
+                    projectIdInput.value = "";
+                    projectCodeDisplay.textContent = "—";
+                    projectSummary.textContent = "Выберите акт.";
+                    orderHint.textContent = "Если оставить пустым — акт добавится в конец проекта.";
+                    helpText.textContent = "Загрузка списка актов...";
+                    selectedActPreview.textContent = "Акт не выбран.";
+                    resetModalStates();
+                });
+            })();
         });
-
-        prevBtn.addEventListener("click", () => {
-            if (currentStep > 1) {
-                showStep(currentStep - 1);
-            }
-        });
-
-        nextBtn.addEventListener("click", () => {
-            if (!hasBatch && currentStep === 1) {
-                return;
-            }
-            if (currentStep < 3) {
-                showStep(currentStep + 1);
-            }
-        });
-
-        if (createForm) {
-            createForm.querySelectorAll('input[name="selection_mode"]').forEach(el => {
-                el.addEventListener("change", updatePeriodVisibility);
-            });
-
-            createForm.querySelectorAll('input[name="project_scope"]').forEach(el => {
-                el.addEventListener("change", updateProjectScopeVisibility);
-            });
-
-            const generationModeField = createForm.querySelector('[name="generation_mode"]');
-            if (generationModeField) {
-                generationModeField.addEventListener("change", updateLetterVisibility);
-            }
-        }
-
-        updatePeriodVisibility();
-        updateLetterVisibility();
-        updateProjectScopeVisibility();
-        showStep(hasBatch ? 1 : 1);
-    })();
-</script>
+    </script>
 {% endblock %}

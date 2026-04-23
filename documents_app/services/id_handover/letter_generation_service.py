@@ -19,17 +19,29 @@ from documents_app.models import (
 from documents_app.services.id_handover.document_signatures import DocumentSignatureService
 from documents_app.services.id_handover.letter_context_builder import LetterContextBuilder
 from documents_app.services.id_handover.letter_docx_renderer import LetterDocxRenderer
+from documents_app.utils.pdf_utils import convert_docx_to_pdf, get_pdf_pages_count
 
 
 @dataclass(slots=True)
 class LetterGenerationResult:
     """
     Результат генерации письма.
+
+    docx_document (GeneratedDocument): основной DOCX письма
+    pdf_document (GeneratedDocument): preview PDF письма
+    context (dict): контекст, по которому строилось письмо
+    dependency_signature (str): сигнатура зависимостей для DOCX/PDF
+    docx_created (bool): был ли создан новый GeneratedDocument DOCX
+    pdf_created (bool): был ли создан новый GeneratedDocument PDF
+    pages_count (int): число страниц preview PDF
     """
-    generated_document: GeneratedDocument
+    docx_document: GeneratedDocument
+    pdf_document: GeneratedDocument
     context: dict
     dependency_signature: str
-    created: bool
+    docx_created: bool
+    pdf_created: bool
+    pages_count: int
 
 
 class LetterGenerationServiceError(Exception):
@@ -42,19 +54,15 @@ class LetterGenerationValidationError(LetterGenerationServiceError):
 
 class LetterGenerationService:
     """
-    Генерирует DOCX-письмо для batch и сохраняет его как GeneratedDocument.
+    Генерирует письмо для batch и сохраняет:
 
-    Что делает:
-    1. Проверяет, что режим batch допускает письмо.
-    2. Выбирает нужный шаблон по batch.letter_type.
-    3. Строит context через LetterContextBuilder.
-    4. Рендерит DOCX через LetterDocxRenderer.
-    5. Создаёт или обновляет GeneratedDocument типа LETTER_DOCX.
+    - LETTER_DOCX
+    - LETTER_PREVIEW_PDF
 
     ВАЖНО:
-    - письмо — batch-level документ, поэтому GeneratedDocument.project всегда None
-    - pages_count для самого письма не заполняем
-    - dependency_signature берётся из DocumentSignatureService
+    - письмо — batch-level документ, поэтому project всегда None
+    - DOCX и PDF получают одну и ту же dependency_signature
+    - pages_count берётся по итоговому preview PDF
     """
 
     def __init__(
@@ -86,40 +94,69 @@ class LetterGenerationService:
 
         context = self.context_builder.build(batch=batch)
 
-        dependency_signature = self.signature_service.build_batch_letter_signature(
+        docx_dependency_signature = self.signature_service.build_batch_letter_signature(
             batch=batch,
             document_type=GeneratedDocumentType.LETTER_DOCX,
         )
+        pdf_dependency_signature = self.signature_service.build_batch_letter_signature(
+            batch=batch,
+            document_type=GeneratedDocumentType.LETTER_PREVIEW_PDF,
+        )
 
-        filename = self._build_output_filename(batch=batch)
+        docx_filename = self._build_docx_output_filename(batch=batch)
+        pdf_filename = self._build_pdf_output_filename(batch=batch)
 
-        generated_document, created = self._get_or_create_generated_document(batch=batch)
+        docx_document, docx_created = self._get_or_create_generated_document(
+            batch=batch,
+            document_type=GeneratedDocumentType.LETTER_DOCX,
+        )
+        pdf_document, pdf_created = self._get_or_create_generated_document(
+            batch=batch,
+            document_type=GeneratedDocumentType.LETTER_PREVIEW_PDF,
+        )
 
-        rendered_bytes = self._render_context_to_bytes(
+        rendered_docx_bytes, rendered_pdf_bytes, pages_count = self._render_context_to_files(
             context=context,
             template_path=template_path,
             batch=batch,
         )
 
         self._save_file_to_generated_document(
-            generated_document=generated_document,
-            filename=filename,
-            content=rendered_bytes,
+            generated_document=docx_document,
+            filename=docx_filename,
+            content=rendered_docx_bytes,
+        )
+        self._save_file_to_generated_document(
+            generated_document=pdf_document,
+            filename=pdf_filename,
+            content=rendered_pdf_bytes,
         )
 
-        generated_document.source_kind = GeneratedDocumentSourceKind.GENERATED
-        generated_document.dependency_signature = dependency_signature
-        generated_document.pages_count = None
-        generated_document.is_actual = True
-        generated_document.created_by = batch.created_by
-        generated_document.generated_at = timezone.now()
-        generated_document.save()
+        generated_at = timezone.now()
+
+        self._apply_generated_document_meta(
+            generated_document=docx_document,
+            batch=batch,
+            dependency_signature=docx_dependency_signature,
+            pages_count=pages_count,
+            generated_at=generated_at,
+        )
+        self._apply_generated_document_meta(
+            generated_document=pdf_document,
+            batch=batch,
+            dependency_signature=pdf_dependency_signature,
+            pages_count=pages_count,
+            generated_at=generated_at,
+        )
 
         return LetterGenerationResult(
-            generated_document=generated_document,
+            docx_document=docx_document,
+            pdf_document=pdf_document,
             context=context,
-            dependency_signature=dependency_signature,
-            created=created,
+            dependency_signature=docx_dependency_signature,
+            docx_created=docx_created,
+            pdf_created=pdf_created,
+            pages_count=pages_count,
         )
 
     def _validate_batch_for_letter_generation(self, *, batch: DocumentBatch) -> None:
@@ -158,11 +195,12 @@ class LetterGenerationService:
         self,
         *,
         batch: DocumentBatch,
+        document_type: str,
     ) -> tuple[GeneratedDocument, bool]:
         generated_document, created = GeneratedDocument.objects.get_or_create(
             batch=batch,
             project=None,
-            document_type=GeneratedDocumentType.LETTER_DOCX,
+            document_type=document_type,
             defaults={
                 "source_kind": GeneratedDocumentSourceKind.GENERATED,
                 "created_by": batch.created_by,
@@ -171,13 +209,13 @@ class LetterGenerationService:
         )
         return generated_document, created
 
-    def _render_context_to_bytes(
+    def _render_context_to_files(
         self,
         *,
         context: dict,
         template_path: str | Path,
         batch: DocumentBatch,
-    ) -> bytes:
+    ) -> tuple[bytes, bytes, int]:
         template_path = Path(template_path)
         if not template_path.exists():
             raise LetterGenerationValidationError(
@@ -186,15 +224,25 @@ class LetterGenerationService:
 
         with tempfile.TemporaryDirectory(prefix="doc_helper_letter_") as tmp_dir:
             tmp_dir_path = Path(tmp_dir)
-            output_path = tmp_dir_path / f"letter_batch_{batch.id}.docx"
+            docx_output_path = tmp_dir_path / f"letter_batch_{batch.id}.docx"
 
-            rendered_path = self.renderer.render_from_context(
+            rendered_docx_path = self.renderer.render_from_context(
                 context=context,
                 template_path=template_path,
-                output_path=output_path,
+                output_path=docx_output_path,
             )
 
-            return rendered_path.read_bytes()
+            pdf_path = convert_docx_to_pdf(
+                docx_path=rendered_docx_path,
+                output_dir=tmp_dir_path,
+            )
+            pages_count = get_pdf_pages_count(pdf_path)
+
+            return (
+                rendered_docx_path.read_bytes(),
+                pdf_path.read_bytes(),
+                pages_count,
+            )
 
     def _save_file_to_generated_document(
         self,
@@ -216,7 +264,24 @@ class LetterGenerationService:
         )
         generated_document.original_name = filename
 
-    def _build_output_filename(self, *, batch: DocumentBatch) -> str:
+    def _apply_generated_document_meta(
+        self,
+        *,
+        generated_document: GeneratedDocument,
+        batch: DocumentBatch,
+        dependency_signature: str,
+        pages_count: int,
+        generated_at,
+    ) -> None:
+        generated_document.source_kind = GeneratedDocumentSourceKind.GENERATED
+        generated_document.dependency_signature = dependency_signature
+        generated_document.pages_count = pages_count
+        generated_document.is_actual = True
+        generated_document.created_by = batch.created_by
+        generated_document.generated_at = generated_at
+        generated_document.save()
+
+    def _build_docx_output_filename(self, *, batch: DocumentBatch) -> str:
         letter_number = self._sanitize_filename_part((batch.letter_number or "").strip())
         if not letter_number:
             letter_number = f"batch_{batch.id}"
@@ -227,6 +292,18 @@ class LetterGenerationService:
             letter_date_str = "без_даты"
 
         return f"Письмо №{letter_number} от {letter_date_str}.docx"
+
+    def _build_pdf_output_filename(self, *, batch: DocumentBatch) -> str:
+        letter_number = self._sanitize_filename_part((batch.letter_number or "").strip())
+        if not letter_number:
+            letter_number = f"batch_{batch.id}"
+
+        if batch.letter_date:
+            letter_date_str = batch.letter_date.strftime("%d.%m.%Y")
+        else:
+            letter_date_str = "без_даты"
+
+        return f"Письмо №{letter_number} от {letter_date_str}.pdf"
 
     @staticmethod
     def _sanitize_filename_part(value: str) -> str:

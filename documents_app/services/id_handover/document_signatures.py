@@ -110,7 +110,10 @@ class DocumentSignatureService:
         )
         parties_prefetch = Prefetch(
             "act__parties",
-            queryset=ActParty.objects.select_related("organization", "signatory").order_by("position", "id"),
+            queryset=ActParty.objects.select_related(
+                "organization",
+                "chosen_authorization",
+            ).order_by("position", "id"),
         )
 
         project_batch_acts = list(
@@ -383,7 +386,7 @@ class DocumentSignatureService:
                         (getattr(party.organization, "full_name", "") or "").strip()
                         if getattr(party, "organization", None) else ""
                     ),
-                    "signatory_id": getattr(party, "signatory_id", None),
+                    "chosen_authorization_id": getattr(party, "chosen_authorization_id", None),
                 }
                 for party in parties
             ],
