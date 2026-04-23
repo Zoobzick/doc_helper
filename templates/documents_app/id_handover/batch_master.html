@@ -612,9 +612,11 @@
                                 <div class="d-flex gap-2 flex-wrap">
                                     {% if user.is_superuser or perms.documents_app.change_documentbatch %}
                                         <form method="post"
-                                              action="{% url 'documents:id_handover_batch_generate' batch.id %}">
+                                              action="{% url 'documents:id_handover_batch_generate' batch.id %}"
+                                              class="js-batch-generate-form"
+                                              data-batch-title="{{ batch.title|default:'Комплект'|escape }}">
                                             {% csrf_token %}
-                                            <button type="submit" class="btn btn-success">
+                                            <button type="submit" class="btn btn-success js-batch-generate-button">
                                                 <i class="bi bi-gear-fill me-1"></i>
                                                 Сформировать документы
                                             </button>
@@ -667,7 +669,7 @@
                                             </div>
 
                                             {% if document.file %}
-                                                <a href="{{ document.file.url }}" target="_blank">
+                                                <a href="{% url 'documents:generated_document_open' document.id %}" target="_blank">
                                                     {{ document.original_name|default:"Открыть файл" }}
                                                 </a>
                                             {% else %}
@@ -1013,7 +1015,56 @@
                 min-width: 110px;
             }
         }
+
+        .batch-generation-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1080;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: rgba(15, 23, 42, 0.58);
+            backdrop-filter: blur(3px);
+        }
+
+        .batch-generation-overlay.is-visible {
+            display: flex;
+        }
+
+        .batch-generation-panel {
+            width: min(100%, 520px);
+            border-radius: 1rem;
+            background: #fff;
+            box-shadow: 0 1rem 3rem rgba(15, 23, 42, 0.18);
+        }
     </style>
+
+    <div id="batch-generation-overlay" class="batch-generation-overlay" aria-hidden="true">
+        <div class="batch-generation-panel p-4">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="spinner-border text-success" role="status" aria-hidden="true"></div>
+                <div>
+                    <div class="fw-semibold" id="batch-generation-title">Идёт формирование документов</div>
+                    <div class="text-muted small" id="batch-generation-subtitle">Подготавливаем файлы комплекта.</div>
+                </div>
+            </div>
+
+            <div class="progress mb-3" style="height: 10px;">
+                <div id="batch-generation-progress-bar"
+                     class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                     role="progressbar"
+                     style="width: 8%;"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="8"></div>
+            </div>
+
+            <div id="batch-generation-stage" class="small text-muted">
+                Запускаем генерацию документов...
+            </div>
+        </div>
+    </div>
 
     <script>
         document.addEventListener("DOMContentLoaded", function () {
@@ -1023,10 +1074,132 @@
                 const stepButtons = Array.from(document.querySelectorAll(".wizard-step"));
                 const prevBtn = document.getElementById("prevStepBtn");
                 const nextBtn = document.getElementById("nextStepBtn");
+                const generateForms = Array.from(document.querySelectorAll(".js-batch-generate-form"));
+                const generationOverlay = document.getElementById("batch-generation-overlay");
+                const generationSubtitleNode = document.getElementById("batch-generation-subtitle");
+                const generationStageNode = document.getElementById("batch-generation-stage");
+                const generationProgressBar = document.getElementById("batch-generation-progress-bar");
 
                 const hasBatch = {{ is_edit_mode|yesno:"true,false" }};
                 const requestedStep = {{ requested_step|default:1 }};
                 let currentStep = 1;
+                let generationInProgress = false;
+                let generationProgressValue = 8;
+                let generationProgressTimer = null;
+                let generationStageTimer = null;
+                let generationStageIndex = 0;
+                const generationStages = [
+                    "Проверяем состав комплекта...",
+                    "Формируем проектные реестры...",
+                    "Собираем письмо и preview-файлы...",
+                    "Подготавливаем итоговую выдачу..."
+                ];
+
+                function setGenerationButtonsDisabled(disabled) {
+                    document.querySelectorAll(".js-batch-generate-button").forEach(function (button) {
+                        button.disabled = disabled;
+                    });
+                }
+
+                function setGenerationProgress(value) {
+                    if (!generationProgressBar) return;
+                    generationProgressValue = Math.max(0, Math.min(100, value));
+                    generationProgressBar.style.width = `${generationProgressValue}%`;
+                    generationProgressBar.setAttribute("aria-valuenow", String(generationProgressValue));
+                }
+
+                function stopGenerationTimers() {
+                    if (generationProgressTimer) {
+                        window.clearInterval(generationProgressTimer);
+                        generationProgressTimer = null;
+                    }
+                    if (generationStageTimer) {
+                        window.clearInterval(generationStageTimer);
+                        generationStageTimer = null;
+                    }
+                }
+
+                function startGenerationOverlay(batchTitle) {
+                    if (!generationOverlay || !generationSubtitleNode || !generationStageNode) {
+                        return;
+                    }
+
+                    generationSubtitleNode.textContent = batchTitle
+                        ? `Комплект: ${batchTitle}`
+                        : "Подготавливаем файлы комплекта.";
+                    generationStageNode.textContent = generationStages[0];
+                    generationStageIndex = 0;
+                    setGenerationProgress(8);
+                    generationOverlay.classList.add("is-visible");
+                    generationOverlay.setAttribute("aria-hidden", "false");
+
+                    generationProgressTimer = window.setInterval(function () {
+                        if (generationProgressValue < 92) {
+                            setGenerationProgress(generationProgressValue + (generationProgressValue < 60 ? 6 : 2));
+                        }
+                    }, 700);
+
+                    generationStageTimer = window.setInterval(function () {
+                        generationStageIndex = (generationStageIndex + 1) % generationStages.length;
+                        generationStageNode.textContent = generationStages[generationStageIndex];
+                    }, 2200);
+                }
+
+                function finishGenerationOverlay(message) {
+                    stopGenerationTimers();
+                    setGenerationProgress(100);
+                    if (generationStageNode) {
+                        generationStageNode.textContent = message || "Генерация завершена.";
+                    }
+                }
+
+                generateForms.forEach(function (form) {
+                    form.addEventListener("submit", async function (event) {
+                        event.preventDefault();
+
+                        if (generationInProgress) {
+                            return;
+                        }
+
+                        generationInProgress = true;
+                        setGenerationButtonsDisabled(true);
+                        startGenerationOverlay(form.dataset.batchTitle || "");
+
+                        try {
+                            const response = await fetch(form.action, {
+                                method: "POST",
+                                headers: {
+                                    "X-Requested-With": "XMLHttpRequest",
+                                    "Accept": "application/json"
+                                },
+                                body: new FormData(form),
+                                credentials: "same-origin"
+                            });
+
+                            const contentType = response.headers.get("content-type") || "";
+                            if (contentType.includes("application/json")) {
+                                const payload = await response.json();
+                                finishGenerationOverlay(payload.message || "Генерация завершена.");
+                                window.setTimeout(function () {
+                                    window.location.href = payload.redirect_url || window.location.href;
+                                }, 300);
+                                return;
+                            }
+
+                            finishGenerationOverlay("Генерация завершена.");
+                            window.location.href = response.url || window.location.href;
+                        } catch (error) {
+                            stopGenerationTimers();
+                            if (generationOverlay) {
+                                generationOverlay.classList.remove("is-visible");
+                                generationOverlay.setAttribute("aria-hidden", "true");
+                            }
+                            setGenerationButtonsDisabled(false);
+                            generationInProgress = false;
+                            window.alert("Не удалось получить ответ от сервера во время генерации документов.");
+                        }
+                    });
+                });
 
                 function getCheckedValue(name) {
                     if (!createForm) return "";

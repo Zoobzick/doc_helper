@@ -16,6 +16,7 @@ from documents_app.views import (
     DocumentBatchRefreshCompositionView,
     DocumentBatchRemoveActView,
     DocumentBatchUpdateDraftView,
+    GeneratedDocumentOpenView,
     TitleSheetOpenPdfView,
     id_handover_batch_acts_lookup,
 )
@@ -42,6 +43,11 @@ urlpatterns = [
         "title-sheet/<int:project_id>/<str:doc_type>/open/",
         TitleSheetOpenPdfView.as_view(),
         name="title_sheet_open",
+    ),
+    path(
+        "generated-documents/<int:document_id>/open/",
+        GeneratedDocumentOpenView.as_view(),
+        name="generated_document_open",
     ),
 
     # -----------------------------

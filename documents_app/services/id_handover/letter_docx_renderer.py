@@ -237,18 +237,15 @@ class LetterDocxRenderer:
 
         # Если в контексте уже передан готовый текст строки — используем его напрямую.
         ready_text = str(item.get("text", "") or "").strip()
-        number = item.get("number")
 
         if ready_text:
-            prefix = f"{number}.\t" if number is not None else ""
-            self._set_paragraph_text(paragraph, f"{prefix}{ready_text}")
+            # Нумерация приложений уже задана в DOCX-шаблоне списком Word.
+            # Не дублируем её вручную в тексте строки.
+            self._set_paragraph_text(paragraph, ready_text)
             return
 
         for token, value in replacements.items():
             text = text.replace(token, value)
-
-        if number is not None:
-            text = f"{number}.\t{text}"
 
         self._set_paragraph_text(paragraph, text)
 

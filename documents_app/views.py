@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 
 from django.conf import settings
@@ -257,6 +258,35 @@ class TitleSheetOpenPdfView(PermissionRequiredMixin, View):
             raise Http404("PDF титульного листа не найден")
 
         return FileResponse(pdf_path.open("rb"), content_type="application/pdf", as_attachment=False)
+
+
+class GeneratedDocumentOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.view_documentbatch"
+    raise_exception = True
+
+    def get(self, request, document_id: int):
+        generated_document = get_object_or_404(
+            GeneratedDocument.objects.select_related("batch", "project"),
+            pk=document_id,
+        )
+
+        if not generated_document.file:
+            raise Http404("Файл сгенерированного документа отсутствует.")
+
+        try:
+            file_path = Path(generated_document.file.path)
+        except Exception as exc:
+            raise Http404("Не удалось получить путь к файлу.") from exc
+
+        if not file_path.exists():
+            raise Http404("Файл сгенерированного документа не найден.")
+
+        content_type, _ = mimetypes.guess_type(file_path.name)
+        return FileResponse(
+            file_path.open("rb"),
+            content_type=content_type or "application/octet-stream",
+            as_attachment=False,
+        )
 
 
 class DocumentBatchMasterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
@@ -1189,7 +1219,21 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
             messages.error(request, f"Ошибка генерации комплекта: {exc}")
             return self._redirect_after_error(batch=batch)
 
-        self._add_success_message(request=request, result=result)
+        success_message = self._build_success_message(result=result)
+        messages.success(request, success_message)
+
+        if self._is_ajax_request(request):
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "redirect_url": reverse(
+                        "documents:id_handover_batch_detail",
+                        kwargs={"batch_id": batch.id},
+                    ),
+                    "message": success_message,
+                }
+            )
+
         return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
 
     def _redirect_after_error(self, *, batch: DocumentBatch):
@@ -1197,7 +1241,7 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
             f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=3"
         )
 
-    def _add_success_message(self, *, request, result) -> None:
+    def _legacy_success_message_stub(self, *, result) -> str:
         parts: list[str] = []
 
         if result.registries_generated_count:
@@ -1220,6 +1264,45 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
     def _get_registry_template_path(self) -> Path:
         return Path(settings.XLSX_TEMPLATES_DIR) / "id_handover_registry.xlsx"
+
+    def _build_success_message(self, *, result) -> str:
+        parts: list[str] = []
+
+        if result.registries_generated_count:
+            parts.append(f"СЂРµРµСЃС‚СЂРѕРІ СЃС„РѕСЂРјРёСЂРѕРІР°РЅРѕ: {result.registries_generated_count}")
+        else:
+            parts.append("СЂРµРµСЃС‚СЂС‹ РЅРµ С„РѕСЂРјРёСЂРѕРІР°Р»РёСЃСЊ")
+
+        if result.letter_generated:
+            parts.append("РїРёСЃСЊРјРѕ СЃС„РѕСЂРјРёСЂРѕРІР°РЅРѕ")
+        else:
+            parts.append("РїРёСЃСЊРјРѕ РЅРµ С„РѕСЂРјРёСЂРѕРІР°Р»РѕСЃСЊ")
+
+        if getattr(result, "registries_auto_generated_for_letter", False):
+            parts.append("С‡Р°СЃС‚СЊ СЂРµРµСЃС‚СЂРѕРІ Р±С‹Р»Р° Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РґРѕРіРµРЅРµСЂРёСЂРѕРІР°РЅР° РґР»СЏ РїРёСЃСЊРјР°")
+
+        return f"Р“РµРЅРµСЂР°С†РёСЏ Р·Р°РІРµСЂС€РµРЅР°: {', '.join(parts)}."
+
+    def _is_ajax_request(self, request) -> bool:
+        return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+    def _build_success_message(self, *, result) -> str:
+        parts: list[str] = []
+
+        if result.registries_generated_count:
+            parts.append(f"реестров сформировано: {result.registries_generated_count}")
+        else:
+            parts.append("реестры не формировались")
+
+        if result.letter_generated:
+            parts.append("письмо сформировано")
+        else:
+            parts.append("письмо не формировалось")
+
+        if getattr(result, "registries_auto_generated_for_letter", False):
+            parts.append("часть реестров была автоматически догенерирована для письма")
+
+        return f"Генерация завершена: {', '.join(parts)}."
 
     def _get_regular_letter_template_path(self) -> Path:
         return Path(settings.DOCX_TEMPLATES_DIR) / "id_handover_letter_for_execution.docx"

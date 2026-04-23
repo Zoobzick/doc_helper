@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+from functools import lru_cache
 from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +11,9 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.formula.translate import Translator
 from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
+from PIL import ImageFont
 
 
 @dataclass(slots=True)
@@ -72,6 +76,14 @@ class RegistryXlsxRenderer:
         "{{project_plot_full_name}}": "project_plot_full_name",
         "{{project_construction}}": "project_construction",
         "{{executive_or_and_working_documentation_registry}}": "executive_or_and_working_documentation_registry",
+    }
+
+    FONT_FILE_CANDIDATES = {
+        "calibri": ("calibri.ttf", "calibrib.ttf"),
+        "times new roman": ("times.ttf", "timesbd.ttf"),
+        "arial": ("arial.ttf", "arialbd.ttf"),
+        "tahoma": ("tahoma.ttf", "tahomabd.ttf"),
+        "cambria": ("cambria.ttc", "cambriab.ttf"),
     }
 
     def render(
@@ -142,14 +154,26 @@ class RegistryXlsxRenderer:
 
         template_row_idx = documents_match.row
         documents_col_idx = documents_match.column
+        number_col_idx = documents_col_idx - 1
         sheets_col_idx = sheets_match.column
+        page_col_idx = sheets_col_idx + 1
 
-        if len(rows) > 1:
-            worksheet.insert_rows(template_row_idx + 1, amount=len(rows) - 1)
+        preallocated_rows_count = self._count_preallocated_table_rows(
+            worksheet=worksheet,
+            template_row_idx=template_row_idx,
+            page_col_idx=page_col_idx,
+        )
+        additional_rows_count = max(0, len(rows) - preallocated_rows_count)
+
+        if additional_rows_count > 0:
+            worksheet.insert_rows(
+                template_row_idx + preallocated_rows_count,
+                amount=additional_rows_count,
+            )
             self._replicate_template_row_block(
                 worksheet=worksheet,
                 template_row_idx=template_row_idx,
-                rows_count=len(rows),
+                rows_count=preallocated_rows_count + additional_rows_count,
             )
 
         for offset, row_context in enumerate(rows):
@@ -157,10 +181,26 @@ class RegistryXlsxRenderer:
             self._render_single_registry_row(
                 worksheet=worksheet,
                 target_row_idx=target_row_idx,
-                template_row_idx=template_row_idx,
+                number_col_idx=number_col_idx,
                 documents_col_idx=documents_col_idx,
                 sheets_col_idx=sheets_col_idx,
                 row_context=row_context,
+            )
+
+        self._apply_documents_rows_heights(
+            worksheet=worksheet,
+            template_row_idx=template_row_idx,
+            documents_col_idx=documents_col_idx,
+            sheets_col_idx=sheets_col_idx,
+            rows_count=len(rows),
+        )
+
+        unused_preallocated_rows_count = max(0, preallocated_rows_count - len(rows))
+        if unused_preallocated_rows_count > 0:
+            self._delete_rows_preserving_footer_layout(
+                worksheet=worksheet,
+                delete_start_row=template_row_idx + len(rows),
+                amount=unused_preallocated_rows_count,
             )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -359,7 +399,7 @@ class RegistryXlsxRenderer:
         *,
         worksheet: Worksheet,
         target_row_idx: int,
-        template_row_idx: int,
+        number_col_idx: int,
         documents_col_idx: int,
         sheets_col_idx: int,
         row_context: dict[str, Any],
@@ -367,16 +407,412 @@ class RegistryXlsxRenderer:
         """
         Заполняет одну строку реестра.
         """
+        number_cell = worksheet.cell(row=target_row_idx, column=number_col_idx)
         documents_cell = worksheet.cell(row=target_row_idx, column=documents_col_idx)
         sheets_cell = worksheet.cell(row=target_row_idx, column=sheets_col_idx)
 
+        number_cell.value = row_context.get("number", "")
         documents_cell.value = row_context.get("document_text", "")
         sheets_cell.value = row_context.get("sheets_count", "")
 
-        if row_context.get("is_act_row"):
-            self._apply_bold_to_row(
+        self._set_cell_bold(cell=number_cell, bold=False)
+        self._set_cell_bold(cell=sheets_cell, bold=False)
+        self._set_cell_bold(
+            cell=documents_cell,
+            bold=bool(row_context.get("is_act_row")),
+        )
+
+    def _count_preallocated_table_rows(
+        self,
+        *,
+        worksheet: Worksheet,
+        template_row_idx: int,
+        page_col_idx: int,
+    ) -> int:
+        """
+        Считает, сколько строк табличной части уже предусмотрено в XLSX-шаблоне.
+
+        В строках таблицы колонка "Страница" содержит формулу. Когда формула
+        заканчивается, начинается нижний служебный блок реестра.
+        """
+        rows_count = 0
+        current_row_idx = template_row_idx
+
+        while current_row_idx <= worksheet.max_row:
+            page_cell = worksheet.cell(row=current_row_idx, column=page_col_idx)
+            if not isinstance(page_cell.value, str) or not page_cell.value.startswith("="):
+                break
+
+            rows_count += 1
+            current_row_idx += 1
+
+        if rows_count <= 0:
+            raise RegistryXlsxRendererValidationError(
+                "Не удалось определить диапазон табличной части реестра в шаблоне."
+            )
+
+        return rows_count
+
+    def _set_cell_bold(self, *, cell, bold: bool) -> None:
+        current_font = copy(cell.font) if cell.font else Font()
+        current_font.bold = bold
+        cell.font = current_font
+
+    def _apply_documents_rows_heights(
+        self,
+        *,
+        worksheet: Worksheet,
+        template_row_idx: int,
+        documents_col_idx: int,
+        sheets_col_idx: int,
+        rows_count: int,
+    ) -> None:
+        if rows_count <= 0:
+            return
+
+        workbook = worksheet.parent
+        probe_title = "__registry_height_probe__"
+        if probe_title in workbook.sheetnames:
+            workbook.remove(workbook[probe_title])
+
+        probe_sheet = workbook.create_sheet(title=probe_title)
+        probe_sheet.sheet_state = "hidden"
+        probe_sheet.column_dimensions["A"].width = self._calculate_combined_excel_width(
+            worksheet=worksheet,
+            start_col_idx=documents_col_idx,
+            end_col_idx=sheets_col_idx - 1,
+        )
+
+        base_height = (
+            worksheet.row_dimensions[template_row_idx].height
+            or worksheet.sheet_format.defaultRowHeight
+            or 18
+        )
+
+        try:
+            for row_offset in range(rows_count):
+                source_row_idx = template_row_idx + row_offset
+                source_cell = worksheet.cell(row=source_row_idx, column=documents_col_idx)
+                probe_cell = probe_sheet.cell(row=row_offset + 1, column=1)
+
+                probe_cell.value = source_cell.value
+                probe_cell.font = copy(source_cell.font)
+                probe_cell.alignment = copy(source_cell.alignment)
+
+                measured_height = self._measure_probe_row_height(
+                    probe_sheet=probe_sheet,
+                    probe_cell=probe_cell,
+                )
+                probe_sheet.row_dimensions[row_offset + 1].height = measured_height
+                worksheet.row_dimensions[source_row_idx].height = round(max(base_height, measured_height), 1)
+        finally:
+            workbook.remove(probe_sheet)
+
+    def _measure_probe_row_height(
+        self,
+        *,
+        probe_sheet: Worksheet,
+        probe_cell,
+    ) -> float:
+        usable_width_px = max(
+            36,
+            self._excel_width_to_pixels(
+                probe_sheet.column_dimensions["A"].width
+                or probe_sheet.sheet_format.defaultColWidth
+                or 8.43
+            ) - 10,
+        )
+        pil_font = self._get_pil_font(
+            font_name=getattr(probe_cell.font, "name", None),
+            font_size=getattr(probe_cell.font, "sz", None),
+            bold=bool(getattr(probe_cell.font, "bold", False)),
+        )
+        wrapped_lines = self._wrap_text_to_pixel_width(
+            text=str(probe_cell.value or ""),
+            max_width_px=usable_width_px,
+            pil_font=pil_font,
+        )
+        ascent, descent = pil_font.getmetrics()
+        line_height_px = max(1, ascent + descent)
+        total_height_px = (len(wrapped_lines) * line_height_px) + 4
+        return round(self._pixels_to_points(total_height_px), 1)
+
+    def _calculate_combined_excel_width(
+        self,
+        *,
+        worksheet: Worksheet,
+        start_col_idx: int,
+        end_col_idx: int,
+    ) -> float:
+        total_width = 0.0
+        for col_idx in range(start_col_idx, end_col_idx + 1):
+            column_letter = get_column_letter(col_idx)
+            column_dimension = worksheet.column_dimensions[column_letter]
+            total_width += column_dimension.width or worksheet.sheet_format.defaultColWidth or 8.43
+
+        return total_width
+
+    def _adjust_documents_row_height(
+        self,
+        *,
+        worksheet: Worksheet,
+        row_idx: int,
+        template_row_idx: int,
+        documents_col_idx: int,
+        sheets_col_idx: int,
+        text: str,
+        is_bold: bool,
+    ) -> None:
+        """
+        Для merged-ячейки B:D авто-высота работает нестабильно, поэтому
+        оцениваем нужное число визуальных строк вручную и задаём height.
+        """
+        base_height = (
+            worksheet.row_dimensions[template_row_idx].height
+            or worksheet.sheet_format.defaultRowHeight
+            or 18
+        )
+        estimated_lines_count = self._estimate_wrapped_lines_count(
+            worksheet=worksheet,
+            row_idx=row_idx,
+            documents_col_idx=documents_col_idx,
+            sheets_col_idx=sheets_col_idx,
+            text=text,
+            is_bold=is_bold,
+        )
+
+        worksheet.row_dimensions[row_idx].height = round(max(base_height, estimated_lines_count), 1)
+
+    def _estimate_wrapped_lines_count(
+        self,
+        *,
+        worksheet: Worksheet,
+        row_idx: int,
+        documents_col_idx: int,
+        sheets_col_idx: int,
+        text: str,
+        is_bold: bool,
+    ) -> float:
+        cell_font = worksheet.cell(row=row_idx, column=documents_col_idx).font
+        usable_width_px = max(
+            36,
+            self._calculate_usable_text_width_px(
                 worksheet=worksheet,
-                row_idx=target_row_idx,
+                start_col_idx=documents_col_idx,
+                end_col_idx=sheets_col_idx - 1,
+            ),
+        )
+        pil_font = self._get_pil_font(
+            font_name=getattr(cell_font, "name", None),
+            font_size=getattr(cell_font, "sz", None),
+            bold=is_bold or bool(getattr(cell_font, "bold", False)),
+        )
+        wrapped_lines = self._wrap_text_to_pixel_width(
+            text=text,
+            max_width_px=usable_width_px,
+            pil_font=pil_font,
+        )
+        ascent, descent = pil_font.getmetrics()
+        line_height_px = max(1, ascent + descent)
+        total_height_px = (len(wrapped_lines) * line_height_px) + 4
+        return self._pixels_to_points(total_height_px)
+
+    def _calculate_usable_text_width_px(
+        self,
+        *,
+        worksheet: Worksheet,
+        start_col_idx: int,
+        end_col_idx: int,
+    ) -> int:
+        total_width_px = 0
+        for col_idx in range(start_col_idx, end_col_idx + 1):
+            column_letter = get_column_letter(col_idx)
+            column_dimension = worksheet.column_dimensions[column_letter]
+            excel_width = column_dimension.width or worksheet.sheet_format.defaultColWidth or 8.43
+            total_width_px += self._excel_width_to_pixels(excel_width)
+
+        return max(0, total_width_px - 10)
+
+    def _wrap_text_to_pixel_width(
+        self,
+        *,
+        text: str,
+        max_width_px: int,
+        pil_font,
+    ) -> list[str]:
+        normalized_text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+        source_lines = normalized_text.split("\n") or [""]
+        result: list[str] = []
+
+        for source_line in source_lines:
+            stripped_line = source_line.strip()
+            if not stripped_line:
+                result.append("")
+                continue
+
+            words = stripped_line.split()
+            current_line = ""
+
+            for word in words:
+                candidate = word if not current_line else f"{current_line} {word}"
+                if self._measure_text_width_px(candidate, pil_font) <= max_width_px:
+                    current_line = candidate
+                    continue
+
+                if current_line:
+                    result.append(current_line)
+
+                if self._measure_text_width_px(word, pil_font) <= max_width_px:
+                    current_line = word
+                    continue
+
+                split_word_lines = self._split_long_token(
+                    token=word,
+                    max_width_px=max_width_px,
+                    pil_font=pil_font,
+                )
+                result.extend(split_word_lines[:-1])
+                current_line = split_word_lines[-1]
+
+            if current_line:
+                result.append(current_line)
+
+        return result or [""]
+
+    def _split_long_token(
+        self,
+        *,
+        token: str,
+        max_width_px: int,
+        pil_font,
+    ) -> list[str]:
+        chunks: list[str] = []
+        current = ""
+
+        for char in token:
+            candidate = f"{current}{char}"
+            if current and self._measure_text_width_px(candidate, pil_font) > max_width_px:
+                chunks.append(current)
+                current = char
+                continue
+            current = candidate
+
+        if current:
+            chunks.append(current)
+
+        return chunks or [token]
+
+    def _measure_text_width_px(self, text: str, pil_font) -> int:
+        if not text:
+            return 0
+        return int(math.ceil(pil_font.getlength(text)))
+
+    def _pixels_to_points(self, pixels: int | float) -> float:
+        return float(pixels) * 72.0 / 96.0
+
+    def _excel_width_to_pixels(self, width: float) -> int:
+        if width <= 0:
+            return 0
+        return int(math.floor(width * 7 + 5))
+
+    @lru_cache(maxsize=32)
+    def _resolve_font_file_path(self, font_name: str, bold: bool) -> str | None:
+        normalized_name = (font_name or "").strip().lower()
+        candidates = self.FONT_FILE_CANDIDATES.get(normalized_name, ())
+        if not candidates:
+            return None
+
+        preferred_file = candidates[1] if bold and len(candidates) > 1 else candidates[0]
+        fallback_files = tuple(file_name for file_name in candidates if file_name != preferred_file)
+        fonts_dir = Path("C:/Windows/Fonts")
+
+        for file_name in (preferred_file, *fallback_files):
+            candidate_path = fonts_dir / file_name
+            if candidate_path.exists():
+                return str(candidate_path)
+
+        return None
+
+    @lru_cache(maxsize=64)
+    def _load_pil_font(self, font_name: str, font_size: int, bold: bool):
+        font_path = self._resolve_font_file_path(font_name, bold)
+        if font_path:
+            try:
+                return ImageFont.truetype(font_path, font_size)
+            except OSError:
+                pass
+        return ImageFont.load_default()
+
+    def _get_pil_font(self, *, font_name: str | None, font_size: Any, bold: bool):
+        normalized_size = 11
+        if font_size:
+            try:
+                normalized_size = max(6, int(round(float(font_size))))
+            except (TypeError, ValueError):
+                normalized_size = 11
+
+        normalized_name = (font_name or "Calibri").strip()
+        return self._load_pil_font(normalized_name, normalized_size, bold)
+
+    def _delete_rows_preserving_footer_layout(
+        self,
+        *,
+        worksheet: Worksheet,
+        delete_start_row: int,
+        amount: int,
+    ) -> None:
+        """
+        Удаляет хвост пустых строк таблицы, сохраняя нижний блок шаблона.
+
+        Для footer-блока важно бережно обработать:
+        - merged ranges ниже удаляемого диапазона;
+        - индивидуальные высоты строк.
+
+        Иначе openpyxl может сместить значения, но визуально "растянуть"
+        объединённые ячейки и подписи внизу реестра.
+        """
+        if amount <= 0:
+            return
+
+        deleted_last_row = delete_start_row + amount - 1
+        original_max_row = worksheet.max_row
+
+        footer_merged_ranges = []
+        for merged_range in list(worksheet.merged_cells.ranges):
+            if merged_range.max_row < delete_start_row:
+                continue
+
+            if merged_range.min_row <= deleted_last_row:
+                worksheet.unmerge_cells(str(merged_range))
+                continue
+
+            footer_merged_ranges.append(
+                (
+                    merged_range.min_row - amount,
+                    merged_range.min_col,
+                    merged_range.max_row - amount,
+                    merged_range.max_col,
+                )
+            )
+            worksheet.unmerge_cells(str(merged_range))
+
+        footer_row_heights: dict[int, float] = {}
+        for source_row_idx in range(delete_start_row + amount, original_max_row + 1):
+            source_dimension = worksheet.row_dimensions[source_row_idx]
+            if source_dimension.height is not None:
+                footer_row_heights[source_row_idx - amount] = source_dimension.height
+
+        worksheet.delete_rows(delete_start_row, amount=amount)
+
+        for target_row_idx, height in footer_row_heights.items():
+            worksheet.row_dimensions[target_row_idx].height = height
+
+        for min_row, min_col, max_row, max_col in footer_merged_ranges:
+            worksheet.merge_cells(
+                start_row=min_row,
+                start_column=min_col,
+                end_row=max_row,
+                end_column=max_col,
             )
 
     def _apply_bold_to_row(self, *, worksheet: Worksheet, row_idx: int) -> None:

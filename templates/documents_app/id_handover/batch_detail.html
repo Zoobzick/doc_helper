@@ -20,30 +20,11 @@
                     </ol>
                 </nav>
             </div>
-
-            <div class="d-flex gap-2 flex-wrap">
-                {% if user.is_superuser or perms.documents_app.view_documentbatch %}
-                    <a href="{% url 'documents:id_handover_batch_master' batch.id %}" class="btn btn-outline-primary">
-                        <i class="bi bi-layout-text-window-reverse me-1"></i>
-                        Открыть master-view
-                    </a>
-                {% endif %}
-
-                {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                    <form method="post" action="{% url 'documents:id_handover_batch_generate' batch.id %}">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-success">
-                            <i class="bi bi-gear-fill me-1"></i>
-                            Сформировать документы
-                        </button>
-                    </form>
-                {% endif %}
-            </div>
         </div>
     </div>
 
     <section class="section">
-        <div class="row">
+        <div class="row g-4">
 
             <div class="col-lg-12">
                 {% if messages %}
@@ -56,52 +37,49 @@
                 {% endif %}
             </div>
 
-            <div class="col-lg-8">
-                <div class="card">
+            <div class="col-xl-9">
+                <div class="card batch-hero-card">
                     <div class="card-body pt-3">
-                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
                             <div>
                                 <h5 class="card-title mb-1">Карточка комплекта</h5>
-                                <div class="text-muted small">UUID: {{ batch.uuid }}</div>
+                                <div class="text-muted small">Основные параметры формирования и состав выдачи.</div>
                             </div>
 
-                            <div>
-                                <span class="badge bg-secondary fs-6">Рабочий комплект</span></div>
+                            <span class="badge bg-secondary fs-6">Рабочий комплект</span>
                         </div>
 
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Режим формирования</div>
-                                    <div class="fw-semibold">
-                                        {{ batch.get_generation_mode_display|default:batch.generation_mode }}
-                                    </div>
+                                    <div class="fw-semibold">{{ batch.get_generation_mode_display|default:batch.generation_mode }}</div>
                                 </div>
                             </div>
 
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Тип письма</div>
                                     <div class="fw-semibold">{{ batch.get_letter_type_display }}</div>
                                 </div>
                             </div>
 
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Тип документации</div>
                                     <div class="fw-semibold">{{ batch.get_documentation_type_display }}</div>
                                 </div>
                             </div>
 
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Режим отбора</div>
                                     <div class="fw-semibold">{{ batch.get_selection_mode_display|default:batch.selection_mode }}</div>
                                 </div>
                             </div>
 
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Период</div>
                                     <div class="fw-semibold">
                                         {% if batch.selection_mode == "range" %}
@@ -114,46 +92,45 @@
                             </div>
 
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Охват проектов</div>
                                     <div class="fw-semibold">{{ batch.get_project_scope_display|default:batch.project_scope }}</div>
                                 </div>
                             </div>
 
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Номер письма</div>
                                     <div class="fw-semibold">{{ batch.letter_number|default:"—" }}</div>
                                 </div>
                             </div>
 
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Дата письма</div>
                                     <div class="fw-semibold">{{ batch.letter_date|date:"d.m.Y"|default:"—" }}</div>
                                 </div>
                             </div>
 
                             <div class="col-md-4">
-                                <div class="border rounded p-3 h-100">
+                                <div class="batch-info-tile">
                                     <div class="small text-muted">Создан</div>
                                     <div class="fw-semibold">{{ batch.created_at|date:"d.m.Y H:i"|default:"—" }}</div>
                                 </div>
                             </div>
 
                             <div class="col-12">
-                                <div class="border rounded p-3 h-100">
-                                    <div class="small text-muted">Комментарий</div>
+                                <div class="batch-comment-panel">
+                                    <div class="small text-muted mb-2">Комментарий</div>
                                     <div class="fw-semibold">{{ batch.comment|default:"—" }}</div>
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 </div>
             </div>
 
-            <div class="col-lg-4">
+            <div class="col-xl-3">
                 <div class="card">
                     <div class="card-body pt-3">
                         <h5 class="card-title">Быстрые действия</h5>
@@ -167,10 +144,13 @@
                             {% endif %}
 
                             {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                                <form method="post" action="{% url 'documents:id_handover_batch_generate' batch.id %}">
+                                <form method="post"
+                                      action="{% url 'documents:id_handover_batch_generate' batch.id %}"
+                                      class="js-batch-generate-form"
+                                      data-batch-title="{{ batch.title|default:'Комплект'|escape }}">
                                     {% csrf_token %}
-                                    <button type="submit" class="btn btn-success w-100">
-                                        Сформировать документы заново
+                                    <button type="submit" class="btn btn-success w-100 js-batch-generate-button">
+                                        Сформировать документы
                                     </button>
                                 </form>
                             {% endif %}
@@ -182,14 +162,6 @@
                     <div class="card-body pt-3">
                         <h5 class="card-title">Файлы письма</h5>
 
-                        {% with has_letter_docs=False %}
-                            {% for document in generated_documents %}
-                                {% if document.document_type == "letter_docx" or document.document_type == "letter_preview_pdf" or document.document_type == "stamped_letter_pdf" or document.document_type == "stamped_letter_image" %}
-                                    {% if forloop.first %}{% endif %}
-                                {% endif %}
-                            {% endfor %}
-                        {% endwith %}
-
                         <div class="list-group list-group-flush">
                             {% for document in generated_documents %}
                                 {% if document.document_type == "letter_docx" or document.document_type == "letter_preview_pdf" or document.document_type == "stamped_letter_pdf" or document.document_type == "stamped_letter_image" %}
@@ -201,12 +173,12 @@
 
                                             {% if document.calculated_is_actual %}
                                                 <span class="badge bg-success-subtle text-success border border-success-subtle">
-                актуален
-            </span>
+                                                    актуален
+                                                </span>
                                             {% else %}
                                                 <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-    устарел
-</span>
+                                                    устарел
+                                                </span>
                                             {% endif %}
                                         </div>
 
@@ -217,59 +189,7 @@
                                         </div>
 
                                         {% if document.file %}
-                                            <a href="{{ document.file.url }}" target="_blank">
-                                                {{ document.original_name|default:"Открыть файл" }}
-                                            </a>
-                                        {% else %}
-                                            <span class="text-muted">Файл отсутствует</span>
-                                        {% endif %}
-                                    </div>                                {% endif %}
-                            {% empty %}
-                                <div class="text-muted">Файлы ещё не созданы.</div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body pt-3">
-                        <h5 class="card-title">Реестры по проектам</h5>
-
-                        <div class="list-group list-group-flush">
-                            {% for document in generated_documents %}
-                                {% if document.document_type == "registry_xlsx" or document.document_type == "registry_preview_pdf" or document.document_type == "stamped_registry_pdf" or document.document_type == "stamped_registry_image" %}
-                                    <div class="list-group-item px-0">
-                                        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                            <div class="fw-semibold">
-                                                {{ document.get_document_type_display|default:document.document_type }}
-                                            </div>
-
-                                            {% if document.calculated_is_actual %}
-                                                <span class="badge bg-success-subtle text-success border border-success-subtle">
-                актуален
-            </span>
-                                            {% else %}
-                                                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-                                    устарел
-                                </span>
-                                            {% endif %}
-                                        </div>
-
-                                        <div class="small text-muted mb-1">
-                                            {% if document.project %}
-                                                {{ document.project.full_code }}
-                                            {% else %}
-                                                Общий документ комплекта
-                                            {% endif %}
-                                        </div>
-
-                                        <div class="small text-muted mb-1">
-                                            {% if document.source_kind %}
-                                                {{ document.get_source_kind_display|default:document.source_kind }}
-                                            {% endif %}
-                                        </div>
-
-                                        {% if document.file %}
-                                            <a href="{{ document.file.url }}" target="_blank">
+                                            <a href="{% url 'documents:generated_document_open' document.id %}" target="_blank">
                                                 {{ document.original_name|default:"Открыть файл" }}
                                             </a>
                                         {% else %}
@@ -288,96 +208,182 @@
             <div class="col-lg-12">
                 <div class="card">
                     <div class="card-body pt-3">
-                        <h5 class="card-title">Preview комплекта</h5>
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+                            <div>
+                                <h5 class="card-title mb-1">Проекты комплекта</h5>
+                                <div class="text-muted small">Каждый шифр вынесен в отдельную карточку с компактным раскрытием состава.</div>
+                            </div>
+                        </div>
 
                         {% if preview_data %}
                             <div class="row g-3 mb-4">
                                 <div class="col-md-3">
-                                    <div class="border rounded p-3 h-100">
+                                    <div class="batch-info-tile">
                                         <div class="small text-muted">Проектов</div>
                                         <div class="fs-5 fw-bold">{{ preview_data.summary.projects_count }}</div>
                                     </div>
                                 </div>
 
                                 <div class="col-md-3">
-                                    <div class="border rounded p-3 h-100">
+                                    <div class="batch-info-tile">
                                         <div class="small text-muted">Актов</div>
                                         <div class="fs-5 fw-bold">{{ preview_data.summary.acts_count }}</div>
                                     </div>
                                 </div>
 
                                 <div class="col-md-3">
-                                    <div class="border rounded p-3 h-100">
+                                    <div class="batch-info-tile">
                                         <div class="small text-muted">Строк реестра</div>
                                         <div class="fs-5 fw-bold">{{ preview_data.summary.registry_rows_count }}</div>
                                     </div>
                                 </div>
 
                                 <div class="col-md-3">
-                                    <div class="border rounded p-3 h-100">
+                                    <div class="batch-info-tile">
                                         <div class="small text-muted">Всего листов</div>
                                         <div class="fs-5 fw-bold">{{ preview_data.summary.total_sheets_count }}</div>
                                     </div>
                                 </div>
                             </div>
 
-                            {% for project in preview_data.projects %}
-                                <div class="border rounded p-3 mb-4">
-                                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-                                        <div>
-                                            <div class="fw-bold">{{ project.project_code }}</div>
-                                            <div class="text-muted small">{{ project.project_name|default:"" }}</div>
-                                        </div>
+                            <div class="batch-projects-stack">
+                                {% for project in preview_data.projects %}
+                                    <details class="batch-project-card">
+                                        <summary class="batch-project-summary">
+                                            <div class="batch-project-summary-main">
+                                                <div class="batch-project-code">{{ project.project_code }}</div>
+                                            </div>
 
-                                        <div class="text-end small text-muted">
-                                            Актов: {{ project.acts_count }}<br>
-                                            Строк реестра: {{ project.registry_rows_count }}<br>
-                                            Листов: {{ project.total_sheets_count }}
-                                        </div>
-                                    </div>
+                                            <div class="batch-project-summary-side">
+                                                <div class="batch-project-links">
+                                                    {% for document in generated_documents %}
+                                                        {% if document.project_id == project.project_id and document.document_type == "registry_preview_pdf" and document.file %}
+                                                            <a href="{% url 'documents:generated_document_open' document.id %}"
+                                                               target="_blank"
+                                                               class="btn btn-sm btn-outline-danger batch-file-link">
+                                                                pdf
+                                                            </a>
+                                                        {% endif %}
+                                                    {% endfor %}
 
-                                    {% if project.acts %}
-                                        <div class="table-responsive">
-                                            <table class="table table-sm table-bordered align-middle">
-                                                <thead>
-                                                <tr>
-                                                    <th style="width: 70px;">№</th>
-                                                    <th style="width: 130px;">Дата акта</th>
-                                                    <th>Акт / приложение</th>
-                                                    <th style="width: 100px;">Листов</th>
-                                                </tr>
-                                                </thead>
-                                                <tbody>
-                                                {% for act in project.acts %}
-                                                    <tr class="table-light">
-                                                        <td>{{ act.position }}</td>
-                                                        <td>{{ act.act_date|default:"—" }}</td>
-                                                        <td>
-                                                            <strong>Акт №{{ act.act_number }}</strong><br>
-                                                            <span class="text-muted small">{{ act.label }}</span>
-                                                        </td>
-                                                        <td>{{ act.total_sheets_count }}</td>
-                                                    </tr>
+                                                    {% for document in generated_documents %}
+                                                        {% if document.project_id == project.project_id and document.document_type == "registry_xlsx" and document.file %}
+                                                            <a href="{% url 'documents:generated_document_open' document.id %}"
+                                                               target="_blank"
+                                                               class="btn btn-sm btn-outline-success batch-file-link">
+                                                                xlsx
+                                                            </a>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                </div>
 
-                                                    {% if act.registry_rows %}
-                                                        {% for row in act.registry_rows %}
-                                                            <tr>
-                                                                <td>{{ row.position }}</td>
-                                                                <td>{{ row.act_date|default:"—" }}</td>
-                                                                <td>{{ row.label }}</td>
-                                                                <td>{{ row.sheets_count }}</td>
-                                                            </tr>
-                                                        {% endfor %}
-                                                    {% endif %}
-                                                {% endfor %}
-                                                </tbody>
-                                            </table>
+                                                <div class="batch-project-metrics">
+                                                    <span class="batch-metric-pill">Актов: {{ project.acts_count }}</span>
+                                                    <span class="batch-metric-pill">Строк: {{ project.registry_rows_count }}</span>
+                                                    <span class="batch-metric-pill">Листов: {{ project.total_sheets_count }}</span>
+                                                </div>
+                                            </div>
+                                        </summary>
+
+                                        <div class="batch-project-body">
+                                            <div class="row g-3">
+                                                <div class="col-xl-8">
+                                                    <div class="batch-project-section">
+                                                        <div class="batch-section-title">Состав по актам</div>
+
+                                                        {% if project.acts %}
+                                                            <div class="batch-act-list">
+                                                                {% for act in project.acts %}
+                                                                    <div class="batch-act-card">
+                                                                        <div class="batch-act-head">
+                                                                            <div>
+                                                                                <div class="batch-act-title">Акт №{{ act.act_number }}</div>
+                                                                                <div class="batch-act-meta">
+                                                                                    {{ act.act_date|default:"—" }} • Листов: {{ act.total_sheets_count }} • Приложений: {{ act.appendix_lines_count }}
+                                                                                </div>
+                                                                            </div>
+                                                                            <span class="batch-order-badge">#{{ act.position }}</span>
+                                                                        </div>
+
+                                                                        <div class="batch-act-label">{{ act.label }}</div>
+
+                                                                        {% if act.registry_rows %}
+                                                                            <div class="batch-doc-table-wrap">
+                                                                                <table class="table table-sm align-middle batch-doc-table mb-0">
+                                                                                    <thead>
+                                                                                    <tr>
+                                                                                        <th style="width: 72px;">№</th>
+                                                                                        <th>Документ</th>
+                                                                                        <th style="width: 110px;">Листов</th>
+                                                                                    </tr>
+                                                                                    </thead>
+                                                                                    <tbody>
+                                                                                    {% for row in act.registry_rows %}
+                                                                                        <tr class="{% if row.is_act %}table-light{% endif %}">
+                                                                                            <td>{{ row.position }}</td>
+                                                                                            <td>
+                                                                                                {% if row.is_act %}
+                                                                                                    <strong>{{ row.label }}</strong>
+                                                                                                {% else %}
+                                                                                                    {{ row.label }}
+                                                                                                {% endif %}
+                                                                                            </td>
+                                                                                            <td>{{ row.sheets_count }}</td>
+                                                                                        </tr>
+                                                                                    {% endfor %}
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </div>
+                                                                        {% endif %}
+                                                                    </div>
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% else %}
+                                                            <div class="text-muted">По проекту пока нет актов.</div>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+
+                                                <div class="col-xl-4">
+                                                    <div class="batch-project-section">
+                                                        <div class="batch-section-title">Реестры проекта</div>
+
+                                                        <div class="list-group list-group-flush">
+                                                            {% for document in generated_documents %}
+                                                                {% if document.project_id == project.project_id %}
+                                                                    {% if document.document_type == "registry_xlsx" or document.document_type == "registry_preview_pdf" or document.document_type == "stamped_registry_pdf" or document.document_type == "stamped_registry_image" %}
+                                                                        <div class="list-group-item px-0 batch-inline-doc">
+                                                                            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                                                                <div class="fw-semibold small">
+                                                                                    {{ document.get_document_type_display|default:document.document_type }}
+                                                                                </div>
+
+                                                                                {% if document.calculated_is_actual %}
+                                                                                    <span class="badge bg-success-subtle text-success border border-success-subtle">актуален</span>
+                                                                                {% else %}
+                                                                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">устарел</span>
+                                                                                {% endif %}
+                                                                            </div>
+
+                                                                            {% if document.file %}
+                                                                                <a href="{% url 'documents:generated_document_open' document.id %}" target="_blank">
+                                                                                    {{ document.original_name|default:"Открыть файл" }}
+                                                                                </a>
+                                                                            {% else %}
+                                                                                <span class="text-muted">Файл отсутствует</span>
+                                                                            {% endif %}
+                                                                        </div>
+                                                                    {% endif %}
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
-                                    {% else %}
-                                        <div class="text-muted">По проекту пока нет актов.</div>
-                                    {% endif %}
-                                </div>
-                            {% endfor %}
+                                    </details>
+                                {% endfor %}
+                            </div>
                         {% else %}
                             <div class="alert alert-warning mb-0">
                                 Preview комплекта пока недоступен.
@@ -387,79 +393,401 @@
                 </div>
             </div>
 
-            <div class="col-lg-12">
-                <div class="card">
-                    <div class="card-body pt-3">
-                        <h5 class="card-title">Все файлы комплекта</h5>
-                        {% if generated_documents %}
-                            <div class="table-responsive">
-                                <table class="table table-bordered table-hover align-middle">
-                                    <thead>
-                                    <tr>
-                                        <th>Тип</th>
-                                        <th>Источник</th>
-                                        <th>Проект</th>
-                                        <th>Файл</th>
-                                        <th>Страниц</th>
-                                        <th>Актуальность</th>
-                                        <th>Дата</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    {% for document in generated_documents %}
-                                        <tr>
-                                            <td>{{ document.get_document_type_display|default:document.document_type }}</td>
+        </div>
+    </section>
+{% endblock %}
 
-                                            <td>{{ document.get_source_kind_display|default:document.source_kind }}</td>
+{% block extra_css %}
+    {{ block.super }}
+    <style>
+        .batch-hero-card {
+            background:
+                radial-gradient(circle at top right, rgba(13, 110, 253, 0.08), transparent 30%),
+                linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 1));
+        }
 
-                                            <td>
-                                                {% if document.project %}
-                                                    {{ document.project.full_code }}
-                                                {% else %}
-                                                    <span class="text-muted">Общий документ комплекта</span>                                                {% endif %}
-                                            </td>
+        .batch-info-tile {
+            height: 100%;
+            border: 1px solid #dde6f2;
+            border-radius: 1rem;
+            padding: 1rem;
+            background: #fff;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+        }
 
-                                            <td>
-                                                {% if document.file %}
-                                                    <a href="{{ document.file.url }}" target="_blank">
-                                                        {{ document.original_name|default:"Открыть файл" }}
-                                                    </a>
-                                                {% else %}
-                                                    <span class="text-muted">Файл отсутствует</span>
-                                                {% endif %}
-                                            </td>
+        .batch-comment-panel {
+            border: 1px solid #dde6f2;
+            border-radius: 1rem;
+            padding: 1rem;
+            background: linear-gradient(180deg, #ffffff, #f8fbff);
+        }
 
-                                            <td>{{ document.pages_count|default:"—" }}</td>
+        .batch-projects-stack {
+            display: grid;
+            gap: 1rem;
+        }
 
-                                            <td>
-                                                {% if document.calculated_is_actual %}
-                                                    <span class="badge bg-success">Актуален</span>
-                                                {% else %}
-                                                    <span class="badge bg-danger">Неактуален</span>
-                                                {% endif %}
-                                            </td>
+        .batch-project-card {
+            border: 1px solid #dbe4f0;
+            border-radius: 1rem;
+            background:
+                linear-gradient(180deg, rgba(247, 250, 252, 0.96), rgba(255, 255, 255, 1));
+            box-shadow: 0 0.75rem 2rem rgba(15, 23, 42, 0.06);
+            overflow: hidden;
+        }
 
-                                            <td>
-                                                {% if document.generated_at %}
-                                                    {{ document.generated_at|date:"d.m.Y H:i" }}
-                                                {% elif document.uploaded_at %}
-                                                    {{ document.uploaded_at|date:"d.m.Y H:i" }}
-                                                {% else %}
-                                                    —
-                                                {% endif %}
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        {% else %}
-                            <div class="text-muted">Документы ещё не сгенерированы.</div>
-                        {% endif %}
-                    </div>
+        .batch-project-summary {
+            list-style: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.15rem 1.25rem;
+            cursor: pointer;
+        }
+
+        .batch-project-summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .batch-project-summary-main {
+            min-width: 0;
+        }
+
+        .batch-project-code {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #173b78;
+        }
+
+        .batch-project-summary-side {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+            row-gap: 0.5rem;
+            column-gap: 0.9rem;
+        }
+
+        .batch-project-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .batch-file-link {
+            min-width: 74px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
+        .batch-project-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        .batch-metric-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 0.35rem 0.75rem;
+            background: #eef4ff;
+            color: #244b84;
+            font-size: 0.86rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .batch-project-body {
+            padding: 0 1.25rem 1.25rem;
+            border-top: 1px solid #e7eef7;
+        }
+
+        .batch-project-section {
+            height: 100%;
+            border: 1px solid #e7eef7;
+            border-radius: 0.9rem;
+            background: #fff;
+            padding: 1rem;
+        }
+
+        .batch-section-title {
+            margin-bottom: 0.9rem;
+            font-size: 0.86rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #667085;
+        }
+
+        .batch-act-list {
+            display: grid;
+            gap: 0.85rem;
+        }
+
+        .batch-act-card {
+            border: 1px solid #e8edf5;
+            border-radius: 0.9rem;
+            background: #fbfdff;
+            padding: 0.95rem;
+        }
+
+        .batch-act-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.75rem;
+            margin-bottom: 0.55rem;
+        }
+
+        .batch-act-title {
+            font-weight: 700;
+            color: #17365d;
+        }
+
+        .batch-act-meta {
+            margin-top: 0.2rem;
+            color: #667085;
+            font-size: 0.85rem;
+        }
+
+        .batch-order-badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 0.3rem 0.65rem;
+            background: #f2f4f7;
+            color: #475467;
+            font-size: 0.82rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .batch-act-label {
+            margin-bottom: 0.85rem;
+            color: #344054;
+            line-height: 1.45;
+        }
+
+        .batch-doc-table-wrap {
+            overflow-x: auto;
+        }
+
+        .batch-doc-table thead th {
+            background: #f8fafc;
+            border-bottom-width: 1px;
+            color: #475467;
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .batch-inline-doc:last-child {
+            border-bottom: 0;
+        }
+
+        .batch-generation-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1080;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: rgba(15, 23, 42, 0.58);
+            backdrop-filter: blur(3px);
+        }
+
+        .batch-generation-overlay.is-visible {
+            display: flex;
+        }
+
+        .batch-generation-panel {
+            width: min(100%, 520px);
+            border-radius: 1rem;
+            background: #fff;
+            box-shadow: 0 1rem 3rem rgba(15, 23, 42, 0.18);
+        }
+
+        @media (max-width: 991.98px) {
+            .batch-project-summary {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .batch-project-summary-side,
+            .batch-project-metrics {
+                justify-content: flex-start;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <div id="batch-generation-overlay" class="batch-generation-overlay" aria-hidden="true">
+        <div class="batch-generation-panel p-4">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="spinner-border text-success" role="status" aria-hidden="true"></div>
+                <div>
+                    <div class="fw-semibold" id="batch-generation-title">Идёт формирование документов</div>
+                    <div class="text-muted small" id="batch-generation-subtitle">Подготавливаем файлы комплекта.</div>
                 </div>
             </div>
 
+            <div class="progress mb-3" style="height: 10px;">
+                <div id="batch-generation-progress-bar"
+                     class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                     role="progressbar"
+                     style="width: 8%;"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="8"></div>
+            </div>
+
+            <div id="batch-generation-stage" class="small text-muted">
+                Запускаем генерацию документов...
+            </div>
         </div>
-    </section>
+    </div>
+
+    <script>
+        (function () {
+            const forms = Array.from(document.querySelectorAll(".js-batch-generate-form"));
+            const projectCards = Array.from(document.querySelectorAll(".batch-project-card"));
+
+            projectCards.forEach(function (card) {
+                card.addEventListener("toggle", function () {
+                    if (!card.open) {
+                        return;
+                    }
+
+                    projectCards.forEach(function (otherCard) {
+                        if (otherCard !== card) {
+                            otherCard.open = false;
+                        }
+                    });
+                });
+            });
+
+            if (!forms.length) {
+                return;
+            }
+
+            const overlay = document.getElementById("batch-generation-overlay");
+            const subtitleNode = document.getElementById("batch-generation-subtitle");
+            const stageNode = document.getElementById("batch-generation-stage");
+            const progressBar = document.getElementById("batch-generation-progress-bar");
+            const stages = [
+                "Проверяем состав комплекта...",
+                "Формируем проектные реестры...",
+                "Собираем письмо и preview-файлы...",
+                "Подготавливаем итоговую выдачу..."
+            ];
+
+            let activeRequest = false;
+            let progressValue = 8;
+            let progressTimer = null;
+            let stageTimer = null;
+            let stageIndex = 0;
+
+            function setProgress(value) {
+                progressValue = Math.max(0, Math.min(100, value));
+                progressBar.style.width = `${progressValue}%`;
+                progressBar.setAttribute("aria-valuenow", String(progressValue));
+            }
+
+            function setButtonsDisabled(disabled) {
+                document.querySelectorAll(".js-batch-generate-button").forEach(function (button) {
+                    button.disabled = disabled;
+                });
+            }
+
+            function startOverlay(batchTitle) {
+                subtitleNode.textContent = batchTitle ? `Комплект: ${batchTitle}` : "Подготавливаем файлы комплекта.";
+                stageNode.textContent = stages[0];
+                stageIndex = 0;
+                setProgress(8);
+                overlay.classList.add("is-visible");
+                overlay.setAttribute("aria-hidden", "false");
+
+                progressTimer = window.setInterval(function () {
+                    if (progressValue < 92) {
+                        setProgress(progressValue + (progressValue < 60 ? 6 : 2));
+                    }
+                }, 700);
+
+                stageTimer = window.setInterval(function () {
+                    stageIndex = (stageIndex + 1) % stages.length;
+                    stageNode.textContent = stages[stageIndex];
+                }, 2200);
+            }
+
+            function stopTimers() {
+                if (progressTimer) {
+                    window.clearInterval(progressTimer);
+                    progressTimer = null;
+                }
+                if (stageTimer) {
+                    window.clearInterval(stageTimer);
+                    stageTimer = null;
+                }
+            }
+
+            function finishOverlay(message) {
+                stopTimers();
+                setProgress(100);
+                stageNode.textContent = message || "Генерация завершена.";
+            }
+
+            forms.forEach(function (form) {
+                form.addEventListener("submit", async function (event) {
+                    event.preventDefault();
+
+                    if (activeRequest) {
+                        return;
+                    }
+
+                    activeRequest = true;
+                    setButtonsDisabled(true);
+                    startOverlay(form.dataset.batchTitle || "");
+
+                    try {
+                        const response = await fetch(form.action, {
+                            method: "POST",
+                            headers: {
+                                "X-Requested-With": "XMLHttpRequest",
+                                "Accept": "application/json"
+                            },
+                            body: new FormData(form),
+                            credentials: "same-origin"
+                        });
+
+                        const contentType = response.headers.get("content-type") || "";
+                        if (contentType.includes("application/json")) {
+                            const payload = await response.json();
+                            finishOverlay(payload.message || "Генерация завершена.");
+                            window.setTimeout(function () {
+                                window.location.href = payload.redirect_url || window.location.href;
+                            }, 300);
+                            return;
+                        }
+
+                        finishOverlay("Генерация завершена.");
+                        window.location.href = response.url || window.location.href;
+                    } catch (error) {
+                        stopTimers();
+                        overlay.classList.remove("is-visible");
+                        overlay.setAttribute("aria-hidden", "true");
+                        setButtonsDisabled(false);
+                        activeRequest = false;
+                        window.alert("Не удалось получить ответ от сервера во время генерации документов.");
+                    }
+                });
+            });
+        })();
+    </script>
 {% endblock %}
