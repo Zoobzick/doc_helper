@@ -1,0 +1,118 @@
+﻿<div class="project-review-card">
+    <div class="project-review-hero">
+        <div>
+            <div class="project-review-code">{{ project_preview.project_code }}</div>
+            <div class="project-review-note">
+                Здесь показан будущий реестр по одному шифру в веб-виде. Строки идут в той же сквозной нумерации, а действия с актами можно выполнять без перезагрузки страницы.
+            </div>
+        </div>
+
+        <div class="project-review-metrics">
+            <div class="project-review-metric">
+                <div class="project-review-metric-label">Актов</div>
+                <div class="project-review-metric-value">{{ project_preview.acts_count }}</div>
+            </div>
+            <div class="project-review-metric">
+                <div class="project-review-metric-label">Строк</div>
+                <div class="project-review-metric-value">{{ project_preview.registry_rows_count }}</div>
+            </div>
+            <div class="project-review-metric">
+                <div class="project-review-metric-label">Листов</div>
+                <div class="project-review-metric-value">{{ project_preview.total_sheets_count }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="project-review-body">
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle project-review-table">
+                <thead>
+                <tr>
+                    <th style="width: 72px;">№</th>
+                    <th style="width: 110px;">Тип</th>
+                    <th>Наименование документа</th>
+                    <th style="width: 90px;">Листов</th>
+                    <th style="width: 150px;">Акт</th>
+                    <th style="width: 320px;">Действия</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in project_review_rows %}
+                    <tr id="review-row-{{ row.source_batch_act_id }}-{{ row.position }}"
+                        class="{% if row.is_act %}project-review-row-act{% else %}project-review-row-appendix{% endif %}">
+                        <td class="text-center fw-semibold">{{ row.position }}</td>
+                        <td>
+                            {% if row.is_act %}
+                                <span class="project-review-type project-review-type-act">Акт</span>
+                            {% else %}
+                                <span class="project-review-type project-review-type-appendix">Приложение</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="project-review-doc {% if row.is_act %}fw-semibold{% endif %}">
+                                {{ row.document_name|linebreaksbr }}
+                            </div>
+                        </td>
+                        <td class="text-center fw-semibold">{{ row.sheets_count }}</td>
+                        <td>
+                            <div class="project-review-source">
+                                №{{ row.act_number }}<br>
+                                {{ row.act_date|default:"—" }}
+                            </div>
+                        </td>
+                        <td>
+                            {% if row.is_act and row.action_batch_act_id %}
+                                <div class="project-review-actions">
+                                    <a href="{% url 'acts_app:act_update' row.action_act_uuid %}"
+                                       class="btn btn-sm btn-outline-primary"
+                                       target="_blank">
+                                        Редактировать акт
+                                    </a>
+
+                                    <form method="post"
+                                          action="{% url 'documents:id_handover_batch_move_act_up' batch.id row.action_batch_act_id %}"
+                                          class="d-inline js-project-review-action-form">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="return_to" value="project_review">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                {% if not row.action_can_move_up %}disabled{% endif %}>
+                                            Поднять
+                                        </button>
+                                    </form>
+
+                                    <form method="post"
+                                          action="{% url 'documents:id_handover_batch_move_act_down' batch.id row.action_batch_act_id %}"
+                                          class="d-inline js-project-review-action-form">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="return_to" value="project_review">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                {% if not row.action_can_move_down %}disabled{% endif %}>
+                                            Опустить
+                                        </button>
+                                    </form>
+
+                                    <form method="post"
+                                          action="{% url 'documents:id_handover_batch_remove_act' batch.id row.action_batch_act_id %}"
+                                          class="d-inline js-project-review-action-form"
+                                          onsubmit="return confirm('Убрать этот акт из шифра?');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="return_to" value="project_review">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            Убрать из шифра
+                                        </button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <span class="text-muted small">Редактируется через акт-источник</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+

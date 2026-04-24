@@ -124,6 +124,7 @@ class DocumentBatchMasterForm(forms.Form):
         required=False,
         label="Дата письма",
         widget=forms.DateInput(
+            format="%Y-%m-%d",
             attrs={
                 "class": "form-control",
                 "type": "date",

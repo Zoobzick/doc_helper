@@ -1,0 +1,308 @@
+﻿{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <h1>Проверка шифра</h1>
+                <nav>
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                        <li class="breadcrumb-item">Документы</li>
+                        <li class="breadcrumb-item"><a href="{% url 'documents:id_handover_batch_list' %}">Комплекты</a></li>
+                        <li class="breadcrumb-item"><a href="{{ project_review_back_url }}">Master-view</a></li>
+                        <li class="breadcrumb-item active">{{ project_preview.project_code }}</li>
+                    </ol>
+                </nav>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="{{ project_review_back_url }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-1"></i>
+                    Назад к шагу 2
+                </a>
+                <button type="button"
+                        class="btn btn-outline-secondary js-project-work-toggle"
+                        data-project-id="{{ project_preview.project_id }}"
+                        data-project-code="{{ project_preview.project_code }}">
+                    <i class="bi bi-person-check me-1"></i>
+                    Взять в работу
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <section class="section">
+        {% if messages %}
+            <div class="row">
+                <div class="col-lg-12">
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="row">
+            <div class="col-lg-12">
+                <div id="project-review-content">
+                    {% include "documents_app/id_handover/partials/project_review_content.html" %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <style>
+        .project-review-card {
+            border: 1px solid #e9eef6;
+            border-radius: 1rem;
+            background: #fff;
+            box-shadow: 0 12px 32px rgba(16, 24, 40, 0.06);
+        }
+
+        .project-review-hero {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1.35rem 1.5rem 1rem;
+            border-bottom: 1px solid #eef2f7;
+        }
+
+        .project-review-code {
+            font-size: 1.55rem;
+            font-weight: 800;
+            color: #17365d;
+        }
+
+        .project-review-note {
+            margin-top: 0.35rem;
+            color: #667085;
+            max-width: 760px;
+        }
+
+        .project-review-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(120px, 1fr));
+            gap: 0.75rem;
+            width: min(420px, 100%);
+        }
+
+        .project-review-metric {
+            border: 1px solid #e6ebf3;
+            border-radius: 0.9rem;
+            padding: 0.85rem 1rem;
+            text-align: center;
+            background: #fbfdff;
+        }
+
+        .project-review-metric-label {
+            color: #667085;
+            font-size: 0.9rem;
+        }
+
+        .project-review-metric-value {
+            margin-top: 0.2rem;
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #101828;
+        }
+
+        .project-review-body {
+            padding: 1.25rem 1.5rem 1.5rem;
+        }
+
+        .project-review-table {
+            --bs-table-bg: transparent;
+            margin-bottom: 0;
+        }
+
+        .project-review-table td,
+        .project-review-table th {
+            vertical-align: top;
+        }
+
+        .project-review-row-act td {
+            background: #f8fbff;
+        }
+
+        .project-review-row-appendix td {
+            background: #fff;
+        }
+
+        .project-review-type {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .project-review-type-act {
+            color: #175cd3;
+            background: #eff6ff;
+        }
+
+        .project-review-type-appendix {
+            color: #027a48;
+            background: #ecfdf3;
+        }
+
+        .project-review-doc {
+            line-height: 1.45;
+            color: #101828;
+        }
+
+        .project-review-doc.fw-semibold {
+            color: #17365d;
+        }
+
+        .project-review-source {
+            color: #667085;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        .project-review-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            min-width: 280px;
+        }
+
+        .project-review-loading {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.55;
+        }
+
+        .project-review-loading::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.45);
+        }
+
+        @media (max-width: 992px) {
+            .project-review-hero {
+                flex-direction: column;
+            }
+
+            .project-review-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            .project-review-actions {
+                min-width: 0;
+            }
+        }
+    </style>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const projectWorkStorageKey = "id-handover-batch-project-work";
+            const workToggleButton = document.querySelector(".js-project-work-toggle");
+            const contentRoot = document.getElementById("project-review-content");
+
+            function loadProjectWorkState() {
+                try {
+                    return JSON.parse(window.localStorage.getItem(projectWorkStorageKey) || "{}");
+                } catch (error) {
+                    return {};
+                }
+            }
+
+            function saveProjectWorkState(state) {
+                window.localStorage.setItem(projectWorkStorageKey, JSON.stringify(state));
+            }
+
+            function renderWorkButton() {
+                if (!workToggleButton) {
+                    return;
+                }
+
+                const state = loadProjectWorkState();
+                const projectId = workToggleButton.dataset.projectId;
+                const projectCode = workToggleButton.dataset.projectCode;
+                const isActive = Boolean(state[projectId]);
+
+                workToggleButton.classList.toggle("btn-outline-secondary", !isActive);
+                workToggleButton.classList.toggle("btn-success", isActive);
+                workToggleButton.innerHTML = isActive
+                    ? `<i class="bi bi-check2-circle me-1"></i>В работе: ${projectCode}`
+                    : '<i class="bi bi-person-check me-1"></i>Взять в работу';
+            }
+
+            if (workToggleButton) {
+                workToggleButton.addEventListener("click", function () {
+                    const state = loadProjectWorkState();
+                    const projectId = workToggleButton.dataset.projectId;
+                    const projectCode = workToggleButton.dataset.projectCode;
+
+                    if (state[projectId]) {
+                        delete state[projectId];
+                    } else {
+                        state[projectId] = projectCode;
+                    }
+
+                    saveProjectWorkState(state);
+                    renderWorkButton();
+                });
+            }
+
+            function bindReviewActionForms() {
+                if (!contentRoot) {
+                    return;
+                }
+
+                contentRoot.querySelectorAll(".js-project-review-action-form").forEach(function (form) {
+                    form.addEventListener("submit", async function (event) {
+                        event.preventDefault();
+
+                        contentRoot.classList.add("project-review-loading");
+
+                        try {
+                            const response = await fetch(form.action, {
+                                method: "POST",
+                                headers: {
+                                    "X-Requested-With": "XMLHttpRequest",
+                                },
+                                body: new FormData(form),
+                                credentials: "same-origin",
+                            });
+
+                            const contentType = response.headers.get("content-type") || "";
+
+                            if (!response.ok) {
+                                if (contentType.includes("application/json")) {
+                                    const payload = await response.json();
+                                    throw new Error(payload.error || "Не удалось обновить состав шифра.");
+                                }
+
+                                throw new Error("Не удалось обновить состав шифра.");
+                            }
+
+                            const html = await response.text();
+                            contentRoot.innerHTML = html;
+                            bindReviewActionForms();
+                        } catch (error) {
+                            window.alert(error.message || "Не удалось обновить состав шифра.");
+                        } finally {
+                            contentRoot.classList.remove("project-review-loading");
+                        }
+                    });
+                });
+            }
+
+            renderWorkButton();
+            bindReviewActionForms();
+        });
+    </script>
+{% endblock %}
+

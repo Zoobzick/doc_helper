@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% load static %}
 
 {% block title %}{{ page_title }}{% endblock %}
@@ -351,7 +351,10 @@
                     <div class="card">
                         <div class="card-body pt-3">
                             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <h5 class="card-title mb-0">Шаг 2. Состав комплекта</h5>
+                                <div>
+                                    <h5 class="card-title mb-0">Шаг 2. Подготовка состава</h5>
+                                    <div class="text-muted small mt-1">Проверь шифры и состав актов до генерации реестров. Если нашёл ошибку, сразу переходи в редактирование акта и затем обновляй состав комплекта.</div>
+                                </div>
 
                                 {% if batch %}
                                     <div class="d-flex gap-2 flex-wrap">
@@ -362,7 +365,7 @@
                                                 {% csrf_token %}
                                                 <button type="submit" class="btn btn-outline-secondary btn-sm">
                                                     <i class="bi bi-arrow-repeat me-1"></i>
-                                                    Обновить состав
+                                                    Обновить весь комплект
                                                 </button>
                                             </form>
                                         {% endif %}
@@ -372,25 +375,25 @@
 
                             {% if not batch %}
                                 <div class="alert alert-info mb-0 mt-3">
-                                    Сначала заполни параметры и создай черновик комплекта.
+                                    Сначала создай черновик, и здесь появится состав комплекта.
                                 </div>
                             {% elif preview_data %}
                                 <div class="row g-3 mt-1 mb-4">
                                     <div class="col-md-3">
                                         <div class="border rounded p-3 h-100">
-                                            <div class="small text-muted">Проектов</div>
+                                            <div class="small text-muted">Шифров в комплекте</div>
                                             <div class="fs-5 fw-bold">{{ preview_data.summary.projects_count }}</div>
                                         </div>
                                     </div>
                                     <div class="col-md-3">
                                         <div class="border rounded p-3 h-100">
-                                            <div class="small text-muted">Актов</div>
+                                            <div class="small text-muted">Актов к проверке</div>
                                             <div class="fs-5 fw-bold">{{ preview_data.summary.acts_count }}</div>
                                         </div>
                                     </div>
                                     <div class="col-md-3">
                                         <div class="border rounded p-3 h-100">
-                                            <div class="small text-muted">Строк документов</div>
+                                            <div class="small text-muted">Строк будущих реестров</div>
                                             <div class="fs-5 fw-bold">{{ preview_data.summary.registry_rows_count }}</div>
                                         </div>
                                     </div>
@@ -402,27 +405,67 @@
                                     </div>
                                 </div>
 
-                                {% for project in preview_data.projects %}
-                                    <div class="border rounded p-3 mb-4" id="project-{{ project.project_id }}">
-                                        <div class="project-header-row mb-3">
-                                            <div class="project-header-main">
-                                                <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
-                                                    <div>
-                                                        <div class="project-code">{{ project.project_code }}</div>
-                                                        <div class="small text-muted mt-1">
-                                                            {% if batch.selection_mode == "range" %}
-                                                                Можно вручную добавить акты этого же проекта, которые не
-                                                                попали в выбранный период.
-                                                            {% else %}
-                                                                Можно вручную добавить акты этого же проекта, которых
-                                                                ещё нет в составе комплекта.
-                                                            {% endif %}
+                                <div class="batch-review-stack">
+                                    {% for project in preview_data.projects %}
+                                        <div class="batch-review-project batch-review-project-compact" id="project-{{ project.project_id }}">
+                                            <div class="batch-review-summary">
+                                                <div class="batch-review-main">
+                                                    <div class="project-code batch-review-code">{{ project.project_code }}</div>
+                                                    <div class="batch-review-note">
+                                                        {% if batch.selection_mode == "range" %}
+                                                            Проверь, что в состав этого шифра попали все нужные акты за период. Если чего-то не хватает, добавь акт вручную или открой нужный акт на редактирование.
+                                                        {% else %}
+                                                            Проверь состав будущего реестра и при необходимости добавь недостающие акты этого же проекта.
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+
+                                                <div class="batch-review-side">
+                                                    <div class="project-stats-row">
+                                                        <div class="project-stat-pill">
+                                                            <span class="project-stat-label">Актов</span>
+                                                            <span class="project-stat-value">{{ project.acts_count }}</span>
+                                                        </div>
+                                                        <div class="project-stat-pill">
+                                                            <span class="project-stat-label">Строк</span>
+                                                            <span class="project-stat-value">{{ project.documents_count|default:project.registry_rows_count }}</span>
+                                                        </div>
+                                                        <div class="project-stat-pill">
+                                                            <span class="project-stat-label">Листов</span>
+                                                            <span class="project-stat-value">{{ project.total_sheets_count }}</span>
                                                         </div>
                                                     </div>
-                                                    {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                                                        <div class="project-header-actions">
+
+                                                    <div class="batch-project-actions">
+                                                        <button type="button"
+                                                                class="btn btn-outline-secondary btn-sm js-summary-action js-take-project-work"
+                                                                data-project-id="{{ project.project_id }}"
+                                                                data-project-code="{{ project.project_code }}">
+                                                            <i class="bi bi-person-check me-1"></i>
+                                                            Взять в работу
+                                                        </button>
+
+                                                        <a href="{% url 'documents:id_handover_batch_project_review' batch.id project.project_id %}"
+                                                           class="btn btn-primary btn-sm js-summary-action">
+                                                            <i class="bi bi-search me-1"></i>
+                                                            Открыть проверку
+                                                        </a>
+
+                                                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                                            <form method="post"
+                                                                  action="{% url 'documents:id_handover_batch_refresh_composition' batch.id %}"
+                                                                  class="d-inline js-summary-action">
+                                                                {% csrf_token %}
+                                                                <button type="submit"
+                                                                        class="btn btn-outline-secondary btn-sm"
+                                                                        title="Пока обновляется весь состав комплекта, включая этот шифр.">
+                                                                    <i class="bi bi-arrow-repeat me-1"></i>
+                                                                    Обновить шифр
+                                                                </button>
+                                                            </form>
+
                                                             <button type="button"
-                                                                    class="btn btn-outline-primary btn-sm js-open-add-act-modal"
+                                                                    class="btn btn-outline-primary btn-sm js-summary-action js-open-add-act-modal"
                                                                     data-project-id="{{ project.project_id }}"
                                                                     data-project-code="{{ project.project_code }}"
                                                                     data-project-acts-count="{{ project.acts_count }}"
@@ -430,132 +473,17 @@
                                                                 <i class="bi bi-plus-circle me-1"></i>
                                                                 Добавить акт
                                                             </button>
-                                                        </div>
-                                                    {% endif %}                                                </div>
-                                            </div>
+                                                        {% endif %}
 
-                                            <div class="project-stats-row">
-                                                <div class="project-stat-pill">
-                                                    <span class="project-stat-label">Актов</span>
-                                                    <span class="project-stat-value">{{ project.acts_count }}</span>
-                                                </div>
-                                                <div class="project-stat-pill">
-                                                    <span class="project-stat-label">Строк документов</span>
-                                                    <span class="project-stat-value">{{ project.documents_count|default:project.registry_rows_count }}</span>
-                                                </div>
-                                                <div class="project-stat-pill">
-                                                    <span class="project-stat-label">Листов</span>
-                                                    <span class="project-stat-value">{{ project.total_sheets_count }}</span>
+                                                        <span class="batch-project-work-badge d-none"
+                                                              data-project-work-badge
+                                                              data-project-id="{{ project.project_id }}"></span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-
-                                        {% if project.document_rows %}
-                                            <div class="table-responsive">
-                                                <table class="table table-sm table-bordered align-middle batch-documents-table mb-0">
-                                                    <thead>
-                                                    <tr>
-                                                        <th style="width: 70px;">№</th>
-                                                        <th>Наименование документа</th>
-                                                        <th style="width: 110px;">Листов</th>
-                                                        <th style="width: 190px;">Действия</th>
-                                                    </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                    {% for row in project.document_rows %}
-                                                        <tr class="{% if row.is_act %}batch-row-act{% else %}batch-row-appendix{% endif %}"
-                                                            {% if row.is_act %}id="batch-act-{{ row.source_batch_act_id }}"{% endif %}>
-                                                            <td class="text-center fw-semibold">{{ row.position }}</td>
-
-                                                            <td>
-                                                                {% if row.is_act %}
-                                                                    <div class="d-flex flex-column gap-2">
-                                                                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                                            <span class="badge bg-primary-subtle text-primary-emphasis border">Акт</span>
-                                                                            {% if row.source_kind == "manual" %}
-                                                                                <span class="badge bg-warning text-dark">Manual</span>
-                                                                            {% else %}
-                                                                                <span class="badge bg-light text-dark border">Auto</span>
-                                                                            {% endif %}
-                                                                        </div>
-
-                                                                        <div class="fw-semibold batch-document-name">{{ row.document_name|linebreaksbr }}</div>
-                                                                    </div>
-                                                                {% else %}
-                                                                    <div class="batch-document-name">{{ row.document_name|linebreaksbr }}</div>
-                                                                {% endif %}
-                                                            </td>
-
-                                                            <td class="text-center">
-                                                                {{ row.sheets_count }}
-                                                            </td>
-
-                                                            <td>
-                                                                {% if row.is_act %}
-                                                                    <div class="d-flex gap-1 flex-wrap">
-                                                                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                                                                            <form method="post"
-                                                                                  action="{% url 'documents:id_handover_batch_move_act_up' batch.id row.source_batch_act_id %}#batch-act-{{ row.source_batch_act_id }}"
-                                                                                  class="d-inline">
-                                                                                {% csrf_token %}
-                                                                                <button type="submit"
-                                                                                        class="btn btn-sm btn-outline-secondary"
-                                                                                        {% if not row.can_move_up %}disabled{% endif %}>
-                                                                                    ↑
-                                                                                </button>
-                                                                            </form>
-
-                                                                            <form method="post"
-                                                                                  action="{% url 'documents:id_handover_batch_move_act_down' batch.id row.source_batch_act_id %}#batch-act-{{ row.source_batch_act_id }}"
-                                                                                  class="d-inline">
-                                                                                {% csrf_token %}
-                                                                                <button type="submit"
-                                                                                        class="btn btn-sm btn-outline-secondary"
-                                                                                        {% if not row.can_move_down %}disabled{% endif %}>
-                                                                                    ↓
-                                                                                </button>
-                                                                            </form>
-
-                                                                            <form method="post"
-                                                                                  action="{% url 'documents:id_handover_batch_remove_act' batch.id row.source_batch_act_id %}#project-{{ project.project_id }}"
-                                                                                  class="d-inline">
-                                                                                {% csrf_token %}
-                                                                                <button type="submit"
-                                                                                        class="btn btn-sm btn-outline-danger"
-                                                                                        {% if not row.can_delete %}disabled{% endif %}
-                                                                                        onclick="return confirm('Удалить этот акт из комплекта?');">
-                                                                                    ×
-                                                                                </button>
-                                                                            </form>
-                                                                        {% endif %}
-                                                                    </div>
-                                                                {% else %}
-                                                                    <span class="text-muted small">—</span>
-                                                                {% endif %}
-                                                            </td>
-                                                        </tr>
-                                                    {% endfor %}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        {% else %}
-                                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                                <div class="text-muted">По проекту пока нет актов.</div>
-
-                                                {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                                                    <button type="button"
-                                                            class="btn btn-outline-primary btn-sm js-open-add-act-modal"
-                                                            data-project-id="{{ project.project_id }}"
-                                                            data-project-code="{{ project.project_code }}"
-                                                            data-project-acts-count="{{ project.acts_count }}"
-                                                            data-lookup-url="{% url 'documents:id_handover_batch_acts_lookup' batch.id %}?project_id={{ project.project_id }}">
-                                                        <i class="bi bi-plus-circle me-1"></i>
-                                                        Добавить акт
-                                                    </button>
-                                                {% endif %}                                            </div>
-                                        {% endif %}
-                                    </div>
-                                {% endfor %}
+                                    {% endfor %}
+                                </div>
                             {% else %}
                                 <div class="alert alert-warning mb-0 mt-3">
                                     Preview состава пока недоступен.
@@ -566,7 +494,6 @@
                 </div>
             </div>
         </div>
-
         <div class="wizard-panel" data-step="3">
             <div class="row">
                 <div class="col-lg-8">
@@ -1015,7 +942,143 @@
                 min-width: 110px;
             }
         }
+        .batch-review-stack {
+            display: grid;
+            gap: 1rem;
+        }
 
+        .batch-review-project {
+            border: 1px solid #dbe4f0;
+            border-radius: 1rem;
+            background: linear-gradient(180deg, rgba(247, 250, 252, 0.96), rgba(255, 255, 255, 1));
+            box-shadow: 0 0.75rem 2rem rgba(15, 23, 42, 0.05);
+            overflow: hidden;
+        }
+
+        .batch-review-summary {
+            list-style: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.15rem 1.25rem;
+            cursor: pointer;
+        }
+
+        .batch-review-summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .batch-review-main {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .batch-review-code {
+            font-size: 1.35rem;
+        }
+
+        .batch-review-note {
+            margin-top: 0.35rem;
+            color: #667085;
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .batch-review-side {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        .batch-project-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .batch-project-work-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 32px;
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            background: #ecfdf3;
+            color: #027a48;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .batch-review-body {
+            padding: 0 1.25rem 1.25rem;
+            border-top: 1px solid #e7eef7;
+        }
+
+        .batch-act-cards {
+            display: grid;
+            gap: 0.9rem;
+        }
+
+        .batch-act-review-card {
+            border: 1px solid #e8edf5;
+            border-radius: 0.9rem;
+            background: #fbfdff;
+            padding: 1rem;
+        }
+
+        .batch-act-review-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.9rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .batch-act-review-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #17365d;
+        }
+
+        .batch-act-review-meta {
+            margin-top: 0.2rem;
+            color: #667085;
+            font-size: 0.85rem;
+        }
+
+        .batch-act-review-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        .batch-act-lines summary {
+            cursor: pointer;
+            color: #0d6efd;
+            font-weight: 600;
+        }
+
+        @media (max-width: 992px) {
+            .batch-review-summary,
+            .batch-act-review-head {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .batch-review-side,
+            .batch-act-review-actions {
+                justify-content: flex-start;
+            }
+
+            .batch-project-actions {
+                justify-content: flex-start;
+            }
+        }
         .batch-generation-overlay {
             position: fixed;
             inset: 0;
@@ -1079,6 +1142,11 @@
                 const generationSubtitleNode = document.getElementById("batch-generation-subtitle");
                 const generationStageNode = document.getElementById("batch-generation-stage");
                 const generationProgressBar = document.getElementById("batch-generation-progress-bar");
+                const reviewProjects = Array.from(document.querySelectorAll(".batch-review-project"));
+                const summaryActions = Array.from(document.querySelectorAll(".js-summary-action"));
+                const projectWorkButtons = Array.from(document.querySelectorAll(".js-take-project-work"));
+                const projectWorkBadges = Array.from(document.querySelectorAll("[data-project-work-badge]"));
+                const projectWorkStorageKey = "id-handover-batch-project-work";
 
                 const hasBatch = {{ is_edit_mode|yesno:"true,false" }};
                 const requestedStep = {{ requested_step|default:1 }};
@@ -1094,6 +1162,88 @@
                     "Собираем письмо и preview-файлы...",
                     "Подготавливаем итоговую выдачу..."
                 ];
+
+                reviewProjects.forEach(function (projectCard) {
+                    projectCard.addEventListener("toggle", function () {
+                        if (!projectCard.open) {
+                            return;
+                        }
+
+                        reviewProjects.forEach(function (otherCard) {
+                            if (otherCard !== projectCard) {
+                                otherCard.open = false;
+                            }
+                        });
+                    });
+                });
+
+                summaryActions.forEach(function (actionNode) {
+                    actionNode.addEventListener("click", function (event) {
+                        event.stopPropagation();
+                    });
+                });
+
+                function loadProjectWorkState() {
+                    try {
+                        return JSON.parse(window.localStorage.getItem(projectWorkStorageKey) || "{}");
+                    } catch (error) {
+                        return {};
+                    }
+                }
+
+                function saveProjectWorkState(state) {
+                    window.localStorage.setItem(projectWorkStorageKey, JSON.stringify(state));
+                }
+
+                function renderProjectWorkState() {
+                    const state = loadProjectWorkState();
+
+                    projectWorkBadges.forEach(function (badge) {
+                        const projectId = badge.dataset.projectId;
+                        const projectCode = state[projectId];
+
+                        if (projectCode) {
+                            badge.textContent = `В работе: ${projectCode}`;
+                            badge.classList.remove("d-none");
+                        } else {
+                            badge.textContent = "";
+                            badge.classList.add("d-none");
+                        }
+                    });
+
+                    projectWorkButtons.forEach(function (button) {
+                        const projectId = button.dataset.projectId;
+                        const isActive = Boolean(state[projectId]);
+
+                        button.classList.toggle("btn-outline-secondary", !isActive);
+                        button.classList.toggle("btn-success", isActive);
+                        button.innerHTML = isActive
+                            ? '<i class="bi bi-check2-circle me-1"></i>В работе'
+                            : '<i class="bi bi-person-check me-1"></i>Взять в работу';
+                    });
+                }
+
+                projectWorkButtons.forEach(function (button) {
+                    button.addEventListener("click", function (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        const projectId = button.dataset.projectId;
+                        const projectCode = button.dataset.projectCode;
+                        const state = loadProjectWorkState();
+
+                        if (state[projectId]) {
+                            delete state[projectId];
+                        } else {
+                            state[projectId] = projectCode;
+                        }
+
+                        saveProjectWorkState(state);
+                        renderProjectWorkState();
+                    });
+                });
+
+                renderProjectWorkState();
 
                 function setGenerationButtonsDisabled(disabled) {
                     document.querySelectorAll(".js-batch-generate-button").forEach(function (button) {
@@ -1543,3 +1693,6 @@
         });
     </script>
 {% endblock %}
+
+
+

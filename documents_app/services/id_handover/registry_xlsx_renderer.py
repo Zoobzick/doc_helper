@@ -502,6 +502,7 @@ class RegistryXlsxRenderer:
                 measured_height = self._measure_probe_row_height(
                     probe_sheet=probe_sheet,
                     probe_cell=probe_cell,
+                    is_act_row=bool(getattr(source_cell.font, "bold", False)),
                 )
                 probe_sheet.row_dimensions[row_offset + 1].height = measured_height
                 worksheet.row_dimensions[source_row_idx].height = round(max(base_height, measured_height), 1)
@@ -513,6 +514,7 @@ class RegistryXlsxRenderer:
         *,
         probe_sheet: Worksheet,
         probe_cell,
+        is_act_row: bool,
     ) -> float:
         usable_width_px = max(
             36,
@@ -533,8 +535,10 @@ class RegistryXlsxRenderer:
             pil_font=pil_font,
         )
         ascent, descent = pil_font.getmetrics()
-        line_height_px = max(1, ascent + descent)
-        total_height_px = (len(wrapped_lines) * line_height_px) + 4
+        line_height_multiplier = 1.33 if is_act_row else 1.28
+        bottom_padding_px = 14 if is_act_row else 11
+        line_height_px = max(1, int(math.ceil((ascent + descent) * line_height_multiplier)))
+        total_height_px = (len(wrapped_lines) * line_height_px) + bottom_padding_px
         return round(self._pixels_to_points(total_height_px), 1)
 
     def _calculate_combined_excel_width(

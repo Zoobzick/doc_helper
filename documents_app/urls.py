@@ -12,6 +12,7 @@ from documents_app.views import (
     DocumentBatchMasterView,
     DocumentBatchMoveActDownView,
     DocumentBatchMoveActUpView,
+    DocumentBatchProjectReviewView,
     DocumentBatchProjectActsLookupView,
     DocumentBatchRefreshCompositionView,
     DocumentBatchRemoveActView,
@@ -83,6 +84,11 @@ urlpatterns = [
         "id-handover/batches/<int:batch_id>/refresh-composition/",
         DocumentBatchRefreshCompositionView.as_view(),
         name="id_handover_batch_refresh_composition",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/projects/<int:project_id>/review/",
+        DocumentBatchProjectReviewView.as_view(),
+        name="id_handover_batch_project_review",
     ),
 
     # -----------------------------
