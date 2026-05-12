@@ -5,6 +5,7 @@ from documents_app.views import (
     BoxLabelPageView,
     BoxLabelProjectSearchView,
     DocumentBatchAddManualActView,
+    DocumentBatchActAddReviewNoteView,
     DocumentBatchCreateDraftView,
     DocumentBatchDetailView,
     DocumentBatchGenerateView,
@@ -12,6 +13,7 @@ from documents_app.views import (
     DocumentBatchMasterView,
     DocumentBatchMoveActDownView,
     DocumentBatchMoveActUpView,
+    DocumentBatchProjectMarkReviewedView,
     DocumentBatchProjectReviewView,
     DocumentBatchProjectActsLookupView,
     DocumentBatchRefreshCompositionView,
@@ -90,6 +92,11 @@ urlpatterns = [
         DocumentBatchProjectReviewView.as_view(),
         name="id_handover_batch_project_review",
     ),
+    path(
+        "id-handover/batches/<int:batch_id>/projects/<int:project_id>/mark-reviewed/",
+        DocumentBatchProjectMarkReviewedView.as_view(),
+        name="id_handover_batch_project_mark_reviewed",
+    ),
 
     # -----------------------------
     # Step 2 actions
@@ -123,6 +130,11 @@ urlpatterns = [
         "id-handover/batches/<int:batch_id>/acts/<int:batch_act_id>/remove/",
         DocumentBatchRemoveActView.as_view(),
         name="id_handover_batch_remove_act",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/acts/<int:batch_act_id>/review-notes/add/",
+        DocumentBatchActAddReviewNoteView.as_view(),
+        name="id_handover_batch_act_add_review_note",
     ),
 
     # -----------------------------

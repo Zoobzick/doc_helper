@@ -23,13 +23,6 @@
                     <i class="bi bi-arrow-left me-1"></i>
                     Назад к шагу 2
                 </a>
-                <button type="button"
-                        class="btn btn-outline-secondary js-project-work-toggle"
-                        data-project-id="{{ project_preview.project_id }}"
-                        data-project-code="{{ project_preview.project_code }}">
-                    <i class="bi bi-person-check me-1"></i>
-                    Взять в работу
-                </button>
             </div>
         </div>
     </div>
@@ -117,6 +110,80 @@
             padding: 1.25rem 1.5rem 1.5rem;
         }
 
+        .project-review-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            padding: 0.9rem 1rem;
+            border: 1px solid #d7e9d8;
+            border-radius: 0.5rem;
+            background: #f6fbf6;
+        }
+
+        .project-review-save-state {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #155724;
+        }
+
+        .project-review-save-state .bi {
+            font-size: 1.35rem;
+        }
+
+        .project-review-toolbar-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        .project-review-refresh-status {
+            min-height: 1.35rem;
+            margin: -0.45rem 0 0.65rem;
+            color: #667085;
+            font-size: 0.9rem;
+        }
+
+        .project-review-refresh-status.is-success {
+            color: #027a48;
+        }
+
+        .project-review-refresh-status.is-error {
+            color: #b42318;
+        }
+
+        .project-review-registry-details {
+            margin-top: 0.55rem;
+        }
+
+        .project-review-registry-details summary {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            color: #344054;
+            font-size: 0.88rem;
+            font-weight: 700;
+        }
+
+        .project-review-registry-table {
+            margin-top: 0.55rem;
+            margin-bottom: 0;
+            background: rgba(255, 255, 255, 0.65);
+        }
+
+        .project-review-registry-table th,
+        .project-review-registry-table td {
+            border-color: #e4e7ec;
+            font-size: 0.9rem;
+        }
+
+        .project-review-registry-table thead th {
+            background: #f8fafc;
+        }
+
         .project-review-table {
             --bs-table-bg: transparent;
             margin-bottom: 0;
@@ -127,12 +194,48 @@
             vertical-align: top;
         }
 
+        .project-review-table thead th {
+            white-space: nowrap;
+        }
+
         .project-review-row-act td {
-            background: #f8fbff;
+            background: #dbeafe;
+            border-color: #bfdbfe;
+            color: #0f2f5f;
+        }
+
+        .project-review-row-scheme td {
+            background: #fef3c7;
+            border-color: #fde68a;
+            color: #4f3500;
+        }
+
+        .project-review-row-approval td {
+            background: #dcfce7;
+            border-color: #bbf7d0;
+            color: #14532d;
         }
 
         .project-review-row-appendix td {
-            background: #fff;
+            background: #f3f4f6;
+            border-color: #e5e7eb;
+            color: #1f2937;
+        }
+
+        .project-review-row-act td:first-child {
+            border-left: 5px solid #2563eb;
+        }
+
+        .project-review-row-scheme td:first-child {
+            border-left: 5px solid #d97706;
+        }
+
+        .project-review-row-approval td:first-child {
+            border-left: 5px solid #16a34a;
+        }
+
+        .project-review-row-appendix td:first-child {
+            border-left: 5px solid #9ca3af;
         }
 
         .project-review-type {
@@ -155,6 +258,7 @@
         }
 
         .project-review-doc {
+            margin-top: 0.35rem;
             line-height: 1.45;
             color: #101828;
         }
@@ -163,17 +267,119 @@
             color: #17365d;
         }
 
+        .project-review-kind-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 1.35rem;
+            padding: 0.12rem 0.5rem;
+            border-radius: 999px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            line-height: 1;
+            border: 1px solid transparent;
+        }
+
+        .project-review-row-act-badge {
+            color: #1d4ed8;
+            background: #eff6ff;
+            border-color: #93c5fd;
+        }
+
+        .project-review-row-scheme-badge {
+            color: #92400e;
+            background: #fffbeb;
+            border-color: #fbbf24;
+        }
+
+        .project-review-row-approval-badge {
+            color: #166534;
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+
+        .project-review-row-appendix-badge {
+            color: #4b5563;
+            background: #f9fafb;
+            border-color: #d1d5db;
+        }
+
         .project-review-source {
-            color: #667085;
-            font-size: 0.9rem;
-            white-space: nowrap;
+            margin-top: 0.35rem;
+            color: #475467;
+            font-size: 0.86rem;
+        }
+
+        .project-review-notes {
+            display: grid;
+            gap: 0.4rem;
+            margin-top: 0.65rem;
+        }
+
+        .project-review-note-item {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.55rem 0.65rem;
+            border: 1px solid #f59e0b;
+            border-radius: 0.5rem;
+            background: #fffbeb;
+            color: #78350f;
+            font-size: 0.88rem;
+        }
+
+        .project-review-note-item .bi {
+            margin-top: 0.15rem;
+            flex: 0 0 auto;
+        }
+
+        .project-review-note-meta {
+            margin-top: 0.25rem;
+            color: #92400e;
+            font-size: 0.78rem;
+        }
+
+        .project-review-note-editor {
+            margin-top: 0.55rem;
+        }
+
+        .project-review-note-editor summary {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            color: #344054;
+            font-size: 0.86rem;
+            font-weight: 700;
+        }
+
+        .project-review-note-form {
+            display: grid;
+            gap: 0.45rem;
+            max-width: 640px;
+            margin-top: 0.45rem;
         }
 
         .project-review-actions {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.5rem;
-            min-width: 280px;
+            align-items: center;
+            gap: 0.35rem;
+            min-width: 220px;
+        }
+
+        .project-review-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            padding: 0;
+        }
+
+        .project-review-action-spaced {
+            margin-left: 0.55rem;
+        }
+
+        .project-review-action-danger {
+            margin-left: 0.75rem;
         }
 
         .project-review-loading {
@@ -201,62 +407,82 @@
             .project-review-actions {
                 min-width: 0;
             }
+
+            .project-review-toolbar {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .project-review-toolbar-actions {
+                justify-content: flex-start;
+            }
+
         }
     </style>
 
     <script>
         document.addEventListener("DOMContentLoaded", function () {
-            const projectWorkStorageKey = "id-handover-batch-project-work";
-            const workToggleButton = document.querySelector(".js-project-work-toggle");
+            const projectReviewEditStorageKey = "id-handover-project-review-edit-opened";
             const contentRoot = document.getElementById("project-review-content");
+            let refreshInProgress = false;
 
-            function loadProjectWorkState() {
-                try {
-                    return JSON.parse(window.localStorage.getItem(projectWorkStorageKey) || "{}");
-                } catch (error) {
-                    return {};
+            function getRefreshStatus() {
+                if (!contentRoot) {
+                    return null;
                 }
+                return contentRoot.querySelector(".js-project-review-refresh-status");
             }
 
-            function saveProjectWorkState(state) {
-                window.localStorage.setItem(projectWorkStorageKey, JSON.stringify(state));
-            }
-
-            function renderWorkButton() {
-                if (!workToggleButton) {
+            function setRefreshStatus(message, state) {
+                const status = getRefreshStatus();
+                if (!status) {
                     return;
                 }
 
-                const state = loadProjectWorkState();
-                const projectId = workToggleButton.dataset.projectId;
-                const projectCode = workToggleButton.dataset.projectCode;
-                const isActive = Boolean(state[projectId]);
-
-                workToggleButton.classList.toggle("btn-outline-secondary", !isActive);
-                workToggleButton.classList.toggle("btn-success", isActive);
-                workToggleButton.innerHTML = isActive
-                    ? `<i class="bi bi-check2-circle me-1"></i>В работе: ${projectCode}`
-                    : '<i class="bi bi-person-check me-1"></i>Взять в работу';
+                status.textContent = message || "";
+                status.classList.toggle("is-success", state === "success");
+                status.classList.toggle("is-error", state === "error");
             }
 
-            if (workToggleButton) {
-                workToggleButton.addEventListener("click", function () {
-                    const state = loadProjectWorkState();
-                    const projectId = workToggleButton.dataset.projectId;
-                    const projectCode = workToggleButton.dataset.projectCode;
+            async function refreshProjectReviewContent(reason) {
+                if (!contentRoot || refreshInProgress) {
+                    return;
+                }
 
-                    if (state[projectId]) {
-                        delete state[projectId];
-                    } else {
-                        state[projectId] = projectCode;
+                refreshInProgress = true;
+                contentRoot.classList.add("project-review-loading");
+                setRefreshStatus(
+                    reason === "after-edit"
+                        ? "Обновляю данные после редактирования акта..."
+                        : "Обновляю данные шифра...",
+                    ""
+                );
+
+                try {
+                    const response = await fetch(window.location.href, {
+                        method: "GET",
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Не удалось обновить данные шифра.");
                     }
 
-                    saveProjectWorkState(state);
-                    renderWorkButton();
-                });
+                    contentRoot.innerHTML = await response.text();
+                    bindProjectReviewControls();
+                    setRefreshStatus("Данные шифра обновлены.", "success");
+                } catch (error) {
+                    setRefreshStatus(error.message || "Не удалось обновить данные шифра.", "error");
+                } finally {
+                    contentRoot.classList.remove("project-review-loading");
+                    refreshInProgress = false;
+                }
             }
 
-            function bindReviewActionForms() {
+            function bindProjectReviewControls() {
                 if (!contentRoot) {
                     return;
                 }
@@ -290,7 +516,7 @@
 
                             const html = await response.text();
                             contentRoot.innerHTML = html;
-                            bindReviewActionForms();
+                            bindProjectReviewControls();
                         } catch (error) {
                             window.alert(error.message || "Не удалось обновить состав шифра.");
                         } finally {
@@ -298,10 +524,34 @@
                         }
                     });
                 });
+
+                contentRoot.querySelectorAll(".js-project-review-refresh").forEach(function (button) {
+                    button.addEventListener("click", function () {
+                        refreshProjectReviewContent("manual");
+                    });
+                });
+
+                contentRoot.querySelectorAll("[data-project-review-edit-link]").forEach(function (link) {
+                    link.addEventListener("click", function () {
+                        window.sessionStorage.setItem(projectReviewEditStorageKey, "1");
+                        setRefreshStatus(
+                            "Акт открыт в новой вкладке. После сохранения вернись сюда, данные обновятся автоматически.",
+                            ""
+                        );
+                    });
+                });
             }
 
-            renderWorkButton();
-            bindReviewActionForms();
+            bindProjectReviewControls();
+
+            window.addEventListener("focus", function () {
+                if (window.sessionStorage.getItem(projectReviewEditStorageKey) !== "1") {
+                    return;
+                }
+
+                window.sessionStorage.removeItem(projectReviewEditStorageKey);
+                refreshProjectReviewContent("after-edit");
+            });
         });
     </script>
 {% endblock %}

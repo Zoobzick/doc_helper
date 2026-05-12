@@ -202,6 +202,12 @@ class DocumentBatchProjectScope(models.TextChoices):
     AUTO_BY_PERIOD = "auto_by_period", "Все проекты с актами за период"
 
 
+class DocumentBatchProjectReviewStatus(models.TextChoices):
+    PENDING = "pending", "Ожидает проверки"
+    IN_PROGRESS = "in_progress", "Проверяется"
+    REVIEWED = "reviewed", "Проверен"
+
+
 class DocumentBatchDocumentationType(models.TextChoices):
     ID = "ID", "Исполнительная документация"
     RD = "RD", "Рабочая документация"
@@ -428,6 +434,39 @@ class DocumentBatchProject(models.Model):
         verbose_name="Порядок проекта",
         help_text="Позиция проекта внутри комплекта.",
     )
+    review_status = models.CharField(
+        max_length=20,
+        choices=DocumentBatchProjectReviewStatus.choices,
+        default=DocumentBatchProjectReviewStatus.PENDING,
+        db_index=True,
+        verbose_name="Статус проверки",
+    )
+    review_started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Проверка начата",
+    )
+    review_started_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="started_document_batch_project_reviews",
+        verbose_name="Проверяет",
+    )
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Проверен",
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_document_batch_projects",
+        verbose_name="Проверил",
+    )
 
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -452,6 +491,14 @@ class DocumentBatchProject(models.Model):
     def __str__(self):
         project_name = getattr(self.project, "full_code", None) or str(self.project)
         return f"{project_name} (комплект #{self.batch_id}, порядок {self.order})"
+
+    @property
+    def is_reviewed(self) -> bool:
+        return self.review_status == DocumentBatchProjectReviewStatus.REVIEWED
+
+    @property
+    def is_in_progress(self) -> bool:
+        return self.review_status == DocumentBatchProjectReviewStatus.IN_PROGRESS
 
 
 class DocumentBatchAct(models.Model):
@@ -555,6 +602,68 @@ class DocumentBatchAct(models.Model):
                         "act": "Указанный акт не относится к выбранному проекту.",
                     }
                 )
+
+
+class DocumentBatchActReviewNote(models.Model):
+    """
+    Замечание к акту внутри проверки комплекта.
+    """
+
+    uuid = models.UUIDField(
+        unique=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name="UUID",
+    )
+    batch_act = models.ForeignKey(
+        DocumentBatchAct,
+        on_delete=models.CASCADE,
+        related_name="review_notes",
+        verbose_name="Акт комплекта",
+    )
+    text = models.TextField(
+        verbose_name="Замечание",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_document_batch_act_review_notes",
+        verbose_name="Автор",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Создано",
+    )
+    is_resolved = models.BooleanField(
+        default=False,
+        verbose_name="Исправлено",
+    )
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resolved_document_batch_act_review_notes",
+        verbose_name="Исправил",
+    )
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Исправлено",
+    )
+
+    class Meta:
+        verbose_name = "Замечание к акту комплекта"
+        verbose_name_plural = "Замечания к актам комплекта"
+        ordering = ("created_at", "id")
+        indexes = [
+            models.Index(fields=("batch_act", "is_resolved")),
+        ]
+
+    def __str__(self):
+        return f"Замечание к акту комплекта #{self.batch_act_id}"
 
 
 class GeneratedDocument(models.Model):

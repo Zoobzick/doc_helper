@@ -14,17 +14,22 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.decorators import method_decorator
+from django.utils import timezone
 from django.views import View
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.generic import DetailView, TemplateView
 
-from acts_app.models import Act
+from acts_app.models import Act, ActAppendixLine, AttachmentType
+from acts_app.services.date_format import fmt_date_range_g
+from acts_app.services.material_resolver import resolve_material_fields
 from documents_app.forms import BoxLabelForm, DocumentBatchMasterForm
 from documents_app.models import (
     DocumentBatch,
     DocumentBatchAct,
+    DocumentBatchActReviewNote,
     DocumentBatchActSource,
     DocumentBatchProject,
+    DocumentBatchProjectReviewStatus,
     DocumentBatchProjectScope,
     DocumentBatchSelectionMode,
     GeneratedDocument,
@@ -54,19 +59,19 @@ from documents_app.services.id_handover.preview_builder import (
 from documents_app.services.title_sheets import ensure_title_sheet
 from projects_app.models import Project, Stage
 
-DEFAULT_DSM = 'Р“РЈРџ "РњРѕСЃРєРѕРІСЃРєРёР№ РјРµС‚СЂРѕРїРѕР»РёС‚РµРЅ"'
-DEFAULT_MIP = 'РђРћ "РњРѕСЃРёРЅР¶РїСЂРѕРµРєС‚"'
-DEFAULT_SMU = 'РћРћРћ "РЎРњРЈ-12 РњРѕСЃРјРµС‚СЂРѕСЃС‚СЂРѕСЏ"'
+DEFAULT_DSM = 'ГУП "Московский метрополитен"'
+DEFAULT_MIP = 'АО "Мосинжпроект"'
+DEFAULT_SMU = 'ООО "СМУ-12 Мосметростроя"'
 
 MAX_LINES = 50
 
 
 def _build_batch_create_params_from_form(*, form: DocumentBatchMasterForm, created_by) -> BatchCreateParams:
     """
-    РЎРѕР±РёСЂР°РµС‚ BatchCreateParams РёР· С„РѕСЂРјС‹.
+    Собирает BatchCreateParams из формы.
 
-    created_by (User): РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ, РѕС‚ РёРјРµРЅРё РєРѕС‚РѕСЂРѕРіРѕ СЃРѕР·РґР°С‘С‚СЃСЏ/РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ batch
-    return (BatchCreateParams): DTO РґР»СЏ composer
+    created_by (User): пользователь, от имени которого создаётся/обновляется batch
+    return (BatchCreateParams): DTO для composer
     """
     return BatchCreateParams(
         created_by=created_by,
@@ -87,10 +92,10 @@ def _build_batch_create_params_from_form(*, form: DocumentBatchMasterForm, creat
 
 def _assign_batch_fields_from_form(*, batch: DocumentBatch, form: DocumentBatchMasterForm) -> None:
     """
-    РџРµСЂРµРЅРѕСЃРёС‚ РёР·РјРµРЅС‘РЅРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ РёР· С„РѕСЂРјС‹ РІ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ batch.
+    Переносит изменённые значения из формы в существующий batch.
 
-    batch (DocumentBatch): РѕР±РЅРѕРІР»СЏРµРјС‹Р№ РєРѕРјРїР»РµРєС‚
-    form (DocumentBatchMasterForm): РІР°Р»РёРґРЅР°СЏ С„РѕСЂРјР°
+    batch (DocumentBatch): обновляемый комплект
+    form (DocumentBatchMasterForm): валидная форма
     """
     batch.title = (form.cleaned_data.get("title") or "").strip()
     batch.comment = (form.cleaned_data.get("comment") or "").strip()
@@ -107,9 +112,9 @@ def _assign_batch_fields_from_form(*, batch: DocumentBatch, form: DocumentBatchM
 
 def _refresh_batch_generated_documents_actuality(*, batch: DocumentBatch) -> None:
     """
-    РџРµСЂРµСЃС‡РёС‚С‹РІР°РµС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚СЊ РІСЃРµС… СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅС‹С… РґРѕРєСѓРјРµРЅС‚РѕРІ batch.
+    Пересчитывает актуальность всех сгенерированных документов batch.
 
-    batch (DocumentBatch): РєРѕРјРїР»РµРєС‚, РґР»СЏ РєРѕС‚РѕСЂРѕРіРѕ РЅСѓР¶РЅРѕ РѕР±РЅРѕРІРёС‚СЊ is_actual
+    batch (DocumentBatch): комплект, для которого нужно обновить is_actual
     """
     signature_service = DocumentSignatureService()
     signature_service.refresh_batch_documents_actuality(batch=batch)
@@ -117,7 +122,7 @@ def _refresh_batch_generated_documents_actuality(*, batch: DocumentBatch) -> Non
 
 def _get_batch_preview_project(*, batch: DocumentBatch, project_id: int) -> dict:
     """
-    Р’РѕР·РІСЂР°С‰Р°РµС‚ preview РѕРґРЅРѕРіРѕ С€РёС„СЂР° РёР· РѕР±С‰РµРіРѕ preview РєРѕРјРїР»РµРєС‚Р°.
+    Возвращает preview одного шифра из общего preview комплекта.
     """
     builder = DocumentBatchPreviewBuilder()
     preview_data = builder.build(batch=batch)
@@ -126,14 +131,15 @@ def _get_batch_preview_project(*, batch: DocumentBatch, project_id: int) -> dict
         if project_payload.get("project_id") == project_id:
             return project_payload
 
-    raise Http404("РџСЂРѕРµРєС‚ РЅРµ РІС…РѕРґРёС‚ РІ СЃРѕСЃС‚Р°РІ РґР°РЅРЅРѕРіРѕ РєРѕРјРїР»РµРєС‚Р°.")
+    raise Http404("Проект не входит в состав данного комплекта.")
 
 
-def _build_project_review_context(*, batch: DocumentBatch, project_id: int) -> dict:
+def _build_project_review_context(*, batch: DocumentBatch, project_id: int, request_user=None) -> dict:
     """
-    Р“РѕС‚РѕРІРёС‚ context РґР»СЏ РѕС‚РґРµР»СЊРЅРѕР№ СЃС‚СЂР°РЅРёС†С‹ РїСЂРѕРІРµСЂРєРё РѕРґРЅРѕРіРѕ С€РёС„СЂР°.
+    Готовит context для отдельной страницы проверки одного шифра.
     """
     project_preview = _get_batch_preview_project(batch=batch, project_id=project_id)
+    batch_project = _get_batch_project_or_404(batch=batch, project_id=project_id)
     acts_map = {
         act_payload["batch_act_id"]: act_payload
         for act_payload in project_preview.get("acts", [])
@@ -141,10 +147,27 @@ def _build_project_review_context(*, batch: DocumentBatch, project_id: int) -> d
 
     review_rows: list[dict] = []
     total_acts_count = len(project_preview.get("acts", []))
+    appendix_line_ids = [
+        row.get("source_appendix_line_id")
+        for row in project_preview.get("registry_rows", [])
+        if row.get("source_appendix_line_id")
+    ]
+    appendix_lines_by_id = _get_appendix_lines_by_id(appendix_line_ids=appendix_line_ids)
+    current_page = 1
 
     for row in project_preview.get("registry_rows", []):
         row_payload = dict(row)
         act_payload = acts_map.get(row_payload.get("source_batch_act_id"))
+        row_payload["review_row_class"] = _get_project_review_row_class(row_payload)
+        row_payload["review_row_label"] = _get_project_review_row_label(row_payload)
+        row_payload["page_start"] = current_page
+        row_payload["page_end"] = current_page + max(int(row_payload.get("sheets_count") or 0), 1) - 1
+        row_payload["page_display"] = _format_page_range(row_payload["page_start"], row_payload["page_end"])
+        row_payload["registry_children"] = _build_registry_children_for_review_row(
+            row_payload=row_payload,
+            appendix_lines_by_id=appendix_lines_by_id,
+        )
+        current_page = row_payload["page_end"] + 1
 
         if act_payload:
             row_payload["action_batch_act_id"] = act_payload.get("batch_act_id")
@@ -161,12 +184,358 @@ def _build_project_review_context(*, batch: DocumentBatch, project_id: int) -> d
 
         review_rows.append(row_payload)
 
+    notes_by_batch_act_id = _get_review_notes_by_batch_act_id(
+        batch_act_ids=[
+            row_payload["action_batch_act_id"]
+            for row_payload in review_rows
+            if row_payload.get("action_batch_act_id")
+        ]
+    )
+    for row_payload in review_rows:
+        batch_act_id = row_payload.get("action_batch_act_id")
+        row_payload["review_notes"] = notes_by_batch_act_id.get(batch_act_id, [])
+        row_payload["review_notes_count"] = len(row_payload["review_notes"])
+
+    act_groups = _build_project_review_act_groups(review_rows=review_rows)
+    review_started_by = batch_project.review_started_by
+    reviewed_by = batch_project.reviewed_by
+
     return {
         "batch": batch,
         "project_preview": project_preview,
         "project_review_rows": review_rows,
+        "project_review_act_groups": act_groups,
         "project_review_back_url": f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2",
+        "project_review_mark_done_url": reverse(
+            "documents:id_handover_batch_project_mark_reviewed",
+            kwargs={"batch_id": batch.id, "project_id": project_id},
+        ),
+        "project_review_is_reviewed": batch_project.is_reviewed,
+        "project_review_is_in_progress": batch_project.is_in_progress,
+        "project_review_status": batch_project.review_status,
+        "project_review_status_label": batch_project.get_review_status_display(),
+        "project_review_started_at": batch_project.review_started_at,
+        "project_review_started_by": review_started_by,
+        "project_review_started_by_name": _get_user_display_name(review_started_by),
+        "project_review_is_started_by_current_user": (
+            bool(request_user and review_started_by and review_started_by.pk == request_user.pk)
+        ),
+        "project_review_reviewed_at": batch_project.reviewed_at,
+        "project_review_reviewed_by": reviewed_by,
+        "project_review_reviewed_by_name": _get_user_display_name(reviewed_by),
     }
+
+
+def _format_page_range(start: int, end: int) -> str:
+    if start == end:
+        return str(start)
+    return f"{start}-{end}"
+
+
+def _get_user_display_name(user) -> str:
+    if not user:
+        return ""
+
+    display_name = ""
+    if hasattr(user, "get_full_name"):
+        display_name = (user.get_full_name() or "").strip()
+    return display_name or getattr(user, "username", "") or str(user)
+
+
+def _get_review_notes_by_batch_act_id(*, batch_act_ids: list[int]) -> dict[int, list[DocumentBatchActReviewNote]]:
+    if not batch_act_ids:
+        return {}
+
+    notes_by_batch_act_id: dict[int, list[DocumentBatchActReviewNote]] = {}
+    notes = (
+        DocumentBatchActReviewNote.objects
+        .filter(batch_act_id__in=batch_act_ids, is_resolved=False)
+        .select_related("created_by")
+        .order_by("created_at", "id")
+    )
+    for note in notes:
+        notes_by_batch_act_id.setdefault(note.batch_act_id, []).append(note)
+    return notes_by_batch_act_id
+
+
+def _mark_batch_project_in_progress(*, batch: DocumentBatch, project_id: int, user) -> DocumentBatchProject:
+    now = timezone.now()
+    batch_project = _get_batch_project_or_404(batch=batch, project_id=project_id)
+
+    if batch_project.review_status == DocumentBatchProjectReviewStatus.REVIEWED:
+        return batch_project
+
+    updated = (
+        DocumentBatchProject.objects
+        .filter(
+            pk=batch_project.pk,
+            review_status=DocumentBatchProjectReviewStatus.PENDING,
+        )
+        .update(
+            review_status=DocumentBatchProjectReviewStatus.IN_PROGRESS,
+            review_started_at=now,
+            review_started_by=user,
+            reviewed_at=None,
+            reviewed_by=None,
+        )
+    )
+
+    if updated:
+        batch_project.review_status = DocumentBatchProjectReviewStatus.IN_PROGRESS
+        batch_project.review_started_at = now
+        batch_project.review_started_by = user
+        batch_project.reviewed_at = None
+        batch_project.reviewed_by = None
+        return batch_project
+
+    return _get_batch_project_or_404(batch=batch, project_id=project_id)
+
+
+def _mark_batch_project_review_touched(*, batch: DocumentBatch, project_id: int, user) -> None:
+    DocumentBatchProject.objects.filter(
+        batch=batch,
+        project_id=project_id,
+    ).update(
+        review_status=DocumentBatchProjectReviewStatus.IN_PROGRESS,
+        review_started_at=timezone.now(),
+        review_started_by=user,
+        reviewed_at=None,
+        reviewed_by=None,
+    )
+
+
+def _enrich_preview_with_review_state(*, batch: DocumentBatch, preview_data: dict) -> dict:
+    batch_projects = (
+        DocumentBatchProject.objects
+        .filter(batch=batch)
+        .select_related("review_started_by", "reviewed_by")
+        .order_by("order", "id")
+    )
+    review_state_by_project_id = {
+        batch_project.project_id: {
+            "is_reviewed": batch_project.is_reviewed,
+            "is_in_progress": batch_project.is_in_progress,
+            "review_status": batch_project.review_status,
+            "review_status_label": batch_project.get_review_status_display(),
+            "review_started_at": batch_project.review_started_at,
+            "review_started_by": batch_project.review_started_by,
+            "review_started_by_name": _get_user_display_name(batch_project.review_started_by),
+            "reviewed_at": batch_project.reviewed_at,
+            "reviewed_by": batch_project.reviewed_by,
+            "reviewed_by_name": _get_user_display_name(batch_project.reviewed_by),
+        }
+        for batch_project in batch_projects
+    }
+
+    reviewed_count = 0
+    for project_payload in preview_data.get("projects", []):
+        state = review_state_by_project_id.get(project_payload.get("project_id"), {})
+        is_reviewed = bool(state.get("is_reviewed"))
+        if is_reviewed:
+            reviewed_count += 1
+
+        project_payload["is_reviewed"] = is_reviewed
+        project_payload["is_in_progress"] = bool(state.get("is_in_progress"))
+        project_payload["review_status"] = state.get("review_status") or DocumentBatchProjectReviewStatus.PENDING
+        project_payload["review_status_label"] = state.get("review_status_label") or "Ожидает проверки"
+        project_payload["review_started_at"] = state.get("review_started_at")
+        project_payload["review_started_by"] = state.get("review_started_by")
+        project_payload["review_started_by_name"] = state.get("review_started_by_name") or ""
+        project_payload["reviewed_at"] = state.get("reviewed_at")
+        project_payload["reviewed_by"] = state.get("reviewed_by")
+        project_payload["reviewed_by_name"] = state.get("reviewed_by_name") or ""
+
+    preview_data.setdefault("summary", {})
+    preview_data["summary"]["reviewed_projects_count"] = reviewed_count
+    preview_data["summary"]["unreviewed_projects_count"] = max(
+        int(preview_data["summary"].get("projects_count") or 0) - reviewed_count,
+        0,
+    )
+    preview_data["summary"]["all_projects_reviewed"] = (
+        int(preview_data["summary"].get("projects_count") or 0) > 0
+        and preview_data["summary"]["unreviewed_projects_count"] == 0
+    )
+    return preview_data
+
+
+def _get_appendix_lines_by_id(*, appendix_line_ids: list[int]) -> dict[int, ActAppendixLine]:
+    if not appendix_line_ids:
+        return {}
+
+    lines = (
+        ActAppendixLine.objects
+        .filter(id__in=appendix_line_ids)
+        .select_related("source_attachment", "act")
+        .prefetch_related(
+            "act__materials",
+            "act__materials__passport",
+            "act__materials__passport__material",
+            "act__attachments",
+            "act__approval_items",
+            "act__approval_items__approval",
+        )
+    )
+    return {line.id: line for line in lines}
+
+
+def _build_registry_children_for_review_row(
+    *,
+    row_payload: dict,
+    appendix_lines_by_id: dict[int, ActAppendixLine],
+) -> list[dict]:
+    appendix_line_id = row_payload.get("source_appendix_line_id")
+    if not appendix_line_id:
+        return []
+
+    appendix_line = appendix_lines_by_id.get(appendix_line_id)
+    if not appendix_line:
+        return []
+
+    registry_attachment = getattr(appendix_line, "source_attachment", None)
+    registry_type = getattr(registry_attachment, "type", None)
+    if registry_type not in {
+        AttachmentType.MATERIALS_REGISTRY,
+        AttachmentType.DOCS_REGISTRY,
+        getattr(AttachmentType, "APPROVALS_REGISTRY", None),
+    }:
+        return []
+
+    act = appendix_line.act
+    registry_sheets = max(int(getattr(registry_attachment, "sheets_count", 1) or 1), 1)
+    child_page = int(row_payload.get("page_start") or 1) + registry_sheets
+
+    children: list[dict] = []
+
+    if registry_type == AttachmentType.MATERIALS_REGISTRY:
+        materials = list(act.materials.all().order_by("position", "id"))
+        for material in materials:
+            data = resolve_material_fields(material)
+            parts = [data["document_name"]]
+            if data["document_no"]:
+                parts.append(f"№{data['document_no']}")
+            if data["document_date_str"] and data["document_date_str"] != "—":
+                parts.append(f"от {data['document_date_str']}")
+
+            base = " ".join(parts).strip()
+            material_name = (data["material_name"] or "").strip()
+            label = f"{base}, {material_name}".strip().strip(",")
+            sheets = max(int(material.sheets_count or 0), 1)
+            children.append(_build_registry_child_payload(label=label, sheets=sheets, page_start=child_page))
+            child_page += sheets
+
+    elif registry_type == AttachmentType.DOCS_REGISTRY:
+        excluded_types = {
+            AttachmentType.EXEC_SCHEME,
+            AttachmentType.MATERIALS_REGISTRY,
+            AttachmentType.DOCS_REGISTRY,
+        }
+        approvals_registry_type = getattr(AttachmentType, "APPROVALS_REGISTRY", None)
+        if approvals_registry_type:
+            excluded_types.add(approvals_registry_type)
+
+        attachments = sorted(act.attachments.all(), key=lambda item: (item.created_at or 0, item.id))
+        for attachment in attachments:
+            if attachment.type in excluded_types:
+                continue
+
+            parts = [(attachment.title or "").strip() or "Документ"]
+            if attachment.doc_no:
+                parts.append(f"№{attachment.doc_no}")
+            date_text = fmt_date_range_g(attachment.doc_date, getattr(attachment, "doc_date_to", None))
+            if date_text:
+                parts.append(f"от {date_text}")
+
+            sheets = max(int(attachment.sheets_count or 0), 1)
+            children.append(
+                _build_registry_child_payload(label=" ".join(parts), sheets=sheets, page_start=child_page)
+            )
+            child_page += sheets
+
+    else:
+        approval_items = list(act.approval_items.all().order_by("position", "id"))
+        for item in approval_items:
+            approval = getattr(item, "approval", None)
+            label = (item.label_override or "").strip()
+            if not label and approval is not None:
+                label = (getattr(approval, "description", "") or "").strip()
+
+            sheets = max(int(item.sheets_count or 0), 1)
+            children.append(_build_registry_child_payload(label=label or "Согласование", sheets=sheets, page_start=child_page))
+            child_page += sheets
+
+    return children
+
+
+def _build_registry_child_payload(*, label: str, sheets: int, page_start: int) -> dict:
+    page_end = page_start + sheets - 1
+    return {
+        "label": label or "—",
+        "sheets": sheets,
+        "page_start": page_start,
+        "page_end": page_end,
+        "page_display": _format_page_range(page_start, page_end),
+    }
+
+
+def _build_project_review_act_groups(*, review_rows: list[dict]) -> list[dict]:
+    groups: list[dict] = []
+    current_group: dict | None = None
+
+    for row in review_rows:
+        if row.get("is_act") or current_group is None:
+            current_group = {
+                "act_row": row,
+                "rows": [],
+                "documents_count": 0,
+                "sheets_count": 0,
+                "page_start": row.get("page_start"),
+                "page_end": row.get("page_end"),
+                "page_display": row.get("page_display"),
+            }
+            groups.append(current_group)
+
+        current_group["rows"].append(row)
+        current_group["documents_count"] += 1
+        current_group["sheets_count"] += max(int(row.get("sheets_count") or 0), 1)
+        current_group["page_end"] = row.get("page_end")
+        current_group["page_display"] = _format_page_range(
+            int(current_group["page_start"] or 1),
+            int(current_group["page_end"] or current_group["page_start"] or 1),
+        )
+
+    return groups
+
+
+def _get_project_review_row_class(row_payload: dict) -> str:
+    document_name = str(row_payload.get("document_name") or "").strip().lower()
+
+    if row_payload.get("is_act"):
+        return "project-review-row-act"
+
+    if "исполнительная схема" in document_name:
+        return "project-review-row-scheme"
+
+    if "согласован" in document_name or "согласование" in document_name:
+        return "project-review-row-approval"
+
+    if "акт освидетельствования скрытых работ" in document_name:
+        return "project-review-row-act"
+
+    if document_name.startswith("акт ") or document_name.startswith("акт№"):
+        return "project-review-row-act"
+
+    return "project-review-row-appendix"
+
+
+def _get_project_review_row_label(row_payload: dict) -> str:
+    row_class = row_payload.get("review_row_class")
+    if row_class == "project-review-row-act":
+        return "Акт"
+    if row_class == "project-review-row-scheme":
+        return "Схема"
+    if row_class == "project-review-row-approval":
+        return "Согласование"
+    return "Приложение"
 
 
 class BoxLabelPageView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -248,7 +617,7 @@ class BoxLabelGenerateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         first_project = projects.get(all_ids[0]) if all_ids else None
         if not first_project:
-            return JsonResponse({"error": "РџСЂРѕРµРєС‚С‹ РЅРµ РЅР°Р№РґРµРЅС‹"}, status=400)
+            return JsonResponse({"error": "Проекты не найдены"}, status=400)
 
         object_ = first_project.line.full_name if first_project.line else ""
         plot_ = first_project.plot.full_name if first_project.plot else ""
@@ -263,13 +632,13 @@ class BoxLabelGenerateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         for pid in exec_ids:
             p = projects.get(pid)
             if p:
-                kits.append(f"РљРѕРјРїР»РµРєС‚ РёСЃРїРѕР»РЅРёС‚РµР»СЊРЅРѕР№ РґРѕРєСѓРјРµРЅС‚Р°С†РёРё: {p.full_code} (РїР°РїРєР° в„–1, 2-С€С‚.)")
+                kits.append(f"Комплект исполнительной документации: {p.full_code} (папка №1, 2-шт.)")
 
         works: list[str] = []
         for pid in work_ids:
             p = projects.get(pid)
             if p:
-                works.append(f"РљРѕРјРїР»РµРєС‚ СЂР°Р±РѕС‡РµР№ РґРѕРєСѓРјРµРЅС‚Р°С†РёРё: {p.full_code} (РїР°РїРєР° в„–1, 2-С€С‚.)")
+                works.append(f"Комплект рабочей документации: {p.full_code} (папка №1, 2-шт.)")
 
         ctx = {
             "DSM": dsm,
@@ -291,7 +660,7 @@ class BoxLabelGenerateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             docx_buf.getvalue(),
             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-        resp["Content-Disposition"] = 'attachment; filename="РЅР°РєР»РµР№РєР°_РєРѕСЂРѕР±РєР°.docx"'
+        resp["Content-Disposition"] = 'attachment; filename="наклейка_коробка.docx"'
         return resp
 
 
@@ -305,13 +674,13 @@ class TitleSheetOpenPdfView(PermissionRequiredMixin, View):
 
         allowed = {TitleSheet.DocType.ID, TitleSheet.DocType.RD, TitleSheet.DocType.ID_RD}
         if doc_type not in allowed:
-            raise Http404("РќРµРёР·РІРµСЃС‚РЅС‹Р№ С‚РёРї С‚РёС‚СѓР»СЊРЅРѕРіРѕ Р»РёСЃС‚Р°")
+            raise Http404("Неизвестный тип титульного листа")
 
         ts = ensure_title_sheet(project=project, doc_type=doc_type)
 
         pdf_path = Path(ts.pdf_path) if ts.pdf_path else None
         if not pdf_path or not pdf_path.exists():
-            raise Http404("PDF С‚РёС‚СѓР»СЊРЅРѕРіРѕ Р»РёСЃС‚Р° РЅРµ РЅР°Р№РґРµРЅ")
+            raise Http404("PDF титульного листа не найден")
 
         return FileResponse(pdf_path.open("rb"), content_type="application/pdf", as_attachment=False)
 
@@ -327,15 +696,15 @@ class GeneratedDocumentOpenView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         )
 
         if not generated_document.file:
-            raise Http404("Р¤Р°Р№Р» СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРіРѕ РґРѕРєСѓРјРµРЅС‚Р° РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚.")
+            raise Http404("Файл сгенерированного документа отсутствует.")
 
         try:
             file_path = Path(generated_document.file.path)
         except Exception as exc:
-            raise Http404("РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕР»СѓС‡РёС‚СЊ РїСѓС‚СЊ Рє С„Р°Р№Р»Сѓ.") from exc
+            raise Http404("Не удалось получить путь к файлу.") from exc
 
         if not file_path.exists():
-            raise Http404("Р¤Р°Р№Р» СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРіРѕ РґРѕРєСѓРјРµРЅС‚Р° РЅРµ РЅР°Р№РґРµРЅ.")
+            raise Http404("Файл сгенерированного документа не найден.")
 
         content_type, _ = mimetypes.guess_type(file_path.name)
         return FileResponse(
@@ -364,7 +733,7 @@ class DocumentBatchMasterView(LoginRequiredMixin, PermissionRequiredMixin, Templ
         batch = self.get_batch()
         form = kwargs.get("form") or self.get_form(batch=batch)
 
-        context["page_title"] = "РљРѕРјРїР»РµРєС‚С‹"
+        context["page_title"] = "Комплекты"
         context["batch"] = batch
         context["form"] = form
         context["projects_count"] = Project.objects.count()
@@ -422,11 +791,12 @@ class DocumentBatchMasterView(LoginRequiredMixin, PermissionRequiredMixin, Templ
     def _build_preview_safe(self, *, batch: DocumentBatch) -> dict | None:
         builder = DocumentBatchPreviewBuilder()
         try:
-            return builder.build(batch=batch)
+            preview_data = builder.build(batch=batch)
+            return _enrich_preview_with_review_state(batch=batch, preview_data=preview_data)
         except DocumentBatchPreviewBuilderError as exc:
             messages.warning(
                 self.request,
-                f"РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕСЃС‚СЂРѕРёС‚СЊ preview РєРѕРјРїР»РµРєС‚Р°: {exc}",
+                f"Не удалось построить preview комплекта: {exc}",
             )
             return None
 
@@ -499,7 +869,7 @@ class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, Templat
             batch.project_codes_full = ", ".join(project_codes)
             batch.project_codes_count = len(project_codes)
 
-        context["page_title"] = "РљРѕРјРїР»РµРєС‚С‹ РґРѕРєСѓРјРµРЅС‚РѕРІ"
+        context["page_title"] = "Комплекты документов"
         context["batches"] = batches
         context["search_query"] = query
         context["total_count"] = len(batches)
@@ -526,14 +896,14 @@ class DocumentBatchCreateDraftView(LoginRequiredMixin, PermissionRequiredMixin, 
             batch = composer.create_batch()
         except DocumentBatchComposerValidationError as exc:
             form.add_error(None, str(exc))
-            messages.error(request, f"РљРѕРјРїР»РµРєС‚ РЅРµ СЃРѕР·РґР°РЅ: {exc}")
+            messages.error(request, f"Комплект не создан: {exc}")
             return self._render_invalid_form(form=form)
         except Exception as exc:
-            form.add_error(None, f"Р’РЅСѓС‚СЂРµРЅРЅСЏСЏ РѕС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ РєРѕРјРїР»РµРєС‚Р°: {exc}")
-            messages.error(request, f"РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ РєРѕРјРїР»РµРєС‚Р°: {exc}")
+            form.add_error(None, f"Внутренняя ошибка создания комплекта: {exc}")
+            messages.error(request, f"Ошибка создания комплекта: {exc}")
             return self._render_invalid_form(form=form)
 
-        messages.success(request, "Р§РµСЂРЅРѕРІРёРє РєРѕРјРїР»РµРєС‚Р° СѓСЃРїРµС€РЅРѕ СЃРѕР·РґР°РЅ.")
+        messages.success(request, "Черновик комплекта успешно создан.")
         return redirect(
             f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2"
         )
@@ -543,7 +913,7 @@ class DocumentBatchCreateDraftView(LoginRequiredMixin, PermissionRequiredMixin, 
             self.request,
             "documents_app/id_handover/batch_master.html",
             {
-                "page_title": "РљРѕРјРїР»РµРєС‚С‹",
+                "page_title": "Комплекты",
                 "batch": None,
                 "form": form,
                 "projects_count": Project.objects.count(),
@@ -603,20 +973,20 @@ class DocumentBatchUpdateDraftView(LoginRequiredMixin, PermissionRequiredMixin, 
 
         except DocumentBatchComposerValidationError as exc:
             form.add_error(None, str(exc))
-            messages.error(request, f"РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РїР°СЂР°РјРµС‚СЂС‹ РєРѕРјРїР»РµРєС‚Р°: {exc}")
+            messages.error(request, f"Не удалось обновить параметры комплекта: {exc}")
             return self._render_invalid_form(batch=batch, form=form)
         except Exception as exc:
-            form.add_error(None, f"Р’РЅСѓС‚СЂРµРЅРЅСЏСЏ РѕС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ РєРѕРјРїР»РµРєС‚Р°: {exc}")
-            messages.error(request, f"РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ РєРѕРјРїР»РµРєС‚Р°: {exc}")
+            form.add_error(None, f"Внутренняя ошибка обновления комплекта: {exc}")
+            messages.error(request, f"Ошибка обновления комплекта: {exc}")
             return self._render_invalid_form(batch=batch, form=form)
 
         messages.success(
             request,
             (
-                "РџР°СЂР°РјРµС‚СЂС‹ РєРѕРјРїР»РµРєС‚Р° РѕР±РЅРѕРІР»РµРЅС‹. "
-                f"РџСЂРѕРµРєС‚РѕРІ вЂ” {result['projects_count']}, "
-                f"auto-Р°РєС‚РѕРІ вЂ” {result['auto_acts_count']}, "
-                f"manual-Р°РєС‚РѕРІ СЃРѕС…СЂР°РЅРµРЅРѕ вЂ” {result['manual_acts_count']}."
+                "Параметры комплекта обновлены. "
+                f"Проектов — {result['projects_count']}, "
+                f"auto-актов — {result['auto_acts_count']}, "
+                f"manual-актов сохранено — {result['manual_acts_count']}."
             ),
         )
         return redirect(
@@ -649,12 +1019,12 @@ class DocumentBatchRefreshCompositionView(LoginRequiredMixin, PermissionRequired
             result = self._refresh_batch_composition(batch=batch)
             _refresh_batch_generated_documents_actuality(batch=batch)
         except DocumentBatchComposerValidationError as exc:
-            messages.error(request, f"РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ СЃРѕСЃС‚Р°РІ РєРѕРјРїР»РµРєС‚Р°: {exc}")
+            messages.error(request, f"Не удалось обновить состав комплекта: {exc}")
             return redirect(
                 f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2"
             )
         except Exception as exc:
-            messages.error(request, f"РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ СЃРѕСЃС‚Р°РІР° РєРѕРјРїР»РµРєС‚Р°: {exc}")
+            messages.error(request, f"Ошибка обновления состава комплекта: {exc}")
             return redirect(
                 f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2"
             )
@@ -662,10 +1032,10 @@ class DocumentBatchRefreshCompositionView(LoginRequiredMixin, PermissionRequired
         messages.success(
             request,
             (
-                "РЎРѕСЃС‚Р°РІ РєРѕРјРїР»РµРєС‚Р° РѕР±РЅРѕРІР»С‘РЅ: "
-                f"РїСЂРѕРµРєС‚РѕРІ вЂ” {result['projects_count']}, "
-                f"auto-Р°РєС‚РѕРІ вЂ” {result['auto_acts_count']}, "
-                f"СЃРѕС…СЂР°РЅРµРЅРѕ manual-Р°РєС‚РѕРІ вЂ” {result['manual_acts_count']}."
+                "Состав комплекта обновлён: "
+                f"проектов — {result['projects_count']}, "
+                f"auto-актов — {result['auto_acts_count']}, "
+                f"сохранено manual-актов — {result['manual_acts_count']}."
             ),
         )
         return redirect(
@@ -803,9 +1173,9 @@ class DocumentBatchRefreshCompositionView(LoginRequiredMixin, PermissionRequired
 
 def _parse_month_code(month_code: str) -> tuple[int, int]:
     """
-    РџСЂРµРѕР±СЂР°Р·СѓРµС‚ 'MM.YYYY' -> (year, month)
+    Преобразует 'MM.YYYY' -> (year, month)
 
-    month_code (str): СЃС‚СЂРѕРєР° С„РѕСЂРјР°С‚Р° MM.YYYY
+    month_code (str): строка формата MM.YYYY
     return (tuple[int, int]): (year, month)
     """
     month_str, year_str = month_code.split(".")
@@ -814,11 +1184,11 @@ def _parse_month_code(month_code: str) -> tuple[int, int]:
 
 def _build_period_q(batch: DocumentBatch) -> Q:
     """
-    Р’РѕР·РІСЂР°С‰Р°РµС‚ Q РґР»СЏ Р°РєС‚РѕРІ, РїРѕРїР°РґР°СЋС‰РёС… РІ РїРµСЂРёРѕРґ batch.
+    Возвращает Q для актов, попадающих в период batch.
 
-    Р’РђР–РќРћ:
-    Composer СЃРµР№С‡Р°СЃ СЂР°Р±РѕС‚Р°РµС‚ РїРѕ act_year / act_month,
-    РїРѕСЌС‚РѕРјСѓ lookup РґРѕР»Р¶РµРЅ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ С‚Сѓ Р¶Рµ Р»РѕРіРёРєСѓ.
+    ВАЖНО:
+    Composer сейчас работает по act_year / act_month,
+    поэтому lookup должен использовать ту же логику.
     """
     if batch.selection_mode != DocumentBatchSelectionMode.RANGE:
         return Q()
@@ -840,18 +1210,18 @@ def _get_batch_project_or_404(*, batch: DocumentBatch, project_id: int) -> Docum
         .first()
     )
     if not batch_project:
-        raise Http404("РЈРєР°Р·Р°РЅРЅС‹Р№ РїСЂРѕРµРєС‚ РЅРµ РІС…РѕРґРёС‚ РІ СЃРѕСЃС‚Р°РІ РґР°РЅРЅРѕРіРѕ РєРѕРјРїР»РµРєС‚Р°.")
+        raise Http404("Указанный проект не входит в состав данного комплекта.")
     return batch_project
 
 
 def _build_available_project_acts_payload(*, batch: DocumentBatch, project_id: int) -> dict:
     """
-    Р•РґРёРЅР°СЏ Р»РѕРіРёРєР° lookup РґР»СЏ РјРѕРґР°Р»РєРё "Р”РѕР±Р°РІРёС‚СЊ Р°РєС‚".
+    Единая логика lookup для модалки "Добавить акт".
 
-    Р’РѕР·РІСЂР°С‰Р°РµС‚ С‚РѕР»СЊРєРѕ Р°РєС‚С‹:
-    - РІС‹Р±СЂР°РЅРЅРѕРіРѕ РїСЂРѕРµРєС‚Р° batch
-    - РєРѕС‚РѕСЂС‹С… РµС‰С‘ РЅРµС‚ РІ batch
-    - Рё РµСЃР»Рё batch == RANGE, С‚Рѕ С‚РѕР»СЊРєРѕ Р’РќР• РїРµСЂРёРѕРґР°
+    Возвращает только акты:
+    - выбранного проекта batch
+    - которых ещё нет в batch
+    - и если batch == RANGE, то только ВНЕ периода
     """
     batch_project = _get_batch_project_or_404(batch=batch, project_id=project_id)
 
@@ -914,7 +1284,7 @@ class DocumentBatchProjectActsLookupView(LoginRequiredMixin, PermissionRequiredM
             return JsonResponse(
                 {
                     "ok": False,
-                    "error": "РќРµ РїРµСЂРµРґР°РЅ project_id.",
+                    "error": "Не передан project_id.",
                     "results": [],
                 },
                 status=400,
@@ -926,7 +1296,7 @@ class DocumentBatchProjectActsLookupView(LoginRequiredMixin, PermissionRequiredM
             return JsonResponse(
                 {
                     "ok": False,
-                    "error": "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ project_id.",
+                    "error": "Некорректный project_id.",
                     "results": [],
                 },
                 status=400,
@@ -941,7 +1311,7 @@ class DocumentBatchProjectActsLookupView(LoginRequiredMixin, PermissionRequiredM
             return JsonResponse(
                 {
                     "ok": False,
-                    "error": "РЈРєР°Р·Р°РЅРЅС‹Р№ РїСЂРѕРµРєС‚ РЅРµ РІС…РѕРґРёС‚ РІ СЃРѕСЃС‚Р°РІ РґР°РЅРЅРѕРіРѕ РєРѕРјРїР»РµРєС‚Р°.",
+                    "error": "Указанный проект не входит в состав данного комплекта.",
                     "results": [],
                 },
                 status=404,
@@ -956,7 +1326,7 @@ def id_handover_batch_acts_lookup(request, batch_id: int):
     """
     Function-based alias lookup.
 
-    РћСЃС‚Р°РІР»РµРЅ РґР»СЏ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё СЃ С‚РµРєСѓС‰РёРјРё urls/С€Р°Р±Р»РѕРЅР°РјРё.
+    Оставлен для совместимости с текущими urls/шаблонами.
     """
     if request.headers.get("X-Requested-With") != "XMLHttpRequest":
         raise Http404("AJAX only")
@@ -968,7 +1338,7 @@ def id_handover_batch_acts_lookup(request, batch_id: int):
         return JsonResponse(
             {
                 "ok": False,
-                "error": "РќРµ РїРµСЂРµРґР°РЅ project_id.",
+                "error": "Не передан project_id.",
                 "results": [],
             },
             status=400,
@@ -980,7 +1350,7 @@ def id_handover_batch_acts_lookup(request, batch_id: int):
         return JsonResponse(
             {
                 "ok": False,
-                "error": "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ project_id.",
+                "error": "Некорректный project_id.",
                 "results": [],
             },
             status=400,
@@ -995,7 +1365,7 @@ def id_handover_batch_acts_lookup(request, batch_id: int):
         return JsonResponse(
             {
                 "ok": False,
-                "error": "РџСЂРѕРµРєС‚ РЅРµ РІС…РѕРґРёС‚ РІ СЃРѕСЃС‚Р°РІ РґР°РЅРЅРѕРіРѕ РєРѕРјРїР»РµРєС‚Р°.",
+                "error": "Проект не входит в состав данного комплекта.",
                 "results": [],
             },
             status=404,
@@ -1009,15 +1379,118 @@ class DocumentBatchProjectReviewView(LoginRequiredMixin, PermissionRequiredMixin
     raise_exception = True
     template_name = "documents_app/id_handover/batch_project_review.html"
 
+    def get(self, request, *args, **kwargs):
+        batch = get_object_or_404(DocumentBatch, pk=self.kwargs["batch_id"])
+        project_id = self.kwargs["project_id"]
+        _mark_batch_project_in_progress(batch=batch, project_id=project_id, user=request.user)
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            context = _build_project_review_context(batch=batch, project_id=project_id, request_user=request.user)
+            html = render_to_string(
+                "documents_app/id_handover/partials/project_review_content.html",
+                context=context,
+                request=request,
+            )
+            return HttpResponse(html)
+
+        return super().get(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         batch = get_object_or_404(DocumentBatch, pk=self.kwargs["batch_id"])
         project_id = self.kwargs["project_id"]
-        project_context = _build_project_review_context(batch=batch, project_id=project_id)
+        project_context = _build_project_review_context(batch=batch, project_id=project_id, request_user=self.request.user)
 
         context.update(project_context)
-        context["page_title"] = f"РџСЂРѕРІРµСЂРєР° С€РёС„СЂР°: {project_context['project_preview']['project_code']}"
+        context["page_title"] = f"Проверка шифра: {project_context['project_preview']['project_code']}"
         return context
+
+
+class DocumentBatchProjectMarkReviewedView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.change_documentbatch"
+    raise_exception = True
+
+    def post(self, request, *args, **kwargs):
+        batch = get_object_or_404(DocumentBatch, pk=kwargs["batch_id"])
+        project_id = kwargs["project_id"]
+        batch_project = _get_batch_project_or_404(batch=batch, project_id=project_id)
+
+        batch_project.review_status = DocumentBatchProjectReviewStatus.REVIEWED
+        batch_project.review_started_at = batch_project.review_started_at or timezone.now()
+        batch_project.review_started_by = batch_project.review_started_by or request.user
+        batch_project.reviewed_at = timezone.now()
+        batch_project.reviewed_by = request.user
+        batch_project.save(
+            update_fields=[
+                "review_status",
+                "review_started_at",
+                "review_started_by",
+                "reviewed_at",
+                "reviewed_by",
+            ]
+        )
+
+        messages.success(
+            request,
+            f"Шифр {batch_project.project.full_code} отмечен как проверенный.",
+        )
+        return redirect(f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2")
+
+
+class DocumentBatchActAddReviewNoteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.change_documentbatch"
+    raise_exception = True
+
+    def post(self, request, *args, **kwargs):
+        batch = get_object_or_404(DocumentBatch, pk=kwargs["batch_id"])
+        batch_act = get_object_or_404(
+            DocumentBatchAct.objects.select_related("batch", "project", "act"),
+            pk=kwargs["batch_act_id"],
+            batch=batch,
+        )
+        note_text = (request.POST.get("note_text") or "").strip()
+        wants_partial = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+        if not note_text:
+            if wants_partial:
+                return JsonResponse({"ok": False, "error": "Введите текст замечания."}, status=400)
+            messages.error(request, "Введите текст замечания.")
+            return redirect(
+                "documents:id_handover_batch_project_review",
+                batch_id=batch.id,
+                project_id=batch_act.project_id,
+            )
+
+        DocumentBatchActReviewNote.objects.create(
+            batch_act=batch_act,
+            text=note_text,
+            created_by=request.user,
+        )
+        _mark_batch_project_review_touched(
+            batch=batch,
+            project_id=batch_act.project_id,
+            user=request.user,
+        )
+        messages.success(request, "Замечание добавлено к акту.")
+
+        if wants_partial:
+            context = _build_project_review_context(
+                batch=batch,
+                project_id=batch_act.project_id,
+                request_user=request.user,
+            )
+            html = render_to_string(
+                "documents_app/id_handover/partials/project_review_content.html",
+                context=context,
+                request=request,
+            )
+            return HttpResponse(html)
+
+        return redirect(
+            "documents:id_handover_batch_project_review",
+            batch_id=batch.id,
+            project_id=batch_act.project_id,
+        )
 
 
 class DocumentBatchStep2BaseActionView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -1095,7 +1568,7 @@ class DocumentBatchStep2BaseActionView(LoginRequiredMixin, PermissionRequiredMix
             project_id: int,
             status: int = 200,
     ) -> HttpResponse:
-        context = _build_project_review_context(batch=batch, project_id=project_id)
+        context = _build_project_review_context(batch=batch, project_id=project_id, request_user=request.user)
         html = render_to_string(
             "documents_app/id_handover/partials/project_review_content.html",
             context=context,
@@ -1118,7 +1591,7 @@ class DocumentBatchAddManualActView(DocumentBatchStep2BaseActionView):
         if not project_id_raw or not act_id_raw:
             messages.error(
                 request,
-                "Р”Р»СЏ РґРѕР±Р°РІР»РµРЅРёСЏ Р°РєС‚Р° РЅСѓР¶РЅРѕ РІС‹Р±СЂР°С‚СЊ РїСЂРѕРµРєС‚ Рё Р°РєС‚.",
+                "Для добавления акта нужно выбрать проект и акт.",
             )
             return self.redirect_to_master(batch=batch, step=2)
 
@@ -1127,7 +1600,7 @@ class DocumentBatchAddManualActView(DocumentBatchStep2BaseActionView):
             act_id = int(act_id_raw)
             order = int(order_raw) if order_raw else None
         except ValueError:
-            messages.error(request, "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ РґРѕР±Р°РІР»РµРЅРёСЏ Р°РєС‚Р°.")
+            messages.error(request, "Некорректные параметры добавления акта.")
             return self.redirect_to_master(batch=batch, step=2)
 
         service = DocumentBatchEditingService()
@@ -1142,18 +1615,19 @@ class DocumentBatchAddManualActView(DocumentBatchStep2BaseActionView):
                     order=order,
                 )
             )
+            _mark_batch_project_review_touched(batch=batch, project_id=project_id, user=request.user)
             self.rebuild_preview_snapshot(batch=batch)
             self.refresh_generated_documents_actuality(batch=batch)
         except DocumentBatchEditingValidationError as exc:
-            messages.error(request, f"РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ Р°РєС‚: {exc}")
+            messages.error(request, f"Не удалось добавить акт: {exc}")
             return self.redirect_to_master(batch=batch, step=2, fragment=f"project-{project_id}")
         except Exception as exc:
-            messages.error(request, f"РћС€РёР±РєР° РґРѕР±Р°РІР»РµРЅРёСЏ Р°РєС‚Р°: {exc}")
+            messages.error(request, f"Ошибка добавления акта: {exc}")
             return self.redirect_to_master(batch=batch, step=2, fragment=f"project-{project_id}")
 
         messages.success(
             request,
-            f"РђРєС‚ в„–{batch_act.act.number} РґРѕР±Р°РІР»РµРЅ РІ РїСЂРѕРµРєС‚ {batch_act.project.full_code}.",
+            f"Акт №{batch_act.act.number} добавлен в проект {batch_act.project.full_code}.",
         )
         return self.redirect_to_master(
             batch=batch,
@@ -1190,6 +1664,7 @@ class DocumentBatchMoveActUpView(DocumentBatchStep2BaseActionView):
                     new_order=batch_act.order - 1,
                 )
             )
+            _mark_batch_project_review_touched(batch=batch, project_id=project_id, user=request.user)
             self.rebuild_preview_snapshot(batch=batch)
             self.refresh_generated_documents_actuality(batch=batch)
         except DocumentBatchEditingValidationError as exc:
@@ -1248,6 +1723,7 @@ class DocumentBatchMoveActDownView(DocumentBatchStep2BaseActionView):
                     new_order=batch_act.order + 1,
                 )
             )
+            _mark_batch_project_review_touched(batch=batch, project_id=project_id, user=request.user)
             self.rebuild_preview_snapshot(batch=batch)
             self.refresh_generated_documents_actuality(batch=batch)
         except DocumentBatchEditingValidationError as exc:
@@ -1293,6 +1769,7 @@ class DocumentBatchRemoveActView(DocumentBatchStep2BaseActionView):
                 project_id=batch_act.project_id,
                 batch_act_id=batch_act.id,
             )
+            _mark_batch_project_review_touched(batch=batch, project_id=project_id, user=request.user)
             self.rebuild_preview_snapshot(batch=batch)
             self.refresh_generated_documents_actuality(batch=batch)
         except DocumentBatchEditingValidationError as exc:
@@ -1340,7 +1817,7 @@ class DocumentBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
 
         context["preview_data"] = preview_data
         context["generated_documents"] = generated_documents
-        context["page_title"] = f"РљРѕРјРїР»РµРєС‚ РР”: {batch.title}"
+        context["page_title"] = f"Комплект ИД: {batch.title}"
         return context
 
     def _build_preview_safe(self, *, batch: DocumentBatch) -> dict | None:
@@ -1350,7 +1827,7 @@ class DocumentBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
         except DocumentBatchPreviewBuilderError as exc:
             messages.warning(
                 self.request,
-                f"РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕСЃС‚СЂРѕРёС‚СЊ preview РєРѕРјРїР»РµРєС‚Р°: {exc}",
+                f"Не удалось построить preview комплекта: {exc}",
             )
             return None
 
@@ -1395,10 +1872,10 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
                 archive_letter_template_path=self._get_archive_letter_template_path(),
             )
         except BatchGenerationValidationError as exc:
-            messages.error(request, f"Р“РµРЅРµСЂР°С†РёСЏ РЅРµ Р·Р°РїСѓС‰РµРЅР°: {exc}")
+            messages.error(request, f"Генерация не запущена: {exc}")
             return self._redirect_after_error(batch=batch)
         except Exception as exc:
-            messages.error(request, f"РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё РєРѕРјРїР»РµРєС‚Р°: {exc}")
+            messages.error(request, f"Ошибка генерации комплекта: {exc}")
             return self._redirect_after_error(batch=batch)
 
         success_message = self._build_success_message(result=result)
@@ -1427,43 +1904,25 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         parts: list[str] = []
 
         if result.registries_generated_count:
-            parts.append(f"СЂРµРµСЃС‚СЂРѕРІ СЃС„РѕСЂРјРёСЂРѕРІР°РЅРѕ: {result.registries_generated_count}")
+            parts.append(f"реестров сформировано: {result.registries_generated_count}")
         else:
-            parts.append("СЂРµРµСЃС‚СЂС‹ РЅРµ С„РѕСЂРјРёСЂРѕРІР°Р»РёСЃСЊ")
+            parts.append("реестры не формировались")
 
         if result.letter_generated:
-            parts.append("РїРёСЃСЊРјРѕ СЃС„РѕСЂРјРёСЂРѕРІР°РЅРѕ")
+            parts.append("письмо сформировано")
         else:
-            parts.append("РїРёСЃСЊРјРѕ РЅРµ С„РѕСЂРјРёСЂРѕРІР°Р»РѕСЃСЊ")
+            parts.append("письмо не формировалось")
 
         if getattr(result, "registries_auto_generated_for_letter", False):
-            parts.append("С‡Р°СЃС‚СЊ СЂРµРµСЃС‚СЂРѕРІ Р±С‹Р»Р° Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РґРѕРіРµРЅРµСЂРёСЂРѕРІР°РЅР° РґР»СЏ РїРёСЃСЊРјР°")
+            parts.append("часть реестров была автоматически догенерирована для письма")
 
         messages.success(
             request,
-            f"Р“РµРЅРµСЂР°С†РёСЏ Р·Р°РІРµСЂС€РµРЅР°: {', '.join(parts)}.",
+            f"Генерация завершена: {', '.join(parts)}.",
         )
 
     def _get_registry_template_path(self) -> Path:
         return Path(settings.XLSX_TEMPLATES_DIR) / "id_handover_registry.xlsx"
-
-    def _build_success_message(self, *, result) -> str:
-        parts: list[str] = []
-
-        if result.registries_generated_count:
-            parts.append(f"РЎР‚Р ВµР ВµРЎРѓРЎвЂљРЎР‚Р С•Р Р† РЎРѓРЎвЂћР С•РЎР‚Р СР С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С•: {result.registries_generated_count}")
-        else:
-            parts.append("РЎР‚Р ВµР ВµРЎРѓРЎвЂљРЎР‚РЎвЂ№ Р Р…Р Вµ РЎвЂћР С•РЎР‚Р СР С‘РЎР‚Р С•Р Р†Р В°Р В»Р С‘РЎРѓРЎРЉ")
-
-        if result.letter_generated:
-            parts.append("Р С—Р С‘РЎРѓРЎРЉР СР С• РЎРѓРЎвЂћР С•РЎР‚Р СР С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С•")
-        else:
-            parts.append("Р С—Р С‘РЎРѓРЎРЉР СР С• Р Р…Р Вµ РЎвЂћР С•РЎР‚Р СР С‘РЎР‚Р С•Р Р†Р В°Р В»Р С•РЎРѓРЎРЉ")
-
-        if getattr(result, "registries_auto_generated_for_letter", False):
-            parts.append("РЎвЂЎР В°РЎРѓРЎвЂљРЎРЉ РЎР‚Р ВµР ВµРЎРѓРЎвЂљРЎР‚Р С•Р Р† Р В±РЎвЂ№Р В»Р В° Р В°Р Р†РЎвЂљР С•Р СР В°РЎвЂљР С‘РЎвЂЎР ВµРЎРѓР С”Р С‘ Р Т‘Р С•Р С–Р ВµР Р…Р ВµРЎР‚Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р В° Р Т‘Р В»РЎРЏ Р С—Р С‘РЎРѓРЎРЉР СР В°")
-
-        return f"Р вЂњР ВµР Р…Р ВµРЎР‚Р В°РЎвЂ Р С‘РЎРЏ Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р ВµР Р…Р В°: {', '.join(parts)}."
 
     def _is_ajax_request(self, request) -> bool:
         return request.headers.get("x-requested-with") == "XMLHttpRequest"
@@ -1472,19 +1931,19 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         parts: list[str] = []
 
         if result.registries_generated_count:
-            parts.append(f"СЂРµРµСЃС‚СЂРѕРІ СЃС„РѕСЂРјРёСЂРѕРІР°РЅРѕ: {result.registries_generated_count}")
+            parts.append(f"реестров сформировано: {result.registries_generated_count}")
         else:
-            parts.append("СЂРµРµСЃС‚СЂС‹ РЅРµ С„РѕСЂРјРёСЂРѕРІР°Р»РёСЃСЊ")
+            parts.append("реестры не формировались")
 
         if result.letter_generated:
-            parts.append("РїРёСЃСЊРјРѕ СЃС„РѕСЂРјРёСЂРѕРІР°РЅРѕ")
+            parts.append("письмо сформировано")
         else:
-            parts.append("РїРёСЃСЊРјРѕ РЅРµ С„РѕСЂРјРёСЂРѕРІР°Р»РѕСЃСЊ")
+            parts.append("письмо не формировалось")
 
         if getattr(result, "registries_auto_generated_for_letter", False):
-            parts.append("С‡Р°СЃС‚СЊ СЂРµРµСЃС‚СЂРѕРІ Р±С‹Р»Р° Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РґРѕРіРµРЅРµСЂРёСЂРѕРІР°РЅР° РґР»СЏ РїРёСЃСЊРјР°")
+            parts.append("часть реестров была автоматически догенерирована для письма")
 
-        return f"Р“РµРЅРµСЂР°С†РёСЏ Р·Р°РІРµСЂС€РµРЅР°: {', '.join(parts)}."
+        return f"Генерация завершена: {', '.join(parts)}."
 
     def _get_regular_letter_template_path(self) -> Path:
         return Path(settings.DOCX_TEMPLATES_DIR) / "id_handover_letter_for_execution.docx"

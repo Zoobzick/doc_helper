@@ -404,13 +404,39 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="alert {% if preview_data.summary.all_projects_reviewed %}alert-success{% else %}alert-info{% endif %} py-2 mb-3">
+                                    <i class="bi {% if preview_data.summary.all_projects_reviewed %}bi-check2-circle{% else %}bi-list-check{% endif %} me-1"></i>
+                                    Проверено шифров: <strong>{{ preview_data.summary.reviewed_projects_count }}</strong>
+                                    из <strong>{{ preview_data.summary.projects_count }}</strong>.
+                                    {% if not preview_data.summary.all_projects_reviewed %}
+                                        Сначала пройди проверку всех шифров, затем переходи к генерации.
+                                    {% endif %}
+                                </div>
 
                                 <div class="batch-review-stack">
                                     {% for project in preview_data.projects %}
                                         <div class="batch-review-project batch-review-project-compact" id="project-{{ project.project_id }}">
                                             <div class="batch-review-summary">
                                                 <div class="batch-review-main">
-                                                    <div class="project-code batch-review-code">{{ project.project_code }}</div>
+                                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                        <div class="project-code batch-review-code">{{ project.project_code }}</div>
+                                                        {% if project.review_status == "reviewed" %}
+                                                            <span class="badge bg-success">
+                                                                <i class="bi bi-check2-circle me-1"></i>
+                                                                Проверен{% if project.reviewed_by_name %}: {{ project.reviewed_by_name }}{% endif %}
+                                                            </span>
+                                                        {% elif project.review_status == "in_progress" %}
+                                                            <span class="badge bg-warning text-dark">
+                                                                <i class="bi bi-person-workspace me-1"></i>
+                                                                Проверяется{% if project.review_started_by_name %}: {{ project.review_started_by_name }}{% endif %}
+                                                            </span>
+                                                        {% else %}
+                                                            <span class="badge bg-secondary">
+                                                                <i class="bi bi-hourglass-split me-1"></i>
+                                                                Ожидает проверки
+                                                            </span>
+                                                        {% endif %}
+                                                    </div>
                                                     <div class="batch-review-note">
                                                         {% if batch.selection_mode == "range" %}
                                                             Проверь, что в состав этого шифра попали все нужные акты за период. Если чего-то не хватает, добавь акт вручную или открой нужный акт на редактирование.
@@ -437,19 +463,27 @@
                                                     </div>
 
                                                     <div class="batch-project-actions">
-                                                        <button type="button"
-                                                                class="btn btn-outline-secondary btn-sm js-summary-action js-take-project-work"
-                                                                data-project-id="{{ project.project_id }}"
-                                                                data-project-code="{{ project.project_code }}">
-                                                            <i class="bi bi-person-check me-1"></i>
-                                                            Взять в работу
-                                                        </button>
-
-                                                        <a href="{% url 'documents:id_handover_batch_project_review' batch.id project.project_id %}"
-                                                           class="btn btn-primary btn-sm js-summary-action">
-                                                            <i class="bi bi-search me-1"></i>
-                                                            Открыть проверку
-                                                        </a>
+                                                        {% if project.review_status == "in_progress" and project.review_started_by.id != user.id and not user.is_superuser %}
+                                                            <button type="button"
+                                                                    class="btn btn-outline-secondary btn-sm js-summary-action"
+                                                                    disabled
+                                                                    title="Этот шифр сейчас проверяет другой пользователь.">
+                                                                <i class="bi bi-lock me-1"></i>
+                                                                В работе
+                                                            </button>
+                                                        {% else %}
+                                                            <a href="{% url 'documents:id_handover_batch_project_review' batch.id project.project_id %}"
+                                                               class="btn btn-primary btn-sm js-summary-action">
+                                                                <i class="bi bi-search me-1"></i>
+                                                                {% if project.review_status == "reviewed" %}
+                                                                    Перепроверить
+                                                                {% elif project.review_status == "in_progress" %}
+                                                                    Продолжить
+                                                                {% else %}
+                                                                    Начать проверку
+                                                                {% endif %}
+                                                            </a>
+                                                        {% endif %}
 
                                                         {% if user.is_superuser or perms.documents_app.change_documentbatch %}
                                                             <form method="post"
@@ -475,9 +509,6 @@
                                                             </button>
                                                         {% endif %}
 
-                                                        <span class="batch-project-work-badge d-none"
-                                                              data-project-work-badge
-                                                              data-project-id="{{ project.project_id }}"></span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -535,6 +566,13 @@
                                         </div>
                                     </div>
                                 </div>
+                                {% if preview_data and not preview_data.summary.all_projects_reviewed %}
+                                    <div class="alert alert-warning py-2">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        До генерации осталось проверить шифров:
+                                        <strong>{{ preview_data.summary.unreviewed_projects_count }}</strong>.
+                                    </div>
+                                {% endif %}
 
                                 <div class="d-flex gap-2 flex-wrap">
                                     {% if user.is_superuser or perms.documents_app.change_documentbatch %}
@@ -543,7 +581,9 @@
                                               class="js-batch-generate-form"
                                               data-batch-title="{{ batch.title|default:'Комплект'|escape }}">
                                             {% csrf_token %}
-                                            <button type="submit" class="btn btn-success js-batch-generate-button">
+                                            <button type="submit"
+                                                    class="btn btn-success js-batch-generate-button"
+                                                    {% if preview_data and not preview_data.summary.all_projects_reviewed %}disabled{% endif %}>
                                                 <i class="bi bi-gear-fill me-1"></i>
                                                 Сформировать документы
                                             </button>
@@ -1001,18 +1041,6 @@
             gap: 0.5rem;
         }
 
-        .batch-project-work-badge {
-            display: inline-flex;
-            align-items: center;
-            min-height: 32px;
-            padding: 0.35rem 0.7rem;
-            border-radius: 999px;
-            background: #ecfdf3;
-            color: #027a48;
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-
         .batch-review-body {
             padding: 0 1.25rem 1.25rem;
             border-top: 1px solid #e7eef7;
@@ -1144,9 +1172,6 @@
                 const generationProgressBar = document.getElementById("batch-generation-progress-bar");
                 const reviewProjects = Array.from(document.querySelectorAll(".batch-review-project"));
                 const summaryActions = Array.from(document.querySelectorAll(".js-summary-action"));
-                const projectWorkButtons = Array.from(document.querySelectorAll(".js-take-project-work"));
-                const projectWorkBadges = Array.from(document.querySelectorAll("[data-project-work-badge]"));
-                const projectWorkStorageKey = "id-handover-batch-project-work";
 
                 const hasBatch = {{ is_edit_mode|yesno:"true,false" }};
                 const requestedStep = {{ requested_step|default:1 }};
@@ -1182,68 +1207,6 @@
                         event.stopPropagation();
                     });
                 });
-
-                function loadProjectWorkState() {
-                    try {
-                        return JSON.parse(window.localStorage.getItem(projectWorkStorageKey) || "{}");
-                    } catch (error) {
-                        return {};
-                    }
-                }
-
-                function saveProjectWorkState(state) {
-                    window.localStorage.setItem(projectWorkStorageKey, JSON.stringify(state));
-                }
-
-                function renderProjectWorkState() {
-                    const state = loadProjectWorkState();
-
-                    projectWorkBadges.forEach(function (badge) {
-                        const projectId = badge.dataset.projectId;
-                        const projectCode = state[projectId];
-
-                        if (projectCode) {
-                            badge.textContent = `В работе: ${projectCode}`;
-                            badge.classList.remove("d-none");
-                        } else {
-                            badge.textContent = "";
-                            badge.classList.add("d-none");
-                        }
-                    });
-
-                    projectWorkButtons.forEach(function (button) {
-                        const projectId = button.dataset.projectId;
-                        const isActive = Boolean(state[projectId]);
-
-                        button.classList.toggle("btn-outline-secondary", !isActive);
-                        button.classList.toggle("btn-success", isActive);
-                        button.innerHTML = isActive
-                            ? '<i class="bi bi-check2-circle me-1"></i>В работе'
-                            : '<i class="bi bi-person-check me-1"></i>Взять в работу';
-                    });
-                }
-
-                projectWorkButtons.forEach(function (button) {
-                    button.addEventListener("click", function (event) {
-                        event.preventDefault();
-                        event.stopPropagation();
-
-                        const projectId = button.dataset.projectId;
-                        const projectCode = button.dataset.projectCode;
-                        const state = loadProjectWorkState();
-
-                        if (state[projectId]) {
-                            delete state[projectId];
-                        } else {
-                            state[projectId] = projectCode;
-                        }
-
-                        saveProjectWorkState(state);
-                        renderProjectWorkState();
-                    });
-                });
-
-                renderProjectWorkState();
 
                 function setGenerationButtonsDisabled(disabled) {
                     document.querySelectorAll(".js-batch-generate-button").forEach(function (button) {
