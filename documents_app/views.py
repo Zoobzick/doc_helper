@@ -836,7 +836,7 @@ class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, Templat
 
         batch_projects_qs = (
             DocumentBatchProject.objects
-            .select_related("project")
+            .select_related("project", "review_started_by", "reviewed_by")
             .order_by("order", "id")
         )
 
@@ -844,36 +844,154 @@ class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, Templat
             DocumentBatch.objects
             .select_related("created_by")
             .prefetch_related(
-                Prefetch("batch_projects", queryset=batch_projects_qs)
+                Prefetch("batch_projects", queryset=batch_projects_qs),
+                "generated_documents",
             )
             .order_by("-created_at", "-id")
         )
 
         if query:
+            query_filter = (
+                Q(title__icontains=query)
+                | Q(comment__icontains=query)
+                | Q(batch_projects__project__full_code__icontains=query)
+            )
+            if query.isdigit():
+                query_filter |= Q(id=int(query))
+
             batches_qs = (
                 batches_qs
-                .filter(batch_projects__project__full_code__icontains=query)
+                .filter(query_filter)
                 .distinct()
             )
 
         batches = list(batches_qs)
 
         for batch in batches:
-            project_codes = [
-                batch_project.project.full_code
-                for batch_project in batch.batch_projects.all()
-                if batch_project.project_id and batch_project.project
-            ]
+            self._decorate_batch_for_list(batch=batch)
 
-            batch.project_codes = project_codes
-            batch.project_codes_full = ", ".join(project_codes)
-            batch.project_codes_count = len(project_codes)
+        status_filter = (self.request.GET.get("status") or "all").strip()
+        if status_filter != "all":
+            batches = [
+                batch
+                for batch in batches
+                if batch.list_state_key == status_filter
+            ]
 
         context["page_title"] = "Комплекты документов"
         context["batches"] = batches
         context["search_query"] = query
+        context["status_filter"] = status_filter
         context["total_count"] = len(batches)
+        context["summary"] = self._build_list_summary(batches=batches)
+        context["status_filters"] = [
+            {"key": "all", "label": "Все"},
+            {"key": "needs_review", "label": "Нужно проверить"},
+            {"key": "in_progress", "label": "В работе"},
+            {"key": "ready_to_generate", "label": "К генерации"},
+            {"key": "generated", "label": "С файлами"},
+        ]
         return context
+
+    def _decorate_batch_for_list(self, *, batch: DocumentBatch) -> None:
+        batch_projects = list(batch.batch_projects.all())
+        generated_documents = list(batch.generated_documents.all())
+
+        project_codes = [
+            batch_project.project.full_code
+            for batch_project in batch_projects
+            if batch_project.project_id and batch_project.project
+        ]
+
+        projects_count = len(batch_projects)
+        reviewed_count = sum(1 for item in batch_projects if item.is_reviewed)
+        in_progress_count = sum(1 for item in batch_projects if item.is_in_progress)
+        pending_count = max(projects_count - reviewed_count - in_progress_count, 0)
+        generated_count = len(generated_documents)
+        actual_generated_count = sum(1 for item in generated_documents if item.is_actual)
+        stale_generated_count = generated_count - actual_generated_count
+
+        in_progress_users = []
+        for item in batch_projects:
+            if item.is_in_progress and item.review_started_by:
+                user_name = _get_user_display_name(item.review_started_by)
+                if user_name and user_name not in in_progress_users:
+                    in_progress_users.append(user_name)
+
+        batch.project_codes = project_codes
+        batch.project_codes_preview = project_codes[:4]
+        batch.project_codes_more_count = max(len(project_codes) - len(batch.project_codes_preview), 0)
+        batch.project_codes_full = ", ".join(project_codes)
+        batch.project_codes_count = len(project_codes)
+        batch.projects_count = projects_count
+        batch.reviewed_projects_count = reviewed_count
+        batch.in_progress_projects_count = in_progress_count
+        batch.pending_projects_count = pending_count
+        batch.review_progress_percent = round((reviewed_count / projects_count) * 100) if projects_count else 0
+        batch.generated_documents_count = generated_count
+        batch.actual_generated_documents_count = actual_generated_count
+        batch.stale_generated_documents_count = stale_generated_count
+        batch.latest_generated_at = max(
+            [
+                document.generated_at
+                for document in generated_documents
+                if document.generated_at
+            ],
+            default=None,
+        )
+        batch.in_progress_user_names = in_progress_users
+        batch.generation_mode_label = batch.get_generation_mode_display()
+        batch.period_label = self._build_period_label(batch=batch)
+        batch.list_state_key, batch.list_state_label, batch.list_state_class, batch.list_state_icon = (
+            self._resolve_batch_list_state(batch=batch)
+        )
+        batch.primary_step = self._resolve_primary_step(batch=batch)
+        batch.primary_action_label = self._resolve_primary_action_label(batch=batch)
+
+    def _build_list_summary(self, *, batches: list[DocumentBatch]) -> dict:
+        return {
+            "total": len(batches),
+            "needs_review": sum(1 for batch in batches if batch.list_state_key == "needs_review"),
+            "in_progress": sum(1 for batch in batches if batch.list_state_key == "in_progress"),
+            "ready_to_generate": sum(1 for batch in batches if batch.list_state_key == "ready_to_generate"),
+            "generated": sum(1 for batch in batches if batch.list_state_key == "generated"),
+        }
+
+    def _resolve_batch_list_state(self, *, batch: DocumentBatch) -> tuple[str, str, str, str]:
+        if batch.generated_documents_count:
+            if batch.stale_generated_documents_count:
+                return "generated", "Файлы требуют обновления", "warning", "bi-exclamation-triangle"
+            return "generated", "Сформирован", "success", "bi-check2-circle"
+
+        if batch.projects_count and batch.reviewed_projects_count == batch.projects_count:
+            return "ready_to_generate", "Готов к генерации", "primary", "bi-gear"
+
+        if batch.in_progress_projects_count:
+            return "in_progress", "Проверяется", "warning", "bi-person-workspace"
+
+        return "needs_review", "Нужно проверить", "secondary", "bi-hourglass-split"
+
+    def _resolve_primary_step(self, *, batch: DocumentBatch) -> int:
+        if batch.list_state_key == "ready_to_generate":
+            return 3
+        return 2
+
+    def _resolve_primary_action_label(self, *, batch: DocumentBatch) -> str:
+        if batch.list_state_key == "generated":
+            return "Открыть файлы"
+        if batch.list_state_key == "ready_to_generate":
+            return "К генерации"
+        if batch.list_state_key == "in_progress":
+            return "Продолжить проверку"
+        return "Начать проверку"
+
+    def _build_period_label(self, *, batch: DocumentBatch) -> str:
+        if batch.selection_mode == DocumentBatchSelectionMode.RANGE:
+            if batch.month_from and batch.month_to:
+                return f"{batch.month_from} — {batch.month_to}"
+            return "Период не задан"
+
+        return "За весь период"
 
 
 class DocumentBatchCreateDraftView(LoginRequiredMixin, PermissionRequiredMixin, View):
