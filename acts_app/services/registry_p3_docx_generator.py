@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable
 
 from django.conf import settings
+from django.db.models import Q
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 
@@ -17,6 +18,7 @@ from acts_app.services.act_docx_context import build_projects_text
 from acts_app.services.act_docx_generator import DocxRenderError, get_act_docx_paths, replace_tokens
 from acts_app.services.date_format import fmt_date_g
 from acts_app.services.material_resolver import resolve_material_fields
+from directive_app.models import ActRole, Authorization
 
 
 # -------------------------
@@ -55,6 +57,94 @@ def _doc_no_with_sign(no: str) -> str:
 
 def _pick_registry_date(act: Act, registry: ActAttachment):
     return registry.doc_date or act.work_end_date or act.act_date
+
+
+def _registry_number_prefix(registry_type: str) -> str:
+    if registry_type == AttachmentType.MATERIALS_REGISTRY:
+        return "П-3"
+    return "Р"
+
+
+def _registry_template_name(*, registry_type: str, material_rows: Iterable["_MatRow"] | None = None) -> str:
+    if registry_type == AttachmentType.MATERIALS_REGISTRY:
+        rows = list(material_rows or [])
+        return "registry_material_concrete.docx" if _need_concrete_template(rows) else "registry_material_other.docx"
+    raise DocxRenderError(f"Неизвестный тип реестра: {registry_type}")
+
+
+def _registry_default_no(*, act: Act, registry_type: str) -> str:
+    return f"{_registry_number_prefix(registry_type)}.{act.number}"
+
+
+@dataclass(frozen=True)
+class _RegistrySigner:
+    organization: str
+    position: str
+    fio: str
+
+
+def _resolve_registry_signer(act: Act) -> _RegistrySigner:
+    """
+    Реестры подписывает представитель лица, выполнившего работы.
+    В модели акта эта сторона хранится как CONTRACTOR_REP.
+    """
+    party = (
+        act.parties.filter(role=ActRole.CONTRACTOR_REP, is_enabled=True)
+        .select_related("organization", "chosen_authorization")
+        .order_by("position", "id")
+        .first()
+    )
+    org = party.organization if (party and party.organization_id) else None
+    auth = None
+
+    if party and party.chosen_authorization_id:
+        auth = (
+            Authorization.objects.select_related("person")
+            .filter(id=party.chosen_authorization_id)
+            .first()
+        )
+
+    if auth is None and org and act.act_date:
+        auth = (
+            Authorization.objects.select_related("person")
+            .filter(organization_id=org.id, role=ActRole.CONTRACTOR_REP, is_active=True, valid_from__lte=act.act_date)
+            .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=act.act_date))
+            .order_by("-valid_from", "-created_at", "-id")
+            .first()
+        )
+
+    person = auth.person if auth else None
+    organization = (
+        _strip_trailing_commas(_safe_str(getattr(org, "full_name", "")))
+        or _strip_trailing_commas(_safe_str(getattr(org, "short_name", "")))
+    )
+    position = _strip_trailing_commas(_safe_str(getattr(auth, "position_text", "")))
+    fio = (
+        _safe_str(getattr(person, "short_name", ""))
+        or _safe_str(getattr(person, "full_name", ""))
+    )
+
+    return _RegistrySigner(organization=organization, position=position, fio=fio)
+
+
+def _safe_str(x) -> str:
+    return (str(x).strip() if x is not None else "")
+
+
+def _strip_trailing_commas(s: str) -> str:
+    s = (s or "").strip()
+    while s.endswith(","):
+        s = s[:-1].rstrip()
+    return s
+
+
+def _registry_signer_mapping(act: Act) -> dict[str, str]:
+    signer = _resolve_registry_signer(act)
+    return {
+        "registry_contractor_org_full": signer.organization,
+        "registry_signer_position": signer.position,
+        "registry_signer_fio": signer.fio,
+    }
 
 
 # -------------------------
@@ -298,7 +388,7 @@ def get_registry_p3_docx_paths(*, act: Act, registry: ActAttachment) -> list[Pat
     d = _pick_registry_date(act, registry)
     date_str = d.strftime("%d.%m.%Y") if d else "—"
 
-    reg_no = (registry.doc_no or f"П-3.{act.number}").strip()
+    reg_no = (registry.doc_no or _registry_default_no(act=act, registry_type=AttachmentType.MATERIALS_REGISTRY)).strip()
     file_name = _safe_filename(f"Реестр №{reg_no} от {date_str}") + ".docx"
 
     return [p.parent / file_name for p in act_paths]
@@ -309,7 +399,7 @@ def generate_registry_p3_docx_bytes(*, act: Act, registry: ActAttachment) -> byt
     if not rows:
         raise DocxRenderError("Нельзя собрать реестр П-3: в акте нет материалов.")
 
-    tpl_name = "registry_material_concrete.docx" if _need_concrete_template(rows) else "registry_material_other.docx"
+    tpl_name = _registry_template_name(registry_type=AttachmentType.MATERIALS_REGISTRY, material_rows=rows)
     template_path = Path(settings.DOCX_TEMPLATES_DIR) / tpl_name
     if not template_path.exists():
         raise DocxRenderError(f"Не найден DOCX-шаблон реестра П-3: {template_path}")
@@ -324,11 +414,12 @@ def generate_registry_p3_docx_bytes(*, act: Act, registry: ActAttachment) -> byt
         "projects_full_code": ", ".join(
             [(getattr(p, "full_code", "") or "").strip() or str(p).strip() for p in act.projects.all().order_by("id")]
         ).strip() or "—",
-        "registry_name": (registry.doc_no or f"П-3.{act.number}").strip(),
+        "registry_name": (registry.doc_no or _registry_default_no(act=act, registry_type=AttachmentType.MATERIALS_REGISTRY)).strip(),
         "registry_date": fmt_date_g(_pick_registry_date(act, registry)),
         "act_name": (act.number or "").strip(),
         "act_date": fmt_date_g(act.act_date),
     }
+    mapping.update(_registry_signer_mapping(act))
     replace_tokens(doc, mapping)
 
     if not doc.tables:
