@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% load static %}
 
 {% block title %}{{ page_title }}{% endblock %}
@@ -60,7 +60,7 @@
                                     name="q"
                                     value="{{ search_query }}"
                                     class="form-control"
-                                    placeholder="Поиск по full_code проекта, например: КЖ16 или Г0200"
+                                    placeholder="Поиск по шифру проекта, например: КЖ16 или Г0200"
                                 >
                             </div>
 
@@ -83,10 +83,10 @@
                                 <table class="table table-bordered table-hover align-middle batch-list-table">
                                     <thead>
                                         <tr>
-                                            <th style="width: 180px;">Дата создания</th>
-                                            <th style="min-width: 280px;">Наименование комплекта</th>
-                                            <th style="min-width: 320px;">Проекты</th>
-                                            <th style="width: 220px;">Действия</th>
+                                            <th style="width: 180px;">Дата</th>
+                                            <th style="min-width: 340px;">Наименование комплекта</th>
+                                            <th style="width: 220px;">Письмо с отметкой</th>
+                                            <th style="width: 220px;">Маркзамер</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -94,44 +94,16 @@
                                             <tr>
                                                 <td>
                                                     <div class="fw-semibold">{{ batch.created_at|date:"d.m.Y" }}</div>
-                                                    <div class="text-muted small">{{ batch.created_at|date:"H:i" }}</div>
+                                                    <div class="text-muted small">{{ batch.creator_initials }}</div>
                                                 </td>
 
                                                 <td>
-                                                    <div class="fw-semibold">
-                                                        <a href="{% url 'documents:id_handover_batch_detail' batch.id %}">
+                                                    <div class="fw-semibold mb-2">
+                                                        <a href="{% url 'documents:id_handover_batch_detail' batch.id %}" class="batch-title-link">
                                                             {{ batch.title|default:"Без названия" }}
                                                         </a>
                                                     </div>
 
-                                                    <div class="text-muted small mt-1">
-                                                        ID: {{ batch.id }}
-                                                        {% if batch.comment %}
-                                                            <span class="mx-1">•</span>
-                                                            {{ batch.comment|truncatechars:80 }}
-                                                        {% endif %}
-                                                    </div>
-                                                </td>
-
-                                                <td>
-                                                    {% if batch.project_codes %}
-                                                        <div
-                                                            class="batch-project-codes text-truncate"
-                                                            title="{{ batch.project_codes_full }}"
-                                                            data-bs-toggle="tooltip"
-                                                            data-bs-placement="top"
-                                                        >
-                                                            {{ batch.project_codes_full }}
-                                                        </div>
-                                                        <div class="text-muted small mt-1">
-                                                            Проектов: {{ batch.project_codes_count }}
-                                                        </div>
-                                                    {% else %}
-                                                        <span class="text-muted">Нет проектов</span>
-                                                    {% endif %}
-                                                </td>
-
-                                                <td>
                                                     <div class="d-flex gap-2 flex-wrap">
                                                         {% if user.is_superuser or perms.documents_app.view_documentbatch %}
                                                             <a href="{% url 'documents:id_handover_batch_detail' batch.id %}"
@@ -143,10 +115,43 @@
                                                         {% if user.is_superuser or perms.documents_app.view_documentbatch %}
                                                             <a href="{% url 'documents:id_handover_batch_master' batch.id %}"
                                                                class="btn btn-sm btn-outline-secondary">
-                                                                Master-view
+                                                                Редактор
                                                             </a>
                                                         {% endif %}
                                                     </div>
+                                                </td>
+
+                                                <td>
+                                                    {% if batch.stamped_letter_attachment %}
+                                                        <div class="mb-2">
+                                                            <span class="badge text-bg-success-subtle text-success-emphasis border border-success-subtle">
+                                                                Загружено
+                                                            </span>
+                                                        </div>
+                                                        <a href="{% url 'documents:batch_attachment_open' batch.stamped_letter_attachment.id %}"
+                                                           class="btn btn-sm btn-outline-primary">
+                                                            Открыть PDF
+                                                        </a>
+                                                    {% else %}
+                                                        <div class="text-muted small mb-2">Не загружено</div>
+                                                        <span class="badge text-bg-light border">Ожидается PDF</span>
+                                                    {% endif %}
+                                                </td>
+
+                                                <td>
+                                                    {% if batch.marksurvey_attachments_count %}
+                                                        <div class="mb-2">
+                                                            <span class="badge text-bg-success-subtle text-success-emphasis border border-success-subtle">
+                                                                Загружено: {{ batch.marksurvey_attachments_count }}
+                                                            </span>
+                                                        </div>
+                                                    {% else %}
+                                                        <div class="text-muted small mb-2">Не загружено</div>
+                                                    {% endif %}
+
+                                                    <span class="badge text-bg-light border">
+                                                        PDF: {{ batch.marksurvey_attachments_count }}
+                                                    </span>
                                                 </td>
                                             </tr>
                                         {% endfor %}
@@ -171,21 +176,14 @@
             vertical-align: middle;
         }
 
-        .batch-project-codes {
-            max-width: 100%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        .batch-title-link {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .batch-title-link:hover {
+            text-decoration: underline;
         }
     </style>
-
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            tooltipTriggerList.forEach(function (tooltipTriggerEl) {
-                new bootstrap.Tooltip(tooltipTriggerEl);
-            });
-        });
-    </script>
 
 {% endblock %}

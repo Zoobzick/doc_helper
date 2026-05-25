@@ -1,4 +1,4 @@
-# documents_app/models.py
+﻿# documents_app/models.py
 from __future__ import annotations
 from django.db import models
 
@@ -180,6 +180,28 @@ def batch_document_upload_to(instance, filename):
     )
     return relative_path.as_posix()
 
+
+def batch_attachment_upload_to(instance, filename):
+    """
+    Путь хранения пользовательских вложений комплекта.
+    """
+    extension = Path(filename).suffix.lower()
+
+    documents_root_relative = Path(settings.DOCUMENTS_DIR).relative_to(settings.MEDIA_ROOT)
+    month_folder = _get_batch_month_folder(instance.batch)
+    batch_folder = _get_batch_title_folder(instance.batch)
+
+    relative_path = (
+        documents_root_relative
+        / "Комплекты"
+        / month_folder
+        / batch_folder
+        / "Вложения"
+        / _sanitize_path_part(instance.attachment_type)
+        / f"{instance.uuid}{extension}"
+    )
+    return relative_path.as_posix()
+
 class DocumentBatchSelectionMode(models.TextChoices):
     ALL_TIME = "all_time", "За весь период"
     RANGE = "range", "За период"
@@ -231,6 +253,11 @@ class GeneratedDocumentType(models.TextChoices):
 class GeneratedDocumentSourceKind(models.TextChoices):
     GENERATED = "generated", "Сгенерирован"
     UPLOADED = "uploaded", "Загружен"
+
+
+class BatchAttachmentType(models.TextChoices):
+    STAMPED_LETTER_PDF = "stamped_letter_pdf", "Письмо с отметкой PDF"
+    MARKSURVEY_PDF = "marksurvey_pdf", "Маркзамер PDF"
 
 
 class DocumentBatch(models.Model):
@@ -852,3 +879,82 @@ class GeneratedDocument(models.Model):
                     "file": f"Для типа '{self.get_document_type_display()}' допустимы только файлы: {allowed_text}",
                 }
             )
+
+
+class BatchAttachment(models.Model):
+    """
+    Пользовательское вложение к комплекту.
+
+    Используется для:
+    - письма с отметкой (один PDF на комплект)
+    - маркзамеров (один и более PDF на комплект)
+    """
+
+    uuid = models.UUIDField(
+        unique=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name="UUID",
+    )
+    batch = models.ForeignKey(
+        DocumentBatch,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        verbose_name="Комплект",
+    )
+    attachment_type = models.CharField(
+        max_length=30,
+        choices=BatchAttachmentType.choices,
+        verbose_name="Тип вложения",
+    )
+    file = models.FileField(
+        upload_to=batch_attachment_upload_to,
+        verbose_name="Файл",
+        max_length=500,
+    )
+    original_name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Исходное имя файла",
+    )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="uploaded_batch_attachments",
+        verbose_name="Загрузил",
+    )
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата загрузки",
+    )
+
+    class Meta:
+        verbose_name = "Пользовательское вложение комплекта"
+        verbose_name_plural = "Пользовательские вложения комплектов"
+        ordering = ("attachment_type", "-uploaded_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("batch", "attachment_type"),
+                condition=Q(attachment_type=BatchAttachmentType.STAMPED_LETTER_PDF),
+                name="uniq_batch_single_stamped_letter_attachment",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.get_attachment_type_display()} / batch #{self.batch_id}"
+
+    def clean(self):
+        super().clean()
+
+        if not self.file:
+            return
+
+        extension = Path(self.file.name).suffix.lower()
+        if extension != ".pdf":
+            raise ValidationError({"file": "Разрешена загрузка только PDF-файлов."})
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.original_name:
+            self.original_name = os.path.basename(self.file.name)
+        super().save(*args, **kwargs)
+

@@ -22,8 +22,10 @@ from django.views.generic import DetailView, TemplateView
 from acts_app.models import Act, ActAppendixLine, AttachmentType
 from acts_app.services.date_format import fmt_date_range_g
 from acts_app.services.material_resolver import resolve_material_fields
-from documents_app.forms import BoxLabelForm, DocumentBatchMasterForm
+from documents_app.forms import BatchAttachmentUploadForm, BoxLabelForm, DocumentBatchMasterForm
 from documents_app.models import (
+    BatchAttachment,
+    BatchAttachmentType,
     DocumentBatch,
     DocumentBatchAct,
     DocumentBatchActReviewNote,
@@ -714,6 +716,103 @@ class GeneratedDocumentOpenView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         )
 
 
+class BatchAttachmentOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.view_documentbatch"
+    raise_exception = True
+
+    def get(self, request, attachment_id: int):
+        attachment = get_object_or_404(
+            BatchAttachment.objects.select_related("batch"),
+            pk=attachment_id,
+        )
+
+        if not attachment.file:
+            raise Http404("Файл вложения отсутствует.")
+
+        try:
+            file_path = Path(attachment.file.path)
+        except Exception as exc:
+            raise Http404("Не удалось получить путь к файлу вложения.") from exc
+
+        if not file_path.exists():
+            raise Http404("Файл вложения не найден.")
+
+        content_type, _ = mimetypes.guess_type(file_path.name)
+        return FileResponse(
+            file_path.open("rb"),
+            content_type=content_type or "application/octet-stream",
+            as_attachment=False,
+        )
+
+
+class BatchAttachmentUploadView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.change_documentbatch"
+    raise_exception = True
+
+    def post(self, request, *args, **kwargs):
+        batch = get_object_or_404(DocumentBatch, pk=kwargs["batch_id"])
+        form = BatchAttachmentUploadForm(request.POST, request.FILES)
+
+        if not form.is_valid():
+            messages.error(request, form.errors.as_text())
+            return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
+
+        attachment_type = form.cleaned_data["attachment_type"]
+        uploaded_file = form.cleaned_data["file"]
+
+        if attachment_type == BatchAttachmentType.STAMPED_LETTER_PDF:
+            attachment, _created = BatchAttachment.objects.get_or_create(
+                batch=batch,
+                attachment_type=attachment_type,
+                defaults={"uploaded_by": request.user},
+            )
+
+            if attachment.file:
+                attachment.file.delete(save=False)
+
+            attachment.file = uploaded_file
+            attachment.original_name = uploaded_file.name
+            attachment.uploaded_by = request.user
+            attachment.uploaded_at = timezone.now()
+            attachment.full_clean()
+            attachment.save()
+            messages.success(request, "Письмо с отметкой загружено.")
+        else:
+            attachment = BatchAttachment(
+                batch=batch,
+                attachment_type=attachment_type,
+                file=uploaded_file,
+                original_name=uploaded_file.name,
+                uploaded_by=request.user,
+            )
+            attachment.full_clean()
+            attachment.save()
+            messages.success(request, "Маркзамер загружен.")
+
+        return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
+
+
+class BatchAttachmentDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.change_documentbatch"
+    raise_exception = True
+
+    def post(self, request, *args, **kwargs):
+        attachment = get_object_or_404(BatchAttachment, pk=kwargs["attachment_id"])
+        batch_id = attachment.batch_id
+
+        attachment_type = attachment.attachment_type
+        if attachment.file:
+            attachment.file.delete(save=False)
+        attachment.delete()
+
+        if attachment_type == BatchAttachmentType.STAMPED_LETTER_PDF:
+            messages.success(request, "Письмо с отметкой удалено.")
+        else:
+            messages.success(request, "Маркзамер удалён.")
+
+        return redirect("documents:id_handover_batch_detail", batch_id=batch_id)
+
+
 class DocumentBatchMasterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = "documents_app/id_handover/batch_master.html"
     raise_exception = True
@@ -839,12 +938,24 @@ class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, Templat
             .select_related("project")
             .order_by("order", "id")
         )
+        batch_documents_qs = (
+            GeneratedDocument.objects
+            .filter(project__isnull=True)
+            .order_by("document_type", "-id")
+        )
+        batch_attachments_qs = (
+            BatchAttachment.objects
+            .select_related("uploaded_by")
+            .order_by("attachment_type", "-uploaded_at", "-id")
+        )
 
         batches_qs = (
             DocumentBatch.objects
             .select_related("created_by")
             .prefetch_related(
-                Prefetch("batch_projects", queryset=batch_projects_qs)
+                Prefetch("batch_projects", queryset=batch_projects_qs),
+                Prefetch("generated_documents", queryset=batch_documents_qs),
+                Prefetch("attachments", queryset=batch_attachments_qs),
             )
             .order_by("-created_at", "-id")
         )
@@ -868,12 +979,46 @@ class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, Templat
             batch.project_codes = project_codes
             batch.project_codes_full = ", ".join(project_codes)
             batch.project_codes_count = len(project_codes)
+            batch.creator_initials = self._build_user_initials(batch.created_by)
+
+            stamped_letter_attachment = None
+            marksurvey_attachments = []
+            for attachment in batch.attachments.all():
+                if attachment.attachment_type == BatchAttachmentType.STAMPED_LETTER_PDF:
+                    stamped_letter_attachment = attachment
+                elif attachment.attachment_type == BatchAttachmentType.MARKSURVEY_PDF:
+                    marksurvey_attachments.append(attachment)
+
+            batch.stamped_letter_attachment = stamped_letter_attachment
+            batch.marksurvey_attachments_count = len(marksurvey_attachments)
 
         context["page_title"] = "Комплекты документов"
         context["batches"] = batches
         context["search_query"] = query
         context["total_count"] = len(batches)
         return context
+
+    @staticmethod
+    def _build_user_initials(user) -> str:
+        first_name = (getattr(user, "first_name", "") or "").strip()
+        last_name = (getattr(user, "last_name", "") or "").strip()
+
+        if first_name or last_name:
+            parts = [part for part in [last_name, first_name] if part]
+            initials = "".join(f"{part[0].upper()}." for part in parts[1:2])
+            if last_name:
+                return f"{last_name} {initials}".strip()
+            return first_name
+
+        username = (getattr(user, "username", "") or "").strip()
+        if username:
+            return username
+
+        email = (getattr(user, "email", "") or "").strip()
+        if email:
+            return email.split("@", 1)[0]
+
+        return "—"
 
 
 class DocumentBatchCreateDraftView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -1814,9 +1959,19 @@ class DocumentBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
 
         preview_data = self._build_preview_safe(batch=batch)
         generated_documents = self._get_generated_documents(batch=batch)
+        attachments = self._get_batch_attachments(batch=batch)
 
         context["preview_data"] = preview_data
         context["generated_documents"] = generated_documents
+        context["attachments"] = attachments
+        context["stamped_letter_attachment"] = attachments["stamped_letter_attachment"]
+        context["marksurvey_attachments"] = attachments["marksurvey_attachments"]
+        context["stamped_letter_upload_form"] = BatchAttachmentUploadForm(
+            initial={"attachment_type": BatchAttachmentType.STAMPED_LETTER_PDF}
+        )
+        context["marksurvey_upload_form"] = BatchAttachmentUploadForm(
+            initial={"attachment_type": BatchAttachmentType.MARKSURVEY_PDF}
+        )
         context["page_title"] = f"Комплект ИД: {batch.title}"
         return context
 
@@ -1853,6 +2008,28 @@ class DocumentBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
             document.calculated_is_actual = actuality_map.get(document.id, document.is_actual)
 
         return documents
+
+    def _get_batch_attachments(self, *, batch: DocumentBatch) -> dict:
+        attachments = list(
+            BatchAttachment.objects.select_related("uploaded_by")
+            .filter(batch=batch)
+            .order_by("attachment_type", "-uploaded_at", "-id")
+        )
+
+        stamped_letter_attachment = None
+        marksurvey_attachments = []
+
+        for attachment in attachments:
+            if attachment.attachment_type == BatchAttachmentType.STAMPED_LETTER_PDF:
+                stamped_letter_attachment = attachment
+            elif attachment.attachment_type == BatchAttachmentType.MARKSURVEY_PDF:
+                marksurvey_attachments.append(attachment)
+
+        return {
+            "all": attachments,
+            "stamped_letter_attachment": stamped_letter_attachment,
+            "marksurvey_attachments": marksurvey_attachments,
+        }
 
 
 class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, View):

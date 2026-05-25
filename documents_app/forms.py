@@ -1,8 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from django import forms
 
 from documents_app.models import (
+    BatchAttachmentType,
     DocumentBatchDocumentationType,
     DocumentBatchGenerationMode,
     DocumentBatchLetterType,
@@ -21,7 +22,7 @@ class BoxLabelForm(forms.Form):
     exec_ids = forms.CharField(required=False)
     work_ids = forms.CharField(required=False)
 
-    # выбранный этап из dropdown
+    # РІС‹Р±СЂР°РЅРЅС‹Р№ СЌС‚Р°Рї РёР· dropdown
     stage_id = forms.IntegerField(required=False)
 
     def clean_exec_ids(self) -> list[int]:
@@ -37,7 +38,7 @@ class BoxLabelForm(forms.Form):
         work_ids = cleaned.get("work_ids") or []
 
         if not exec_ids and not work_ids:
-            raise forms.ValidationError("Не выбраны проекты (ни ИД, ни РД).")
+            raise forms.ValidationError("РќРµ РІС‹Р±СЂР°РЅС‹ РїСЂРѕРµРєС‚С‹ (РЅРё РР”, РЅРё Р Р”).")
 
         return cleaned
 
@@ -45,29 +46,29 @@ class BoxLabelForm(forms.Form):
 class DocumentBatchMasterForm(forms.Form):
     title = forms.CharField(
         required=False,
-        label="Название комплекта",
+        label="РќР°Р·РІР°РЅРёРµ РєРѕРјРїР»РµРєС‚Р°",
         widget=forms.TextInput(
             attrs={
                 "class": "form-control",
-                "placeholder": "Например: Комплект ИД за март 2026",
+                "placeholder": "РќР°РїСЂРёРјРµСЂ: РљРѕРјРїР»РµРєС‚ РР” Р·Р° РјР°СЂС‚ 2026",
             }
         ),
     )
 
     comment = forms.CharField(
         required=False,
-        label="Комментарий",
+        label="РљРѕРјРјРµРЅС‚Р°СЂРёР№",
         widget=forms.Textarea(
             attrs={
                 "class": "form-control",
                 "rows": 3,
-                "placeholder": "Необязательный комментарий",
+                "placeholder": "РќРµРѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№ РєРѕРјРјРµРЅС‚Р°СЂРёР№",
             }
         ),
     )
 
     selection_mode = forms.ChoiceField(
-        label="Режим отбора",
+        label="Р РµР¶РёРј РѕС‚Р±РѕСЂР°",
         choices=DocumentBatchSelectionMode.choices,
         initial=DocumentBatchSelectionMode.ALL_TIME,
         widget=forms.RadioSelect,
@@ -75,7 +76,7 @@ class DocumentBatchMasterForm(forms.Form):
 
     month_from = forms.CharField(
         required=False,
-        label="Месяц от",
+        label="РњРµСЃСЏС† РѕС‚",
         widget=forms.TextInput(
             attrs={
                 "class": "form-control",
@@ -86,7 +87,7 @@ class DocumentBatchMasterForm(forms.Form):
 
     month_to = forms.CharField(
         required=False,
-        label="Месяц до",
+        label="РњРµСЃСЏС† РґРѕ",
         widget=forms.TextInput(
             attrs={
                 "class": "form-control",
@@ -96,14 +97,14 @@ class DocumentBatchMasterForm(forms.Form):
     )
 
     generation_mode = forms.ChoiceField(
-        label="Что сформировать",
+        label="Р§С‚Рѕ СЃС„РѕСЂРјРёСЂРѕРІР°С‚СЊ",
         choices=DocumentBatchGenerationMode.choices,
         initial=DocumentBatchGenerationMode.FULL_SET,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
     letter_type = forms.ChoiceField(
-        label="Тип письма",
+        label="РўРёРї РїРёСЃСЊРјР°",
         choices=DocumentBatchLetterType.choices,
         initial=DocumentBatchLetterType.FOR_EXECUTION,
         widget=forms.Select(attrs={"class": "form-select"}),
@@ -111,18 +112,18 @@ class DocumentBatchMasterForm(forms.Form):
 
     letter_number = forms.CharField(
         required=False,
-        label="Номер письма",
+        label="РќРѕРјРµСЂ РїРёСЃСЊРјР°",
         widget=forms.TextInput(
             attrs={
                 "class": "form-control",
-                "placeholder": "Например: 15/ИД-2026",
+                "placeholder": "РќР°РїСЂРёРјРµСЂ: 15/РР”-2026",
             }
         ),
     )
 
     letter_date = forms.DateField(
         required=False,
-        label="Дата письма",
+        label="Р”Р°С‚Р° РїРёСЃСЊРјР°",
         widget=forms.DateInput(
             format="%Y-%m-%d",
             attrs={
@@ -134,14 +135,14 @@ class DocumentBatchMasterForm(forms.Form):
     )
 
     documentation_type = forms.ChoiceField(
-        label="Тип документации",
+        label="РўРёРї РґРѕРєСѓРјРµРЅС‚Р°С†РёРё",
         choices=DocumentBatchDocumentationType.choices,
         initial=DocumentBatchDocumentationType.ID,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
     project_scope = forms.ChoiceField(
-        label="Выбор шифров",
+        label="Р’С‹Р±РѕСЂ С€РёС„СЂРѕРІ",
         choices=DocumentBatchProjectScope.choices,
         initial=DocumentBatchProjectScope.AUTO_BY_PERIOD,
         widget=forms.RadioSelect,
@@ -149,14 +150,14 @@ class DocumentBatchMasterForm(forms.Form):
 
     one_project = forms.ModelChoiceField(
         required=False,
-        label="Проект",
+        label="РџСЂРѕРµРєС‚",
         queryset=Project.objects.none(),
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
     multiple_projects = forms.ModelMultipleChoiceField(
         required=False,
-        label="Проекты",
+        label="РџСЂРѕРµРєС‚С‹",
         queryset=Project.objects.none(),
         widget=forms.SelectMultiple(
             attrs={
@@ -203,9 +204,9 @@ class DocumentBatchMasterForm(forms.Form):
 
         if selection_mode == DocumentBatchSelectionMode.RANGE:
             if not month_from:
-                self.add_error("month_from", "Заполните начальный месяц периода.")
+                self.add_error("month_from", "Р—Р°РїРѕР»РЅРёС‚Рµ РЅР°С‡Р°Р»СЊРЅС‹Р№ РјРµСЃСЏС† РїРµСЂРёРѕРґР°.")
             if not month_to:
-                self.add_error("month_to", "Заполните конечный месяц периода.")
+                self.add_error("month_to", "Р—Р°РїРѕР»РЅРёС‚Рµ РєРѕРЅРµС‡РЅС‹Р№ РјРµСЃСЏС† РїРµСЂРёРѕРґР°.")
         else:
             cleaned["month_from"] = ""
             cleaned["month_to"] = ""
@@ -217,9 +218,9 @@ class DocumentBatchMasterForm(forms.Form):
 
         if needs_letter_fields:
             if not letter_number:
-                self.add_error("letter_number", "Для выбранного режима нужен номер письма.")
+                self.add_error("letter_number", "Р”Р»СЏ РІС‹Р±СЂР°РЅРЅРѕРіРѕ СЂРµР¶РёРјР° РЅСѓР¶РµРЅ РЅРѕРјРµСЂ РїРёСЃСЊРјР°.")
             if not letter_date:
-                self.add_error("letter_date", "Для выбранного режима нужна дата письма.")
+                self.add_error("letter_date", "Р”Р»СЏ РІС‹Р±СЂР°РЅРЅРѕРіРѕ СЂРµР¶РёРјР° РЅСѓР¶РЅР° РґР°С‚Р° РїРёСЃСЊРјР°.")
         else:
             cleaned["letter_number"] = ""
             cleaned["letter_date"] = None
@@ -228,13 +229,13 @@ class DocumentBatchMasterForm(forms.Form):
 
         if project_scope == DocumentBatchProjectScope.ONE_PROJECT:
             if not one_project:
-                self.add_error("one_project", "Выберите один проект.")
+                self.add_error("one_project", "Р’С‹Р±РµСЂРёС‚Рµ РѕРґРёРЅ РїСЂРѕРµРєС‚.")
             else:
                 selected_project_ids = [one_project.id]
 
         elif project_scope == DocumentBatchProjectScope.MULTI_PROJECT:
             if not multiple_projects:
-                self.add_error("multiple_projects", "Выберите хотя бы один проект.")
+                self.add_error("multiple_projects", "Р’С‹Р±РµСЂРёС‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ РїСЂРѕРµРєС‚.")
             else:
                 selected_project_ids = [project.id for project in multiple_projects]
 
@@ -257,3 +258,26 @@ def _parse_csv_ids(value: str) -> list[int]:
             continue
         out.append(int(part))
     return out
+
+
+class BatchAttachmentUploadForm(forms.Form):
+    attachment_type = forms.ChoiceField(
+        choices=BatchAttachmentType.choices,
+        widget=forms.HiddenInput(),
+    )
+    file = forms.FileField(
+        label="PDF-файл",
+        widget=forms.ClearableFileInput(
+            attrs={
+                "class": "form-control",
+                "accept": ".pdf,application/pdf",
+            }
+        ),
+    )
+
+    def clean_file(self):
+        uploaded_file = self.cleaned_data["file"]
+        name = (uploaded_file.name or "").lower()
+        if not name.endswith(".pdf"):
+            raise forms.ValidationError("Разрешена загрузка только PDF-файлов.")
+        return uploaded_file
