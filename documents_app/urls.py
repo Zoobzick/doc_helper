@@ -51,12 +51,12 @@ urlpatterns = [
         name="title_sheet_open",
     ),
     path(
-        "generated-documents/<int:document_id>/open/",
+        "generated-documents/<uuid:document_uuid>/open/",
         GeneratedDocumentOpenView.as_view(),
         name="generated_document_open",
     ),
     path(
-        "batch-attachments/<int:attachment_id>/open/",
+        "batch-attachments/<uuid:attachment_uuid>/open/",
         BatchAttachmentOpenView.as_view(),
         name="batch_attachment_open",
     ),
@@ -159,7 +159,7 @@ urlpatterns = [
         name="id_handover_batch_attachment_upload",
     ),
     path(
-        "id-handover/batches/<int:batch_id>/attachments/<int:attachment_id>/delete/",
+        "id-handover/batches/<int:batch_id>/attachments/<uuid:attachment_uuid>/delete/",
         BatchAttachmentDeleteView.as_view(),
         name="id_handover_batch_attachment_delete",
     ),

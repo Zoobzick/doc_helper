@@ -291,7 +291,9 @@ class LetterGenerationService:
         else:
             letter_date_str = "без_даты"
 
-        return f"Письмо №{letter_number} от {letter_date_str}.docx"
+        batch_title = self._sanitize_filename_part((batch.title or "").strip())
+        title_part = f" ({batch_title})" if batch_title else ""
+        return f"Письмо №{letter_number} от {letter_date_str}{title_part}.docx"
 
     def _build_pdf_output_filename(self, *, batch: DocumentBatch) -> str:
         letter_number = self._sanitize_filename_part((batch.letter_number or "").strip())
@@ -303,7 +305,9 @@ class LetterGenerationService:
         else:
             letter_date_str = "без_даты"
 
-        return f"Письмо №{letter_number} от {letter_date_str}.pdf"
+        batch_title = self._sanitize_filename_part((batch.title or "").strip())
+        title_part = f" ({batch_title})" if batch_title else ""
+        return f"Письмо №{letter_number} от {letter_date_str}{title_part}.pdf"
 
     @staticmethod
     def _sanitize_filename_part(value: str) -> str:

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import mimetypes
+import re
 from pathlib import Path
 
 from django.conf import settings
@@ -35,6 +36,7 @@ from documents_app.models import (
     DocumentBatchProjectScope,
     DocumentBatchSelectionMode,
     GeneratedDocument,
+    GeneratedDocumentType,
     TitleSheet,
 )
 from documents_app.services.box_label_docx import render_box_label_docx
@@ -242,6 +244,92 @@ def _get_user_display_name(user) -> str:
     if hasattr(user, "get_full_name"):
         display_name = (user.get_full_name() or "").strip()
     return display_name or getattr(user, "username", "") or str(user)
+
+
+def _natural_sort_key(value: str) -> list:
+    parts = re.split(r"(\d+)", value)
+    return [int(part) if part.isdigit() else part.casefold() for part in parts]
+
+
+def _build_generated_document_download_name(*, generated_document: GeneratedDocument, file_path: Path) -> str:
+    extension = file_path.suffix.lower()
+    document_type = generated_document.document_type
+
+    if document_type in {
+        GeneratedDocumentType.LETTER_DOCX,
+        GeneratedDocumentType.LETTER_PREVIEW_PDF,
+    }:
+        return _build_letter_download_name(batch=generated_document.batch, extension=extension)
+
+    if document_type in {
+        GeneratedDocumentType.REGISTRY_XLSX,
+        GeneratedDocumentType.REGISTRY_PREVIEW_PDF,
+    } and generated_document.project_id:
+        return _build_registry_download_name(
+            batch=generated_document.batch,
+            project=generated_document.project,
+            extension=extension,
+        )
+
+    return generated_document.original_name or file_path.name
+
+
+def _build_batch_attachment_download_name(*, attachment: BatchAttachment, file_path: Path) -> str:
+    extension = file_path.suffix.lower() or ".pdf"
+
+    if attachment.attachment_type == BatchAttachmentType.STAMPED_LETTER_PDF:
+        return _build_stamped_letter_download_name(batch=attachment.batch, extension=extension)
+
+    if attachment.attachment_type == BatchAttachmentType.MARKSURVEY_PDF:
+        return _build_marksurvey_download_name(batch=attachment.batch, extension=extension)
+
+    return attachment.original_name or file_path.name
+
+
+def _build_letter_download_name(*, batch: DocumentBatch, extension: str) -> str:
+    letter_number = _sanitize_download_filename_part((batch.letter_number or "").strip()) or f"batch_{batch.id}"
+    letter_date = batch.letter_date.strftime("%d.%m.%Y") if batch.letter_date else "без_даты"
+    batch_title = _sanitize_download_filename_part((batch.title or "").strip())
+    title_part = f" ({batch_title})" if batch_title else ""
+    return f"Письмо №{letter_number} от {letter_date}{title_part}{extension}"
+
+
+def _build_stamped_letter_download_name(*, batch: DocumentBatch, extension: str) -> str:
+    letter_number = _sanitize_download_filename_part((batch.letter_number or "").strip()) or f"batch_{batch.id}"
+    letter_date = batch.letter_date.strftime("%d.%m.%Y") if batch.letter_date else "без_даты"
+    batch_title = _sanitize_download_filename_part((batch.title or "").strip())
+    title_part = f" ({batch_title}, с отметкой)" if batch_title else " (с отметкой)"
+    return f"Письмо №{letter_number} от {letter_date}{title_part}{extension}"
+
+
+def _build_marksurvey_download_name(*, batch: DocumentBatch, extension: str) -> str:
+    batch_title = _sanitize_download_filename_part((batch.title or "").strip()) or f"batch_{batch.id}"
+    return f"Маркзамер ({batch_title}, с отметкой){extension}"
+
+
+def _build_registry_download_name(*, batch: DocumentBatch, project, extension: str) -> str:
+    project_code = _sanitize_download_filename_part((getattr(project, "full_code", "") or "").strip())
+    if not project_code:
+        project_code = f"project_{getattr(project, 'id', 'unknown')}"
+
+    batch_title = _sanitize_download_filename_part((batch.title or "").strip())
+    title_part = f" ({batch_title})" if batch_title else ""
+    return f"{_build_registry_download_label(batch=batch)} {project_code}{title_part}{extension}"
+
+
+def _build_registry_download_label(*, batch: DocumentBatch) -> str:
+    if batch.documentation_type == "RD":
+        return "Реестр РД"
+    if batch.documentation_type == "ID_RD":
+        return "Реестр ИД-РД"
+    return "Реестр ИД"
+
+
+def _sanitize_download_filename_part(value: str) -> str:
+    invalid_chars = '<>:"/\\|?*'
+    cleaned = "".join("_" if ch in invalid_chars else ch for ch in value)
+    cleaned = cleaned.strip().strip(".")
+    return cleaned
 
 
 def _get_review_notes_by_batch_act_id(*, batch_act_ids: list[int]) -> dict[int, list[DocumentBatchActReviewNote]]:
@@ -691,10 +779,10 @@ class GeneratedDocumentOpenView(LoginRequiredMixin, PermissionRequiredMixin, Vie
     permission_required = "documents_app.view_documentbatch"
     raise_exception = True
 
-    def get(self, request, document_id: int):
+    def get(self, request, document_uuid):
         generated_document = get_object_or_404(
             GeneratedDocument.objects.select_related("batch", "project"),
-            pk=document_id,
+            uuid=document_uuid,
         )
 
         if not generated_document.file:
@@ -713,6 +801,10 @@ class GeneratedDocumentOpenView(LoginRequiredMixin, PermissionRequiredMixin, Vie
             file_path.open("rb"),
             content_type=content_type or "application/octet-stream",
             as_attachment=False,
+            filename=_build_generated_document_download_name(
+                generated_document=generated_document,
+                file_path=file_path,
+            ),
         )
 
 
@@ -720,10 +812,10 @@ class BatchAttachmentOpenView(LoginRequiredMixin, PermissionRequiredMixin, View)
     permission_required = "documents_app.view_documentbatch"
     raise_exception = True
 
-    def get(self, request, attachment_id: int):
+    def get(self, request, attachment_uuid):
         attachment = get_object_or_404(
             BatchAttachment.objects.select_related("batch"),
-            pk=attachment_id,
+            uuid=attachment_uuid,
         )
 
         if not attachment.file:
@@ -741,7 +833,11 @@ class BatchAttachmentOpenView(LoginRequiredMixin, PermissionRequiredMixin, View)
         return FileResponse(
             file_path.open("rb"),
             content_type=content_type or "application/pdf",
-            as_attachment=False,
+            as_attachment=(request.GET.get("download") == "1"),
+            filename=_build_batch_attachment_download_name(
+                attachment=attachment,
+                file_path=file_path,
+            ),
         )
 
 
@@ -771,7 +867,10 @@ class BatchAttachmentUploadView(LoginRequiredMixin, PermissionRequiredMixin, Vie
                 attachment.file.delete(save=False)
 
             attachment.file = uploaded_file
-            attachment.original_name = uploaded_file.name
+            attachment.original_name = _build_stamped_letter_download_name(
+                batch=batch,
+                extension=Path(uploaded_file.name).suffix.lower() or ".pdf",
+            )
             attachment.uploaded_by = request.user
             attachment.uploaded_at = timezone.now()
             attachment.full_clean()
@@ -782,7 +881,10 @@ class BatchAttachmentUploadView(LoginRequiredMixin, PermissionRequiredMixin, Vie
                 batch=batch,
                 attachment_type=attachment_type,
                 file=uploaded_file,
-                original_name=uploaded_file.name,
+                original_name=_build_marksurvey_download_name(
+                    batch=batch,
+                    extension=Path(uploaded_file.name).suffix.lower() or ".pdf",
+                ),
                 uploaded_by=request.user,
             )
             attachment.full_clean()
@@ -799,7 +901,7 @@ class BatchAttachmentDeleteView(LoginRequiredMixin, PermissionRequiredMixin, Vie
     def post(self, request, *args, **kwargs):
         attachment = get_object_or_404(
             BatchAttachment,
-            pk=kwargs["attachment_id"],
+            uuid=kwargs["attachment_uuid"],
             batch_id=kwargs["batch_id"],
         )
         batch_id = attachment.batch_id
@@ -2069,7 +2171,12 @@ class DocumentBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
     def _build_preview_safe(self, *, batch: DocumentBatch) -> dict | None:
         builder = DocumentBatchPreviewBuilder()
         try:
-            return builder.build(batch=batch)
+            preview_data = builder.build(batch=batch)
+            preview_data["projects"] = sorted(
+                preview_data.get("projects", []),
+                key=lambda project_payload: _natural_sort_key(project_payload.get("project_code") or ""),
+            )
+            return preview_data
         except DocumentBatchPreviewBuilderError as exc:
             messages.warning(
                 self.request,

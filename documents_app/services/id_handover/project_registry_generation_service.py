@@ -297,7 +297,10 @@ class ProjectRegistryGenerationService:
     ) -> str:
         project_code = (getattr(project, "full_code", "") or "").strip()
         safe_project_code = self._sanitize_filename_part(project_code) or f"project_{project.id}"
-        return f"Реестр ИД {safe_project_code} batch_{batch.id}.xlsx"
+        registry_label = self._build_registry_filename_label(batch=batch)
+        batch_title = self._sanitize_filename_part((batch.title or "").strip())
+        title_part = f" ({batch_title})" if batch_title else ""
+        return f"{registry_label} {safe_project_code}{title_part}.xlsx"
 
     def _build_pdf_output_filename(
         self,
@@ -307,7 +310,18 @@ class ProjectRegistryGenerationService:
     ) -> str:
         project_code = (getattr(project, "full_code", "") or "").strip()
         safe_project_code = self._sanitize_filename_part(project_code) or f"project_{project.id}"
-        return f"Реестр ИД {safe_project_code} batch_{batch.id}.pdf"
+        registry_label = self._build_registry_filename_label(batch=batch)
+        batch_title = self._sanitize_filename_part((batch.title or "").strip())
+        title_part = f" ({batch_title})" if batch_title else ""
+        return f"{registry_label} {safe_project_code}{title_part}.pdf"
+
+    @staticmethod
+    def _build_registry_filename_label(*, batch: DocumentBatch) -> str:
+        if batch.documentation_type == "RD":
+            return "Реестр РД"
+        if batch.documentation_type == "ID_RD":
+            return "Реестр ИД-РД"
+        return "Реестр ИД"
 
     @staticmethod
     def _sanitize_filename_part(value: str) -> str:

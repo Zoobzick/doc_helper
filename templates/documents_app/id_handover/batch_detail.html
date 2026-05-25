@@ -37,7 +37,7 @@
                 {% endif %}
             </div>
 
-            <div class="col-xl-9">
+            <div class="col-12">
                 <div class="card batch-hero-card">
                     <div class="card-body pt-3">
                         <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
@@ -130,7 +130,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-3">
+            <div class="col-12 batch-detail-action-row">
                 <div class="card">
                     <div class="card-body pt-3">
                         <h5 class="card-title">Быстрые действия</h5>
@@ -162,39 +162,34 @@
                     <div class="card-body pt-3">
                         <h5 class="card-title">Файлы письма</h5>
 
-                        <div class="list-group list-group-flush">
+                        <div class="batch-generated-files">
                             {% for document in generated_documents %}
                                 {% if document.document_type == "letter_docx" or document.document_type == "letter_preview_pdf" or document.document_type == "stamped_letter_pdf" or document.document_type == "stamped_letter_image" %}
-                                    <div class="list-group-item px-0">
-                                        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                            <div class="fw-semibold">
-                                                {{ document.get_document_type_display|default:document.document_type }}
+                                    <div class="batch-generated-file">
+                                        <div class="batch-file-kind {% if document.document_type == 'letter_docx' %}is-docx{% else %}is-pdf{% endif %}">
+                                            {% if document.document_type == "letter_docx" %}DOCX{% else %}PDF{% endif %}
+                                        </div>
+                                        <div class="batch-generated-file-main">
+                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                {% if document.calculated_is_actual %}
+                                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                                        актуален
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                                                        устарел
+                                                    </span>
+                                                {% endif %}
                                             </div>
 
-                                            {% if document.calculated_is_actual %}
-                                                <span class="badge bg-success-subtle text-success border border-success-subtle">
-                                                    актуален
-                                                </span>
+                                            {% if document.file %}
+                                                <a href="{% url 'documents:generated_document_open' document.uuid %}" target="_blank">
+                                                    {{ document.original_name|default:"Открыть файл" }}
+                                                </a>
                                             {% else %}
-                                                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-                                                    устарел
-                                                </span>
+                                                <span class="text-muted">Файл отсутствует</span>
                                             {% endif %}
                                         </div>
-
-                                        <div class="small text-muted mb-1">
-                                            {% if document.source_kind %}
-                                                {{ document.get_source_kind_display|default:document.source_kind }}
-                                            {% endif %}
-                                        </div>
-
-                                        {% if document.file %}
-                                            <a href="{% url 'documents:generated_document_open' document.id %}" target="_blank">
-                                                {{ document.original_name|default:"Открыть файл" }}
-                                            </a>
-                                        {% else %}
-                                            <span class="text-muted">Файл отсутствует</span>
-                                        {% endif %}
                                     </div>
                                 {% endif %}
                             {% empty %}
@@ -208,98 +203,130 @@
                     <div class="card-body pt-3">
                         <h5 class="card-title">Сдаточные файлы</h5>
 
-                        <div class="fw-semibold mb-2">Письмо с отметкой</div>
-                        {% if stamped_letter_attachment %}
-                            <div class="small text-muted mb-2">
-                                Загружено: {{ stamped_letter_attachment.uploaded_at|date:"d.m.Y H:i" }}
-                            </div>
-                            <div class="d-flex gap-2 flex-wrap mb-3">
-                                <a href="{% url 'documents:batch_attachment_open' stamped_letter_attachment.id %}"
-                                   target="_blank"
-                                   class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-file-earmark-pdf me-1"></i>
-                                    Открыть
-                                </a>
+                        <div class="batch-handover-grid">
+                            <div class="batch-handover-item">
+                                <div class="fw-semibold mb-1">Письмо с отметкой</div>
+                                {% if stamped_letter_attachment %}
+                                    <div class="small text-muted mb-2">
+                                        Загружено: {{ stamped_letter_attachment.uploaded_at|date:"d.m.Y H:i" }}
+                                    </div>
+                                    <div class="d-flex gap-2 flex-wrap mb-2">
+                                        <a href="{% url 'documents:batch_attachment_open' stamped_letter_attachment.uuid %}"
+                                           target="_blank"
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-file-earmark-pdf me-1"></i>
+                                            Открыть
+                                        </a>
+                                        <a href="{% url 'documents:batch_attachment_open' stamped_letter_attachment.uuid %}?download=1"
+                                           class="btn btn-sm btn-outline-success">
+                                            <i class="bi bi-download me-1"></i>
+                                            Скачать
+                                        </a>
+
+                                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                            <form method="post"
+                                                  action="{% url 'documents:id_handover_batch_attachment_delete' batch.id stamped_letter_attachment.uuid %}"
+                                                  onsubmit="return confirm('Удалить письмо с отметкой?');">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                    <i class="bi bi-trash me-1"></i>
+                                                    Удалить
+                                                </button>
+                                            </form>
+                                        {% endif %}
+                                    </div>
+                                {% else %}
+                                    <div class="text-muted small mb-2">Файл ещё не загружен.</div>
+                                {% endif %}
 
                                 {% if user.is_superuser or perms.documents_app.change_documentbatch %}
                                     <form method="post"
-                                          action="{% url 'documents:id_handover_batch_attachment_delete' batch.id stamped_letter_attachment.id %}"
-                                          onsubmit="return confirm('Удалить письмо с отметкой?');">
+                                          action="{% url 'documents:id_handover_batch_attachment_upload' batch.id %}"
+                                          enctype="multipart/form-data"
+                                          class="d-grid gap-2 js-batch-attachment-form">
                                         {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-trash me-1"></i>
-                                            Удалить
+                                        {{ stamped_letter_upload_form.attachment_type }}
+                                        <div class="batch-attachment-dropzone" role="button" tabindex="0">
+                                            <div class="batch-attachment-dropzone-icon">
+                                                <i class="bi bi-cloud-arrow-up"></i>
+                                            </div>
+                                            <div>
+                                                <div class="batch-attachment-dropzone-title">Перетащите PDF сюда</div>
+                                                <div class="batch-attachment-dropzone-hint js-batch-attachment-file-name">
+                                                    или нажмите, чтобы выбрать файл
+                                                </div>
+                                            </div>
+                                            {{ stamped_letter_upload_form.file }}
+                                        </div>
+                                        <button type="submit" class="btn btn-outline-primary">
+                                            {% if stamped_letter_attachment %}Заменить письмо{% else %}Загрузить письмо{% endif %}
                                         </button>
                                     </form>
                                 {% endif %}
                             </div>
-                        {% else %}
-                            <div class="text-muted small mb-3">Файл ещё не загружен.</div>
-                        {% endif %}
 
-                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                            <form method="post"
-                                  action="{% url 'documents:id_handover_batch_attachment_upload' batch.id %}"
-                                  enctype="multipart/form-data"
-                                  class="d-grid gap-2">
-                                {% csrf_token %}
-                                {{ stamped_letter_upload_form.attachment_type }}
-                                {{ stamped_letter_upload_form.file }}
-                                <button type="submit" class="btn btn-outline-primary">
-                                    {% if stamped_letter_attachment %}Заменить письмо{% else %}Загрузить письмо{% endif %}
-                                </button>
-                            </form>
-                        {% endif %}
+                            <div class="batch-handover-item">
+                                <div class="fw-semibold mb-1">Маркзамеры</div>
+                                {% if marksurvey_attachments %}
+                                    <div class="list-group list-group-flush mb-2">
+                                        {% for attachment in marksurvey_attachments %}
+                                            <div class="list-group-item px-0 py-1">
+                                                <div class="d-flex gap-2 flex-wrap align-items-center">
+                                                    <a href="{% url 'documents:batch_attachment_open' attachment.uuid %}"
+                                                       target="_blank"
+                                                       class="small">
+                                                        <i class="bi bi-file-earmark-pdf me-1"></i>
+                                                        {{ attachment.original_name|default:"Открыть PDF" }}
+                                                    </a>
+                                                    <a href="{% url 'documents:batch_attachment_open' attachment.uuid %}?download=1"
+                                                       class="btn btn-sm btn-outline-success">
+                                                        <i class="bi bi-download"></i>
+                                                    </a>
 
-                        <hr>
-
-                        <div class="fw-semibold mb-2">Маркзамеры</div>
-                        {% if marksurvey_attachments %}
-                            <div class="list-group list-group-flush mb-3">
-                                {% for attachment in marksurvey_attachments %}
-                                    <div class="list-group-item px-0">
-                                        <div class="small text-muted mb-1">
-                                            {{ attachment.uploaded_at|date:"d.m.Y H:i" }}
-                                        </div>
-                                        <div class="d-flex gap-2 flex-wrap align-items-center">
-                                            <a href="{% url 'documents:batch_attachment_open' attachment.id %}"
-                                               target="_blank"
-                                               class="small">
-                                                <i class="bi bi-file-earmark-pdf me-1"></i>
-                                                {{ attachment.original_name|default:"Открыть PDF" }}
-                                            </a>
-
-                                            {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                                                <form method="post"
-                                                      action="{% url 'documents:id_handover_batch_attachment_delete' batch.id attachment.id %}"
-                                                      onsubmit="return confirm('Удалить маркзамер?');">
-                                                    {% csrf_token %}
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                        <i class="bi bi-trash"></i>
-                                                    </button>
-                                                </form>
-                                            {% endif %}
-                                        </div>
+                                                    {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                                        <form method="post"
+                                                              action="{% url 'documents:id_handover_batch_attachment_delete' batch.id attachment.uuid %}"
+                                                              onsubmit="return confirm('Удалить маркзамер?');">
+                                                            {% csrf_token %}
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        {% endfor %}
                                     </div>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            <div class="text-muted small mb-3">Маркзамеры ещё не загружены.</div>
-                        {% endif %}
+                                {% else %}
+                                    <div class="text-muted small mb-2">Маркзамеры ещё не загружены.</div>
+                                {% endif %}
 
-                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                            <form method="post"
-                                  action="{% url 'documents:id_handover_batch_attachment_upload' batch.id %}"
-                                  enctype="multipart/form-data"
-                                  class="d-grid gap-2">
-                                {% csrf_token %}
-                                {{ marksurvey_upload_form.attachment_type }}
-                                {{ marksurvey_upload_form.file }}
-                                <button type="submit" class="btn btn-outline-primary">
-                                    Добавить маркзамер
-                                </button>
-                            </form>
-                        {% endif %}
+                                {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                    <form method="post"
+                                          action="{% url 'documents:id_handover_batch_attachment_upload' batch.id %}"
+                                          enctype="multipart/form-data"
+                                          class="d-grid gap-2 js-batch-attachment-form">
+                                        {% csrf_token %}
+                                        {{ marksurvey_upload_form.attachment_type }}
+                                        <div class="batch-attachment-dropzone" role="button" tabindex="0">
+                                            <div class="batch-attachment-dropzone-icon">
+                                                <i class="bi bi-cloud-arrow-up"></i>
+                                            </div>
+                                            <div>
+                                                <div class="batch-attachment-dropzone-title">Перетащите PDF сюда</div>
+                                                <div class="batch-attachment-dropzone-hint js-batch-attachment-file-name">
+                                                    или нажмите, чтобы выбрать файл
+                                                </div>
+                                            </div>
+                                            {{ marksurvey_upload_form.file }}
+                                        </div>
+                                        <button type="submit" class="btn btn-outline-primary">
+                                            Добавить маркзамер
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -357,7 +384,7 @@
                                                 <div class="batch-project-links">
                                                     {% for document in generated_documents %}
                                                         {% if document.project_id == project.project_id and document.document_type == "registry_preview_pdf" and document.file %}
-                                                            <a href="{% url 'documents:generated_document_open' document.id %}"
+                                                            <a href="{% url 'documents:generated_document_open' document.uuid %}"
                                                                target="_blank"
                                                                class="btn btn-sm btn-outline-danger batch-file-link">
                                                                 pdf
@@ -367,7 +394,7 @@
 
                                                     {% for document in generated_documents %}
                                                         {% if document.project_id == project.project_id and document.document_type == "registry_xlsx" and document.file %}
-                                                            <a href="{% url 'documents:generated_document_open' document.id %}"
+                                                            <a href="{% url 'documents:generated_document_open' document.uuid %}"
                                                                target="_blank"
                                                                class="btn btn-sm btn-outline-success batch-file-link">
                                                                 xlsx
@@ -454,7 +481,7 @@
                                                                         <div class="list-group-item px-0 batch-inline-doc">
                                                                             <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
                                                                                 <div class="fw-semibold small">
-                                                                                    {{ document.get_document_type_display|default:document.document_type }}
+                                                                                    {% if document.document_type == "registry_xlsx" %}Реестр XLSX{% else %}Реестр PDF{% endif %}
                                                                                 </div>
 
                                                                                 {% if document.calculated_is_actual %}
@@ -465,7 +492,7 @@
                                                                             </div>
 
                                                                             {% if document.file %}
-                                                                                <a href="{% url 'documents:generated_document_open' document.id %}" target="_blank">
+                                                                                <a href="{% url 'documents:generated_document_open' document.uuid %}" target="_blank">
                                                                                     {{ document.original_name|default:"Открыть файл" }}
                                                                                 </a>
                                                                             {% else %}
@@ -485,7 +512,7 @@
                             </div>
                         {% else %}
                             <div class="alert alert-warning mb-0">
-                                Preview комплекта пока недоступен.
+                                Состав комплекта пока недоступен.
                             </div>
                         {% endif %}
                     </div>
@@ -506,6 +533,9 @@
         }
 
         .batch-info-tile {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
             height: 100%;
             border: 1px solid #dde6f2;
             border-radius: 1rem;
@@ -514,11 +544,136 @@
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
         }
 
+        .batch-info-tile > div:last-child {
+            min-width: 0;
+        }
+
+        .batch-info-icon {
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            border-radius: 0.75rem;
+            font-size: 1.15rem;
+        }
+
+        .batch-info-icon.is-blue {
+            background: #eaf2ff;
+            color: #175cd3;
+        }
+
+        .batch-info-icon.is-cyan {
+            background: #e9f7fb;
+            color: #067647;
+        }
+
+        .batch-info-icon.is-purple {
+            background: #f3edff;
+            color: #6941c6;
+        }
+
+        .batch-info-icon.is-green {
+            background: #eaf8ef;
+            color: #099250;
+        }
+
+        .batch-info-icon.is-slate {
+            background: #f1f5f9;
+            color: #475467;
+        }
+
         .batch-comment-panel {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
             border: 1px solid #dde6f2;
             border-radius: 1rem;
             padding: 1rem;
             background: linear-gradient(180deg, #ffffff, #f8fbff);
+        }
+
+        .batch-detail-action-row {
+            display: grid;
+            grid-template-columns: minmax(220px, 0.7fr) minmax(320px, 1.25fr) minmax(520px, 1.75fr);
+            gap: 1rem;
+            align-items: stretch;
+        }
+
+        .batch-detail-action-row > .card {
+            height: 100%;
+            margin-bottom: 0;
+        }
+
+        .batch-detail-action-row .card-body {
+            padding: 1rem 1.25rem;
+        }
+
+        .batch-detail-action-row .card-title {
+            margin-bottom: 0.8rem;
+        }
+
+        .batch-generated-files {
+            display: grid;
+            gap: 0.55rem;
+        }
+
+        .batch-generated-file {
+            display: grid;
+            grid-template-columns: 44px minmax(0, 1fr);
+            gap: 0.7rem;
+            align-items: center;
+            min-height: 58px;
+            padding: 0.55rem 0.65rem;
+            border: 1px solid #e4ebf5;
+            border-radius: 0.65rem;
+            background: #fff;
+        }
+
+        .batch-file-kind {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            border-radius: 0.65rem;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+        }
+
+        .batch-file-kind.is-docx {
+            background: #eaf2ff;
+            color: #175cd3;
+        }
+
+        .batch-file-kind.is-pdf {
+            background: #fff1f1;
+            color: #d92d20;
+        }
+
+        .batch-generated-file-main {
+            min-width: 0;
+        }
+
+        .batch-generated-file-main a {
+            display: inline-block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: bottom;
+            white-space: nowrap;
+        }
+
+        .batch-handover-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.9rem;
+        }
+
+        .batch-handover-item {
+            min-width: 0;
         }
 
         .batch-projects-stack {
@@ -688,6 +843,62 @@
             border-bottom: 0;
         }
 
+        .batch-attachment-dropzone {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-height: 64px;
+            padding: 0.65rem 0.75rem;
+            border: 1.5px dashed #9eb6d8;
+            border-radius: 0.8rem;
+            background: #f8fbff;
+            color: #244b84;
+            cursor: pointer;
+            transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .batch-attachment-dropzone:hover,
+        .batch-attachment-dropzone.is-drag-over {
+            border-color: #0d6efd;
+            background: #eef6ff;
+            box-shadow: 0 0 0 0.18rem rgba(13, 110, 253, 0.08);
+        }
+
+        .batch-attachment-dropzone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .batch-attachment-dropzone-icon {
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: #e7f0ff;
+            color: #0d6efd;
+            font-size: 1.35rem;
+        }
+
+        .batch-attachment-dropzone-title {
+            font-weight: 700;
+            color: #173b78;
+        }
+
+        .batch-attachment-dropzone-hint {
+            margin-top: 0.2rem;
+            color: #667085;
+            font-size: 0.88rem;
+            overflow-wrap: anywhere;
+        }
+
         .batch-generation-overlay {
             position: fixed;
             inset: 0;
@@ -712,6 +923,14 @@
         }
 
         @media (max-width: 991.98px) {
+            .batch-detail-action-row {
+                grid-template-columns: 1fr;
+            }
+
+            .batch-handover-grid {
+                grid-template-columns: 1fr;
+            }
+
             .batch-project-summary {
                 flex-direction: column;
                 align-items: flex-start;
@@ -755,6 +974,130 @@
 
     <script>
         (function () {
+            const infoIconConfig = [
+                ["bi-grid-3x3-gap", "is-blue"],
+                ["bi-envelope", "is-cyan"],
+                ["bi-file-earmark-text", "is-purple"],
+                ["bi-funnel", "is-slate"],
+                ["bi-calendar3", "is-blue"],
+                ["bi-diagram-3", "is-slate"],
+                ["bi-hash", "is-blue"],
+                ["bi-calendar-check", "is-green"],
+                ["bi-clock-history", "is-slate"]
+            ];
+
+            document.querySelectorAll(".batch-info-tile").forEach(function (tile, index) {
+                const config = infoIconConfig[index];
+                if (!config || tile.querySelector(".batch-info-icon")) {
+                    return;
+                }
+
+                const contentWrapper = document.createElement("div");
+                while (tile.firstChild) {
+                    contentWrapper.appendChild(tile.firstChild);
+                }
+
+                const icon = document.createElement("div");
+                icon.className = `batch-info-icon ${config[1]}`;
+                icon.innerHTML = `<i class="bi ${config[0]}"></i>`;
+
+                tile.appendChild(icon);
+                tile.appendChild(contentWrapper);
+            });
+
+            document.querySelectorAll(".batch-comment-panel").forEach(function (panel) {
+                if (panel.querySelector(".batch-info-icon")) {
+                    return;
+                }
+
+                const contentWrapper = document.createElement("div");
+                while (panel.firstChild) {
+                    contentWrapper.appendChild(panel.firstChild);
+                }
+
+                const icon = document.createElement("div");
+                icon.className = "batch-info-icon is-purple";
+                icon.innerHTML = '<i class="bi bi-chat-left-text"></i>';
+
+                panel.appendChild(icon);
+                panel.appendChild(contentWrapper);
+            });
+
+            const attachmentForms = Array.from(document.querySelectorAll(".js-batch-attachment-form"));
+            attachmentForms.forEach(function (form) {
+                const dropzone = form.querySelector(".batch-attachment-dropzone");
+                const input = form.querySelector('input[type="file"]');
+                const fileNameNode = form.querySelector(".js-batch-attachment-file-name");
+                const defaultText = fileNameNode ? fileNameNode.textContent.trim() : "";
+
+                if (!dropzone || !input || !fileNameNode) {
+                    return;
+                }
+
+                function setSelectedFile(file) {
+                    if (!file) {
+                        fileNameNode.textContent = defaultText;
+                        return;
+                    }
+
+                    if (!file.name.toLowerCase().endsWith(".pdf")) {
+                        input.value = "";
+                        fileNameNode.textContent = "Можно загрузить только PDF-файл";
+                        return;
+                    }
+
+                    fileNameNode.textContent = file.name;
+                }
+
+                dropzone.addEventListener("dragenter", function (event) {
+                    event.preventDefault();
+                    dropzone.classList.add("is-drag-over");
+                });
+
+                dropzone.addEventListener("dragover", function (event) {
+                    event.preventDefault();
+                    dropzone.classList.add("is-drag-over");
+                });
+
+                dropzone.addEventListener("dragleave", function (event) {
+                    if (!dropzone.contains(event.relatedTarget)) {
+                        dropzone.classList.remove("is-drag-over");
+                    }
+                });
+
+                dropzone.addEventListener("drop", function (event) {
+                    event.preventDefault();
+                    dropzone.classList.remove("is-drag-over");
+
+                    const file = event.dataTransfer.files && event.dataTransfer.files[0];
+                    if (!file) {
+                        return;
+                    }
+
+                    if (!file.name.toLowerCase().endsWith(".pdf")) {
+                        input.value = "";
+                        fileNameNode.textContent = "Можно загрузить только PDF-файл";
+                        return;
+                    }
+
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    input.files = dataTransfer.files;
+                    setSelectedFile(file);
+                });
+
+                dropzone.addEventListener("keydown", function (event) {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        input.click();
+                    }
+                });
+
+                input.addEventListener("change", function () {
+                    setSelectedFile(input.files && input.files[0]);
+                });
+            });
+
             const forms = Array.from(document.querySelectorAll(".js-batch-generate-form"));
             const projectCards = Array.from(document.querySelectorAll(".batch-project-card"));
 
@@ -783,7 +1126,7 @@
             const stages = [
                 "Проверяем состав комплекта...",
                 "Формируем проектные реестры...",
-                "Собираем письмо и preview-файлы...",
+                "Собираем письмо и PDF-файлы...",
                 "Подготавливаем итоговую выдачу..."
             ];
 

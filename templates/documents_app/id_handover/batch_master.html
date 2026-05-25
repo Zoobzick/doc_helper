@@ -514,7 +514,7 @@
                                 </div>
                             {% else %}
                                 <div class="alert alert-warning mb-0 mt-3">
-                                    Preview состава пока недоступен.
+                                    Состав комплекта пока недоступен.
                                 </div>
                             {% endif %}
                         </div>
@@ -610,7 +610,17 @@
                                         <div class="list-group-item px-0">
                                             <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
                                                 <div class="fw-semibold">
-                                                    {{ document.get_document_type_display|default:document.document_type }}
+                                                    {% if document.document_type == "letter_docx" %}
+                                                        Письмо DOCX
+                                                    {% elif document.document_type == "letter_preview_pdf" %}
+                                                        Письмо PDF
+                                                    {% elif document.document_type == "registry_xlsx" %}
+                                                        Реестр XLSX
+                                                    {% elif document.document_type == "registry_preview_pdf" %}
+                                                        Реестр PDF
+                                                    {% else %}
+                                                        {{ document.get_document_type_display|default:document.document_type }}
+                                                    {% endif %}
                                                 </div>
 
                                                 {% if document.calculated_is_actual %}
@@ -633,7 +643,7 @@
                                             </div>
 
                                             {% if document.file %}
-                                                <a href="{% url 'documents:generated_document_open' document.id %}" target="_blank">
+                                                <a href="{% url 'documents:generated_document_open' document.uuid %}" target="_blank">
                                                     {{ document.original_name|default:"Открыть файл" }}
                                                 </a>
                                             {% else %}
@@ -1181,7 +1191,7 @@
                 const generationStages = [
                     "Проверяем состав комплекта...",
                     "Формируем проектные реестры...",
-                    "Собираем письмо и preview-файлы...",
+                    "Собираем письмо и PDF-файлы...",
                     "Подготавливаем итоговую выдачу..."
                 ];
 
