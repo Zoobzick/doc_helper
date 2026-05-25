@@ -3,6 +3,7 @@ from __future__ import annotations
 from django import forms
 
 from documents_app.models import (
+    BatchAttachmentType,
     DocumentBatchDocumentationType,
     DocumentBatchGenerationMode,
     DocumentBatchLetterType,
@@ -257,3 +258,26 @@ def _parse_csv_ids(value: str) -> list[int]:
             continue
         out.append(int(part))
     return out
+
+
+class BatchAttachmentUploadForm(forms.Form):
+    attachment_type = forms.ChoiceField(
+        choices=BatchAttachmentType.choices,
+        widget=forms.HiddenInput(),
+    )
+    file = forms.FileField(
+        label="PDF-файл",
+        widget=forms.ClearableFileInput(
+            attrs={
+                "class": "form-control",
+                "accept": ".pdf,application/pdf",
+            }
+        ),
+    )
+
+    def clean_file(self):
+        uploaded_file = self.cleaned_data["file"]
+        name = (uploaded_file.name or "").lower()
+        if not name.endswith(".pdf"):
+            raise forms.ValidationError("Разрешена загрузка только PDF-файлов.")
+        return uploaded_file

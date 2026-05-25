@@ -1,6 +1,9 @@
 from django.urls import path
 
 from documents_app.views import (
+    BatchAttachmentDeleteView,
+    BatchAttachmentOpenView,
+    BatchAttachmentUploadView,
     BoxLabelGenerateView,
     BoxLabelPageView,
     BoxLabelProjectSearchView,
@@ -51,6 +54,11 @@ urlpatterns = [
         "generated-documents/<int:document_id>/open/",
         GeneratedDocumentOpenView.as_view(),
         name="generated_document_open",
+    ),
+    path(
+        "batch-attachments/<int:attachment_id>/open/",
+        BatchAttachmentOpenView.as_view(),
+        name="batch_attachment_open",
     ),
 
     # -----------------------------
@@ -144,6 +152,16 @@ urlpatterns = [
         "id-handover/batches/<int:batch_id>/generate/",
         DocumentBatchGenerateView.as_view(),
         name="id_handover_batch_generate",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/attachments/upload/",
+        BatchAttachmentUploadView.as_view(),
+        name="id_handover_batch_attachment_upload",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/attachments/<int:attachment_id>/delete/",
+        BatchAttachmentDeleteView.as_view(),
+        name="id_handover_batch_attachment_delete",
     ),
     path(
         "id-handover/batches/<int:batch_id>/",

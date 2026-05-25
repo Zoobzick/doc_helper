@@ -208,6 +208,14 @@
                                 <span>Обновлено</span>
                                 <strong>{{ batch.latest_generated_at|date:"d.m.Y H:i"|default:"—" }}</strong>
                             </div>
+                            <div class="batch-list-fact">
+                                <span>Письмо</span>
+                                <strong>{% if batch.has_stamped_letter_attachment %}Есть{% else %}Нет{% endif %}</strong>
+                            </div>
+                            <div class="batch-list-fact">
+                                <span>Маркзамеры</span>
+                                <strong>{{ batch.marksurvey_attachments_count }}</strong>
+                            </div>
                         </div>
                     </article>
                 {% endfor %}

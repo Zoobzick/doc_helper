@@ -203,6 +203,105 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="card">
+                    <div class="card-body pt-3">
+                        <h5 class="card-title">Сдаточные файлы</h5>
+
+                        <div class="fw-semibold mb-2">Письмо с отметкой</div>
+                        {% if stamped_letter_attachment %}
+                            <div class="small text-muted mb-2">
+                                Загружено: {{ stamped_letter_attachment.uploaded_at|date:"d.m.Y H:i" }}
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap mb-3">
+                                <a href="{% url 'documents:batch_attachment_open' stamped_letter_attachment.id %}"
+                                   target="_blank"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-file-earmark-pdf me-1"></i>
+                                    Открыть
+                                </a>
+
+                                {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                    <form method="post"
+                                          action="{% url 'documents:id_handover_batch_attachment_delete' batch.id stamped_letter_attachment.id %}"
+                                          onsubmit="return confirm('Удалить письмо с отметкой?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash me-1"></i>
+                                            Удалить
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <div class="text-muted small mb-3">Файл ещё не загружен.</div>
+                        {% endif %}
+
+                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                            <form method="post"
+                                  action="{% url 'documents:id_handover_batch_attachment_upload' batch.id %}"
+                                  enctype="multipart/form-data"
+                                  class="d-grid gap-2">
+                                {% csrf_token %}
+                                {{ stamped_letter_upload_form.attachment_type }}
+                                {{ stamped_letter_upload_form.file }}
+                                <button type="submit" class="btn btn-outline-primary">
+                                    {% if stamped_letter_attachment %}Заменить письмо{% else %}Загрузить письмо{% endif %}
+                                </button>
+                            </form>
+                        {% endif %}
+
+                        <hr>
+
+                        <div class="fw-semibold mb-2">Маркзамеры</div>
+                        {% if marksurvey_attachments %}
+                            <div class="list-group list-group-flush mb-3">
+                                {% for attachment in marksurvey_attachments %}
+                                    <div class="list-group-item px-0">
+                                        <div class="small text-muted mb-1">
+                                            {{ attachment.uploaded_at|date:"d.m.Y H:i" }}
+                                        </div>
+                                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                                            <a href="{% url 'documents:batch_attachment_open' attachment.id %}"
+                                               target="_blank"
+                                               class="small">
+                                                <i class="bi bi-file-earmark-pdf me-1"></i>
+                                                {{ attachment.original_name|default:"Открыть PDF" }}
+                                            </a>
+
+                                            {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                                                <form method="post"
+                                                      action="{% url 'documents:id_handover_batch_attachment_delete' batch.id attachment.id %}"
+                                                      onsubmit="return confirm('Удалить маркзамер?');">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-muted small mb-3">Маркзамеры ещё не загружены.</div>
+                        {% endif %}
+
+                        {% if user.is_superuser or perms.documents_app.change_documentbatch %}
+                            <form method="post"
+                                  action="{% url 'documents:id_handover_batch_attachment_upload' batch.id %}"
+                                  enctype="multipart/form-data"
+                                  class="d-grid gap-2">
+                                {% csrf_token %}
+                                {{ marksurvey_upload_form.attachment_type }}
+                                {{ marksurvey_upload_form.file }}
+                                <button type="submit" class="btn btn-outline-primary">
+                                    Добавить маркзамер
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
 
             <div class="col-lg-12">
