@@ -137,9 +137,9 @@
 
                         <div class="d-grid gap-2">
                             {% if user.is_superuser or perms.documents_app.view_documentbatch %}
-                                <a href="{% url 'documents:id_handover_batch_master' batch.id %}"
+                                <a href="{% url 'documents:id_handover_batch_master' batch.id %}?step=2"
                                    class="btn btn-outline-primary">
-                                    Перейти в master-view
+                                    Перейти к проверке шифров
                                 </a>
                             {% endif %}
 

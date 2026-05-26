@@ -72,18 +72,8 @@
                                     data-step-target="2">
                                 <span class="wizard-step-number">2</span>
                                 <span class="wizard-step-text">
-                                    <strong>Состав</strong>
-                                    <small>Проекты и акты</small>
-                                </span>
-                            </button>
-
-                            <button type="button"
-                                    class="wizard-step {% if not batch %}disabled-step{% endif %}"
-                                    data-step-target="3">
-                                <span class="wizard-step-number">3</span>
-                                <span class="wizard-step-text">
-                                    <strong>Генерация</strong>
-                                    <small>Файлы и итог</small>
+                                    <strong>Проверка</strong>
+                                    <small>Шифры, акты, замечания</small>
                                 </span>
                             </button>
                         </div>
@@ -349,8 +339,8 @@
                         <div class="card-body pt-3">
                             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                                 <div>
-                                    <h5 class="card-title mb-0">Шаг 2. Подготовка состава</h5>
-                                    <div class="text-muted small mt-1">Проверь шифры и состав актов до генерации реестров. Если нашёл ошибку, сразу переходи в редактирование акта и затем обновляй состав комплекта.</div>
+                                    <h5 class="card-title mb-0">Шаг 2. Проверка шифров</h5>
+                                    <div class="text-muted small mt-1">Проверь шифры, состав актов, страницы и замечания. После проверки всех шифров переходи в карточку комплекта для генерации и выдачи файлов.</div>
                                 </div>
 
                                 {% if batch %}
@@ -406,7 +396,12 @@
                                     Проверено шифров: <strong>{{ preview_data.summary.reviewed_projects_count }}</strong>
                                     из <strong>{{ preview_data.summary.projects_count }}</strong>.
                                     {% if not preview_data.summary.all_projects_reviewed %}
-                                        Сначала пройди проверку всех шифров, затем переходи к генерации.
+                                        Сначала пройди проверку всех шифров, затем переходи в карточку комплекта.
+                                    {% else %}
+                                        Все шифры проверены, можно перейти в карточку комплекта.
+                                        <a href="{% url 'documents:id_handover_batch_detail' batch.id %}" class="alert-link ms-1">
+                                            Открыть карточку
+                                        </a>
                                     {% endif %}
                                 </div>
 
@@ -522,146 +517,6 @@
                 </div>
             </div>
         </div>
-        <div class="wizard-panel" data-step="3">
-            <div class="row">
-                <div class="col-lg-8">
-                    <div class="card">
-                        <div class="card-body pt-3">
-                            <h5 class="card-title">Шаг 3. Генерация комплекта</h5>
-
-                            {% if not batch %}
-                                <div class="alert alert-info mb-0">
-                                    Сначала создай черновик комплекта, чтобы перейти к генерации.
-                                </div>
-                            {% else %}
-                                <div class="row g-3 mb-4">
-                                    <div class="col-md-6">
-                                        <div class="border rounded p-3 h-100">
-                                            <div class="small text-muted">Название комплекта</div>
-                                            <div class="fw-semibold">{{ batch.title|default:"Без названия" }}</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-md-6">
-                                        <div class="border rounded p-3 h-100">
-                                            <div class="small text-muted">Тип письма</div>
-                                            <div class="fw-semibold">{{ batch.get_letter_type_display }}</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-md-6">
-                                        <div class="border rounded p-3 h-100">
-                                            <div class="small text-muted">Номер письма</div>
-                                            <div class="fw-semibold">{{ batch.letter_number|default:"—" }}</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-md-6">
-                                        <div class="border rounded p-3 h-100">
-                                            <div class="small text-muted">Дата письма</div>
-                                            <div class="fw-semibold">{{ batch.letter_date|date:"d.m.Y"|default:"—" }}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% if preview_data and not preview_data.summary.all_projects_reviewed %}
-                                    <div class="alert alert-warning py-2">
-                                        <i class="bi bi-exclamation-triangle me-1"></i>
-                                        До генерации осталось проверить шифров:
-                                        <strong>{{ preview_data.summary.unreviewed_projects_count }}</strong>.
-                                    </div>
-                                {% endif %}
-
-                                <div class="d-flex gap-2 flex-wrap">
-                                    {% if user.is_superuser or perms.documents_app.change_documentbatch %}
-                                        <form method="post"
-                                              action="{% url 'documents:id_handover_batch_generate' batch.id %}"
-                                              class="js-batch-generate-form"
-                                              data-batch-title="{{ batch.title|default:'Комплект'|escape }}">
-                                            {% csrf_token %}
-                                            <button type="submit"
-                                                    class="btn btn-success js-batch-generate-button"
-                                                    {% if preview_data and not preview_data.summary.all_projects_reviewed %}disabled{% endif %}>
-                                                <i class="bi bi-gear-fill me-1"></i>
-                                                Сформировать документы
-                                            </button>
-                                        </form>
-                                    {% endif %}
-
-                                    {% if user.is_superuser or perms.documents_app.view_documentbatch %}
-                                        <a href="{% url 'documents:id_handover_batch_detail' batch.id %}"
-                                           class="btn btn-outline-primary">
-                                            <i class="bi bi-box-arrow-up-right me-1"></i>
-                                            Открыть карточку комплекта
-                                        </a>
-                                    {% endif %}
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-lg-4">
-                    <div class="card">
-                        <div class="card-body pt-3">
-                            <h5 class="card-title">Файлы комплекта</h5>
-                            {% if generated_documents %}
-                                <div class="list-group list-group-flush">
-                                    {% for document in generated_documents %}
-                                        <div class="list-group-item px-0">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                                <div class="fw-semibold">
-                                                    {% if document.document_type == "letter_docx" %}
-                                                        Письмо DOCX
-                                                    {% elif document.document_type == "letter_preview_pdf" %}
-                                                        Письмо PDF
-                                                    {% elif document.document_type == "registry_xlsx" %}
-                                                        Реестр XLSX
-                                                    {% elif document.document_type == "registry_preview_pdf" %}
-                                                        Реестр PDF
-                                                    {% else %}
-                                                        {{ document.get_document_type_display|default:document.document_type }}
-                                                    {% endif %}
-                                                </div>
-
-                                                {% if document.calculated_is_actual %}
-                                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                актуален
-            </span>
-                                                {% else %}
-                                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-                устарел
-            </span>
-                                                {% endif %}
-                                            </div>
-
-                                            <div class="small text-muted mb-1">
-                                                {% if document.project %}
-                                                    {{ document.project.full_code }}
-                                                {% else %}
-                                                    Общий документ комплекта
-                                                {% endif %}
-                                            </div>
-
-                                            {% if document.file %}
-                                                <a href="{% url 'documents:generated_document_open' document.uuid %}" target="_blank">
-                                                    {{ document.original_name|default:"Открыть файл" }}
-                                                </a>
-                                            {% else %}
-                                                <span class="text-muted">Файл отсутствует</span>
-                                            {% endif %}
-                                        </div>                                    {% endfor %}
-                                </div>
-                            {% else %}
-                                <div class="text-muted">
-                                    Документы ещё не сгенерированы.
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <div class="wizard-actions-sticky">
             <div class="card mb-0">
                 <div class="card-body py-3">
@@ -1114,55 +969,7 @@
                 justify-content: flex-start;
             }
         }
-        .batch-generation-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 1080;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
-            background: rgba(15, 23, 42, 0.58);
-            backdrop-filter: blur(3px);
-        }
-
-        .batch-generation-overlay.is-visible {
-            display: flex;
-        }
-
-        .batch-generation-panel {
-            width: min(100%, 520px);
-            border-radius: 1rem;
-            background: #fff;
-            box-shadow: 0 1rem 3rem rgba(15, 23, 42, 0.18);
-        }
     </style>
-
-    <div id="batch-generation-overlay" class="batch-generation-overlay" aria-hidden="true">
-        <div class="batch-generation-panel p-4">
-            <div class="d-flex align-items-center gap-3 mb-3">
-                <div class="spinner-border text-success" role="status" aria-hidden="true"></div>
-                <div>
-                    <div class="fw-semibold" id="batch-generation-title">Идёт формирование документов</div>
-                    <div class="text-muted small" id="batch-generation-subtitle">Подготавливаем файлы комплекта.</div>
-                </div>
-            </div>
-
-            <div class="progress mb-3" style="height: 10px;">
-                <div id="batch-generation-progress-bar"
-                     class="progress-bar progress-bar-striped progress-bar-animated bg-success"
-                     role="progressbar"
-                     style="width: 8%;"
-                     aria-valuemin="0"
-                     aria-valuemax="100"
-                     aria-valuenow="8"></div>
-            </div>
-
-            <div id="batch-generation-stage" class="small text-muted">
-                Запускаем генерацию документов...
-            </div>
-        </div>
-    </div>
 
     <script>
         document.addEventListener("DOMContentLoaded", function () {
@@ -1172,28 +979,13 @@
                 const stepButtons = Array.from(document.querySelectorAll(".wizard-step"));
                 const prevBtn = document.getElementById("prevStepBtn");
                 const nextBtn = document.getElementById("nextStepBtn");
-                const generateForms = Array.from(document.querySelectorAll(".js-batch-generate-form"));
-                const generationOverlay = document.getElementById("batch-generation-overlay");
-                const generationSubtitleNode = document.getElementById("batch-generation-subtitle");
-                const generationStageNode = document.getElementById("batch-generation-stage");
-                const generationProgressBar = document.getElementById("batch-generation-progress-bar");
                 const reviewProjects = Array.from(document.querySelectorAll(".batch-review-project"));
                 const summaryActions = Array.from(document.querySelectorAll(".js-summary-action"));
 
                 const hasBatch = {{ is_edit_mode|yesno:"true,false" }};
                 const requestedStep = {{ requested_step|default:1 }};
+                const batchDetailUrl = "{% if batch %}{% url 'documents:id_handover_batch_detail' batch.id %}{% endif %}";
                 let currentStep = 1;
-                let generationInProgress = false;
-                let generationProgressValue = 8;
-                let generationProgressTimer = null;
-                let generationStageTimer = null;
-                let generationStageIndex = 0;
-                const generationStages = [
-                    "Проверяем состав комплекта...",
-                    "Формируем проектные реестры...",
-                    "Собираем письмо и PDF-файлы...",
-                    "Подготавливаем итоговую выдачу..."
-                ];
 
                 reviewProjects.forEach(function (projectCard) {
                     projectCard.addEventListener("toggle", function () {
@@ -1215,112 +1007,6 @@
                     });
                 });
 
-                function setGenerationButtonsDisabled(disabled) {
-                    document.querySelectorAll(".js-batch-generate-button").forEach(function (button) {
-                        button.disabled = disabled;
-                    });
-                }
-
-                function setGenerationProgress(value) {
-                    if (!generationProgressBar) return;
-                    generationProgressValue = Math.max(0, Math.min(100, value));
-                    generationProgressBar.style.width = `${generationProgressValue}%`;
-                    generationProgressBar.setAttribute("aria-valuenow", String(generationProgressValue));
-                }
-
-                function stopGenerationTimers() {
-                    if (generationProgressTimer) {
-                        window.clearInterval(generationProgressTimer);
-                        generationProgressTimer = null;
-                    }
-                    if (generationStageTimer) {
-                        window.clearInterval(generationStageTimer);
-                        generationStageTimer = null;
-                    }
-                }
-
-                function startGenerationOverlay(batchTitle) {
-                    if (!generationOverlay || !generationSubtitleNode || !generationStageNode) {
-                        return;
-                    }
-
-                    generationSubtitleNode.textContent = batchTitle
-                        ? `Комплект: ${batchTitle}`
-                        : "Подготавливаем файлы комплекта.";
-                    generationStageNode.textContent = generationStages[0];
-                    generationStageIndex = 0;
-                    setGenerationProgress(8);
-                    generationOverlay.classList.add("is-visible");
-                    generationOverlay.setAttribute("aria-hidden", "false");
-
-                    generationProgressTimer = window.setInterval(function () {
-                        if (generationProgressValue < 92) {
-                            setGenerationProgress(generationProgressValue + (generationProgressValue < 60 ? 6 : 2));
-                        }
-                    }, 700);
-
-                    generationStageTimer = window.setInterval(function () {
-                        generationStageIndex = (generationStageIndex + 1) % generationStages.length;
-                        generationStageNode.textContent = generationStages[generationStageIndex];
-                    }, 2200);
-                }
-
-                function finishGenerationOverlay(message) {
-                    stopGenerationTimers();
-                    setGenerationProgress(100);
-                    if (generationStageNode) {
-                        generationStageNode.textContent = message || "Генерация завершена.";
-                    }
-                }
-
-                generateForms.forEach(function (form) {
-                    form.addEventListener("submit", async function (event) {
-                        event.preventDefault();
-
-                        if (generationInProgress) {
-                            return;
-                        }
-
-                        generationInProgress = true;
-                        setGenerationButtonsDisabled(true);
-                        startGenerationOverlay(form.dataset.batchTitle || "");
-
-                        try {
-                            const response = await fetch(form.action, {
-                                method: "POST",
-                                headers: {
-                                    "X-Requested-With": "XMLHttpRequest",
-                                    "Accept": "application/json"
-                                },
-                                body: new FormData(form),
-                                credentials: "same-origin"
-                            });
-
-                            const contentType = response.headers.get("content-type") || "";
-                            if (contentType.includes("application/json")) {
-                                const payload = await response.json();
-                                finishGenerationOverlay(payload.message || "Генерация завершена.");
-                                window.setTimeout(function () {
-                                    window.location.href = payload.redirect_url || window.location.href;
-                                }, 300);
-                                return;
-                            }
-
-                            finishGenerationOverlay("Генерация завершена.");
-                            window.location.href = response.url || window.location.href;
-                        } catch (error) {
-                            stopGenerationTimers();
-                            if (generationOverlay) {
-                                generationOverlay.classList.remove("is-visible");
-                                generationOverlay.setAttribute("aria-hidden", "true");
-                            }
-                            setGenerationButtonsDisabled(false);
-                            generationInProgress = false;
-                            window.alert("Не удалось получить ответ от сервера во время генерации документов.");
-                        }
-                    });
-                });
-
                 function getCheckedValue(name) {
                     if (!createForm) return "";
                     const field = createForm.querySelector(`[name="${name}"]:checked`);
@@ -1336,6 +1022,9 @@
                 function showStep(step) {
                     if (!hasBatch && step > 1) {
                         step = 1;
+                    }
+                    if (step > 2) {
+                        step = 2;
                     }
 
                     currentStep = step;
@@ -1354,7 +1043,7 @@
 
                     if (nextBtn) {
                         nextBtn.disabled = !hasBatch && step === 1;
-                        nextBtn.classList.toggle("d-none", hasBatch && step === 3);
+                        nextBtn.textContent = step === 1 ? "Далее к проверке" : "Открыть карточку комплекта";
                     }
                 }
 
@@ -1419,8 +1108,12 @@
                         if (!hasBatch && currentStep === 1) {
                             return;
                         }
-                        if (currentStep < 3) {
+                        if (currentStep < 2) {
                             showStep(currentStep + 1);
+                            return;
+                        }
+                        if (batchDetailUrl) {
+                            window.location.href = batchDetailUrl;
                         }
                     });
                 }

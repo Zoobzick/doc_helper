@@ -991,7 +991,7 @@ class DocumentBatchMasterView(LoginRequiredMixin, PermissionRequiredMixin, Templ
             step = int(raw_value)
         except (TypeError, ValueError):
             return 2 if self.get_batch() else 1
-        return step if step in (1, 2, 3) else (2 if self.get_batch() else 1)
+        return step if step in (1, 2) else (2 if self.get_batch() else 1)
 
     def _build_preview_safe(self, *, batch: DocumentBatch) -> dict | None:
         builder = DocumentBatchPreviewBuilder()
@@ -1192,15 +1192,13 @@ class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         return "needs_review", "Нужно проверить", "secondary", "bi-hourglass-split"
 
     def _resolve_primary_step(self, *, batch: DocumentBatch) -> int:
-        if batch.list_state_key == "ready_to_generate":
-            return 3
         return 2
 
     def _resolve_primary_action_label(self, *, batch: DocumentBatch) -> str:
         if batch.list_state_key == "generated":
             return "Открыть файлы"
         if batch.list_state_key == "ready_to_generate":
-            return "К генерации"
+            return "Открыть карточку"
         if batch.list_state_key == "in_progress":
             return "Продолжить проверку"
         return "Начать проверку"
@@ -1427,6 +1425,30 @@ class DocumentBatchRefreshCompositionView(LoginRequiredMixin, PermissionRequired
             .select_related("act", "project")
             .order_by("project_id", "order", "id")
         )
+        existing_batch_projects = (
+            DocumentBatchProject.objects
+            .filter(batch=batch)
+            .select_related("review_started_by", "reviewed_by")
+            .order_by("order", "id")
+        )
+        existing_review_state_by_project_id = {
+            batch_project.project_id: {
+                "review_status": batch_project.review_status,
+                "review_started_at": batch_project.review_started_at,
+                "review_started_by_id": batch_project.review_started_by_id,
+                "reviewed_at": batch_project.reviewed_at,
+                "reviewed_by_id": batch_project.reviewed_by_id,
+            }
+            for batch_project in existing_batch_projects
+        }
+        existing_act_ids_by_project_id: dict[int, list[int]] = {}
+        existing_batch_acts = (
+            DocumentBatchAct.objects
+            .filter(batch=batch)
+            .order_by("project_id", "order", "id")
+        )
+        for batch_act in existing_batch_acts:
+            existing_act_ids_by_project_id.setdefault(batch_act.project_id, []).append(batch_act.act_id)
 
         fresh_project_ids = {project.id for project in fresh_projects}
 
@@ -1441,11 +1463,30 @@ class DocumentBatchRefreshCompositionView(LoginRequiredMixin, PermissionRequired
 
         fresh_batch_projects: list[DocumentBatchProject] = []
         for order, project in enumerate(fresh_projects, start=1):
+            fresh_project_acts = fresh_acts_by_project.get(project.id, [])
+            fresh_act_ids = [act.id for act in fresh_project_acts]
+            auto_act_ids = set(fresh_act_ids)
+            for manual_item in preserved_manual_acts_by_project.get(project.id, []):
+                if manual_item.act_id not in auto_act_ids:
+                    fresh_act_ids.append(manual_item.act_id)
+
+            preserved_state = {}
+            if existing_act_ids_by_project_id.get(project.id) == fresh_act_ids:
+                preserved_state = existing_review_state_by_project_id.get(project.id, {})
+
             fresh_batch_projects.append(
                 DocumentBatchProject(
                     batch=batch,
                     project=project,
                     order=order,
+                    review_status=preserved_state.get(
+                        "review_status",
+                        DocumentBatchProjectReviewStatus.PENDING,
+                    ),
+                    review_started_at=preserved_state.get("review_started_at"),
+                    review_started_by_id=preserved_state.get("review_started_by_id"),
+                    reviewed_at=preserved_state.get("reviewed_at"),
+                    reviewed_by_id=preserved_state.get("reviewed_by_id"),
                 )
             )
         if fresh_batch_projects:
@@ -2271,9 +2312,7 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
 
     def _redirect_after_error(self, *, batch: DocumentBatch):
-        return redirect(
-            f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=3"
-        )
+        return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
 
     def _legacy_success_message_stub(self, *, result) -> str:
         parts: list[str] = []
