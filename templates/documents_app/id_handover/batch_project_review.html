@@ -1,0 +1,558 @@
+﻿{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <h1>Проверка шифра</h1>
+                <nav>
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                        <li class="breadcrumb-item">Документы</li>
+                        <li class="breadcrumb-item"><a href="{% url 'documents:id_handover_batch_list' %}">Комплекты</a></li>
+                        <li class="breadcrumb-item"><a href="{{ project_review_back_url }}">Состав комплекта</a></li>
+                        <li class="breadcrumb-item active">{{ project_preview.project_code }}</li>
+                    </ol>
+                </nav>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="{{ project_review_back_url }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-1"></i>
+                    Назад к шагу 2
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <section class="section">
+        {% if messages %}
+            <div class="row">
+                <div class="col-lg-12">
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="row">
+            <div class="col-lg-12">
+                <div id="project-review-content">
+                    {% include "documents_app/id_handover/partials/project_review_content.html" %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <style>
+        .project-review-card {
+            border: 1px solid #e9eef6;
+            border-radius: 1rem;
+            background: #fff;
+            box-shadow: 0 12px 32px rgba(16, 24, 40, 0.06);
+        }
+
+        .project-review-hero {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1.35rem 1.5rem 1rem;
+            border-bottom: 1px solid #eef2f7;
+        }
+
+        .project-review-code {
+            font-size: 1.55rem;
+            font-weight: 800;
+            color: #17365d;
+        }
+
+        .project-review-note {
+            margin-top: 0.35rem;
+            color: #667085;
+            max-width: 760px;
+        }
+
+        .project-review-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(120px, 1fr));
+            gap: 0.75rem;
+            width: min(420px, 100%);
+        }
+
+        .project-review-metric {
+            border: 1px solid #e6ebf3;
+            border-radius: 0.9rem;
+            padding: 0.85rem 1rem;
+            text-align: center;
+            background: #fbfdff;
+        }
+
+        .project-review-metric-label {
+            color: #667085;
+            font-size: 0.9rem;
+        }
+
+        .project-review-metric-value {
+            margin-top: 0.2rem;
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #101828;
+        }
+
+        .project-review-body {
+            padding: 1.25rem 1.5rem 1.5rem;
+        }
+
+        .project-review-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            padding: 0.9rem 1rem;
+            border: 1px solid #d7e9d8;
+            border-radius: 0.5rem;
+            background: #f6fbf6;
+        }
+
+        .project-review-save-state {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #155724;
+        }
+
+        .project-review-save-state .bi {
+            font-size: 1.35rem;
+        }
+
+        .project-review-toolbar-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        .project-review-refresh-status {
+            min-height: 1.35rem;
+            margin: -0.45rem 0 0.65rem;
+            color: #667085;
+            font-size: 0.9rem;
+        }
+
+        .project-review-refresh-status.is-success {
+            color: #027a48;
+        }
+
+        .project-review-refresh-status.is-error {
+            color: #b42318;
+        }
+
+        .project-review-registry-details {
+            margin-top: 0.55rem;
+        }
+
+        .project-review-registry-details summary {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            color: #344054;
+            font-size: 0.88rem;
+            font-weight: 700;
+        }
+
+        .project-review-registry-table {
+            margin-top: 0.55rem;
+            margin-bottom: 0;
+            background: rgba(255, 255, 255, 0.65);
+        }
+
+        .project-review-registry-table th,
+        .project-review-registry-table td {
+            border-color: #e4e7ec;
+            font-size: 0.9rem;
+        }
+
+        .project-review-registry-table thead th {
+            background: #f8fafc;
+        }
+
+        .project-review-table {
+            --bs-table-bg: transparent;
+            margin-bottom: 0;
+        }
+
+        .project-review-table td,
+        .project-review-table th {
+            vertical-align: top;
+        }
+
+        .project-review-table thead th {
+            white-space: nowrap;
+        }
+
+        .project-review-row-act td {
+            background: #dbeafe;
+            border-color: #bfdbfe;
+            color: #0f2f5f;
+        }
+
+        .project-review-row-scheme td {
+            background: #fef3c7;
+            border-color: #fde68a;
+            color: #4f3500;
+        }
+
+        .project-review-row-approval td {
+            background: #dcfce7;
+            border-color: #bbf7d0;
+            color: #14532d;
+        }
+
+        .project-review-row-appendix td {
+            background: #f3f4f6;
+            border-color: #e5e7eb;
+            color: #1f2937;
+        }
+
+        .project-review-row-act td:first-child {
+            border-left: 5px solid #2563eb;
+        }
+
+        .project-review-row-scheme td:first-child {
+            border-left: 5px solid #d97706;
+        }
+
+        .project-review-row-approval td:first-child {
+            border-left: 5px solid #16a34a;
+        }
+
+        .project-review-row-appendix td:first-child {
+            border-left: 5px solid #9ca3af;
+        }
+
+        .project-review-type {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .project-review-type-act {
+            color: #175cd3;
+            background: #eff6ff;
+        }
+
+        .project-review-type-appendix {
+            color: #027a48;
+            background: #ecfdf3;
+        }
+
+        .project-review-doc {
+            margin-top: 0.35rem;
+            line-height: 1.45;
+            color: #101828;
+        }
+
+        .project-review-doc.fw-semibold {
+            color: #17365d;
+        }
+
+        .project-review-kind-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 1.35rem;
+            padding: 0.12rem 0.5rem;
+            border-radius: 999px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            line-height: 1;
+            border: 1px solid transparent;
+        }
+
+        .project-review-row-act-badge {
+            color: #1d4ed8;
+            background: #eff6ff;
+            border-color: #93c5fd;
+        }
+
+        .project-review-row-scheme-badge {
+            color: #92400e;
+            background: #fffbeb;
+            border-color: #fbbf24;
+        }
+
+        .project-review-row-approval-badge {
+            color: #166534;
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+
+        .project-review-row-appendix-badge {
+            color: #4b5563;
+            background: #f9fafb;
+            border-color: #d1d5db;
+        }
+
+        .project-review-source {
+            margin-top: 0.35rem;
+            color: #475467;
+            font-size: 0.86rem;
+        }
+
+        .project-review-notes {
+            display: grid;
+            gap: 0.4rem;
+            margin-top: 0.65rem;
+        }
+
+        .project-review-note-item {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.55rem 0.65rem;
+            border: 1px solid #f59e0b;
+            border-radius: 0.5rem;
+            background: #fffbeb;
+            color: #78350f;
+            font-size: 0.88rem;
+        }
+
+        .project-review-note-item .bi {
+            margin-top: 0.15rem;
+            flex: 0 0 auto;
+        }
+
+        .project-review-note-meta {
+            margin-top: 0.25rem;
+            color: #92400e;
+            font-size: 0.78rem;
+        }
+
+        .project-review-note-editor {
+            margin-top: 0.55rem;
+        }
+
+        .project-review-note-editor summary {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            color: #344054;
+            font-size: 0.86rem;
+            font-weight: 700;
+        }
+
+        .project-review-note-form {
+            display: grid;
+            gap: 0.45rem;
+            max-width: 640px;
+            margin-top: 0.45rem;
+        }
+
+        .project-review-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem;
+            min-width: 220px;
+        }
+
+        .project-review-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            padding: 0;
+        }
+
+        .project-review-action-spaced {
+            margin-left: 0.55rem;
+        }
+
+        .project-review-action-danger {
+            margin-left: 0.75rem;
+        }
+
+        .project-review-loading {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.55;
+        }
+
+        .project-review-loading::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.45);
+        }
+
+        @media (max-width: 992px) {
+            .project-review-hero {
+                flex-direction: column;
+            }
+
+            .project-review-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            .project-review-actions {
+                min-width: 0;
+            }
+
+            .project-review-toolbar {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .project-review-toolbar-actions {
+                justify-content: flex-start;
+            }
+
+        }
+    </style>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const projectReviewEditStorageKey = "id-handover-project-review-edit-opened";
+            const contentRoot = document.getElementById("project-review-content");
+            let refreshInProgress = false;
+
+            function getRefreshStatus() {
+                if (!contentRoot) {
+                    return null;
+                }
+                return contentRoot.querySelector(".js-project-review-refresh-status");
+            }
+
+            function setRefreshStatus(message, state) {
+                const status = getRefreshStatus();
+                if (!status) {
+                    return;
+                }
+
+                status.textContent = message || "";
+                status.classList.toggle("is-success", state === "success");
+                status.classList.toggle("is-error", state === "error");
+            }
+
+            async function refreshProjectReviewContent(reason) {
+                if (!contentRoot || refreshInProgress) {
+                    return;
+                }
+
+                refreshInProgress = true;
+                contentRoot.classList.add("project-review-loading");
+                setRefreshStatus(
+                    reason === "after-edit"
+                        ? "Обновляю данные после редактирования акта..."
+                        : "Обновляю данные шифра...",
+                    ""
+                );
+
+                try {
+                    const response = await fetch(window.location.href, {
+                        method: "GET",
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Не удалось обновить данные шифра.");
+                    }
+
+                    contentRoot.innerHTML = await response.text();
+                    bindProjectReviewControls();
+                    setRefreshStatus("Данные шифра обновлены.", "success");
+                } catch (error) {
+                    setRefreshStatus(error.message || "Не удалось обновить данные шифра.", "error");
+                } finally {
+                    contentRoot.classList.remove("project-review-loading");
+                    refreshInProgress = false;
+                }
+            }
+
+            function bindProjectReviewControls() {
+                if (!contentRoot) {
+                    return;
+                }
+
+                contentRoot.querySelectorAll(".js-project-review-action-form").forEach(function (form) {
+                    form.addEventListener("submit", async function (event) {
+                        event.preventDefault();
+
+                        contentRoot.classList.add("project-review-loading");
+
+                        try {
+                            const response = await fetch(form.action, {
+                                method: "POST",
+                                headers: {
+                                    "X-Requested-With": "XMLHttpRequest",
+                                },
+                                body: new FormData(form),
+                                credentials: "same-origin",
+                            });
+
+                            const contentType = response.headers.get("content-type") || "";
+
+                            if (!response.ok) {
+                                if (contentType.includes("application/json")) {
+                                    const payload = await response.json();
+                                    throw new Error(payload.error || "Не удалось обновить состав шифра.");
+                                }
+
+                                throw new Error("Не удалось обновить состав шифра.");
+                            }
+
+                            const html = await response.text();
+                            contentRoot.innerHTML = html;
+                            bindProjectReviewControls();
+                        } catch (error) {
+                            window.alert(error.message || "Не удалось обновить состав шифра.");
+                        } finally {
+                            contentRoot.classList.remove("project-review-loading");
+                        }
+                    });
+                });
+
+                contentRoot.querySelectorAll(".js-project-review-refresh").forEach(function (button) {
+                    button.addEventListener("click", function () {
+                        refreshProjectReviewContent("manual");
+                    });
+                });
+
+                contentRoot.querySelectorAll("[data-project-review-edit-link]").forEach(function (link) {
+                    link.addEventListener("click", function () {
+                        window.sessionStorage.setItem(projectReviewEditStorageKey, "1");
+                        setRefreshStatus(
+                            "Акт открыт в новой вкладке. После сохранения вернись сюда, данные обновятся автоматически.",
+                            ""
+                        );
+                    });
+                });
+            }
+
+            bindProjectReviewControls();
+
+            window.addEventListener("focus", function () {
+                if (window.sessionStorage.getItem(projectReviewEditStorageKey) !== "1") {
+                    return;
+                }
+
+                window.sessionStorage.removeItem(projectReviewEditStorageKey);
+                refreshProjectReviewContent("after-edit");
+            });
+        });
+    </script>
+{% endblock %}
+

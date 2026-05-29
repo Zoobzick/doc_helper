@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
 from pathlib import Path
+import platform
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -53,6 +54,11 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # 3) иначе (Linux) -> /var/www/doc_helper/storage
 DEFAULT_WINDOWS_BASE = Path(r"C:\ид участок №5 (липовая роща)")
 DEFAULT_LINUX_BASE = Path("/var/lib/doc_helper/storage")
+
+if platform.system() == "Windows":
+    LIBREOFFICE_EXECUTABLE = r"C:\Program Files\LibreOffice\program\soffice.exe"
+else:
+    LIBREOFFICE_EXECUTABLE = "libreoffice"
 
 raw_base = os.environ.get("DOC_HELPER_BASE_ID_DIR", "").strip()
 

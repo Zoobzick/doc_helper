@@ -12,13 +12,50 @@
 
         {% if user.is_authenticated %}
             {% with app=request.resolver_match.app_name rn=request.resolver_match.url_name %}
-                {% if user.is_superuser or perms.documents_app.view_box_label_page %}
+                {% if user.is_superuser or perms.documents_app.view_box_label_page or perms.documents_app.add_documentbatch or perms.documents_app.view_documentbatch %}
                     <li class="nav-item">
                         <a class="nav-link {% if app == 'documents' %}active{% else %}collapsed{% endif %}"
-                           href="{% url 'documents:box_label_page' %}">
+                           data-bs-target="#documents-nav"
+                           data-bs-toggle="collapse"
+                           href="#">
                             <i class="bi bi-folder2-open"></i>
                             <span>Документы</span>
+                            <i class="bi bi-chevron-down ms-auto"></i>
                         </a>
+
+                        <ul id="documents-nav"
+                            class="nav-content collapse {% if app == 'documents' %}show{% endif %}"
+                            data-bs-parent="#sidebar-nav">
+                            {% if user.is_superuser or perms.documents_app.view_box_label_page %}
+                                <li>
+                                    <a href="{% url 'documents:box_label_page' %}"
+                                       class="{% if rn == 'box_label_page' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Наклейка на коробку</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                            {% if user.is_superuser or perms.documents_app.view_documentbatch %}
+                                <li>
+                                    <a href="{% url 'documents:id_handover_batch_list' %}"
+                                       class="{% if rn == 'id_handover_batch_list' or rn == 'id_handover_batch_detail' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Список комплектов</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                            {% if user.is_superuser or perms.documents_app.add_documentbatch or perms.documents_app.view_documentbatch %}
+                                <li>
+                                    <a href="{% url 'documents:id_handover_master' %}"
+                                       class="{% if rn == 'id_handover_master' or rn == 'id_handover_batch_master' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Создать комплект</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
                     </li>
                 {% endif %}
 

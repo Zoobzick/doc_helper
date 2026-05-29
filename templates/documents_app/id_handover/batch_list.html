@@ -1,0 +1,518 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+
+    <div class="pagetitle">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <h1>Комплекты документов</h1>
+                <nav>
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                        <li class="breadcrumb-item">Документы</li>
+                        <li class="breadcrumb-item active">Комплекты</li>
+                    </ol>
+                </nav>
+            </div>
+
+            {% if user.is_superuser or perms.documents_app.add_documentbatch %}
+                <a href="{% url 'documents:id_handover_master' %}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle me-1"></i>
+                    Создать комплект
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <section class="section batch-list-page">
+
+        {% if messages %}
+            <div class="row">
+                <div class="col-lg-12">
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="batch-list-toolbar">
+            <form method="get" class="batch-list-search">
+                <input type="hidden" name="status" value="{{ status_filter }}">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input
+                        type="text"
+                        name="q"
+                        value="{{ search_query }}"
+                        class="form-control"
+                        placeholder="Поиск по названию, ID или шифру проекта"
+                    >
+                    <button type="submit" class="btn btn-primary">Найти</button>
+                </div>
+            </form>
+
+            <div class="batch-list-count">
+                Найдено: <strong>{{ total_count }}</strong>
+            </div>
+        </div>
+
+        <div class="batch-list-filter-row">
+            {% for filter in status_filters %}
+                <a href="{% url 'documents:id_handover_batch_list' %}?status={{ filter.key }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+                   class="batch-list-filter {% if status_filter == filter.key %}is-active{% endif %}">
+                    {{ filter.label }}
+                </a>
+            {% endfor %}
+
+            {% if search_query or status_filter != "all" %}
+                <a href="{% url 'documents:id_handover_batch_list' %}" class="batch-list-reset">
+                    <i class="bi bi-x-circle me-1"></i>
+                    Сбросить
+                </a>
+            {% endif %}
+        </div>
+
+        <div class="batch-list-summary">
+            <div class="batch-list-summary-item">
+                <span>Всего</span>
+                <strong>{{ summary.total }}</strong>
+            </div>
+            <div class="batch-list-summary-item">
+                <span>Нужно проверить</span>
+                <strong>{{ summary.needs_review }}</strong>
+            </div>
+            <div class="batch-list-summary-item">
+                <span>В работе</span>
+                <strong>{{ summary.in_progress }}</strong>
+            </div>
+            <div class="batch-list-summary-item">
+                <span>К генерации</span>
+                <strong>{{ summary.ready_to_generate }}</strong>
+            </div>
+            <div class="batch-list-summary-item">
+                <span>С файлами</span>
+                <strong>{{ summary.generated }}</strong>
+            </div>
+        </div>
+
+        {% if batches %}
+            <div class="batch-list-stack">
+                {% for batch in batches %}
+                    <article class="batch-list-card">
+                        <div class="batch-list-card-main">
+                            <div class="batch-list-head">
+                                <div class="batch-list-title-block">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                        <a href="{% url 'documents:id_handover_batch_master' batch.id %}?step={{ batch.primary_step }}"
+                                           class="batch-list-title">
+                                            {{ batch.title|default:"Без названия" }}
+                                        </a>
+                                        <span class="badge text-bg-{{ batch.list_state_class }}">
+                                            <i class="bi {{ batch.list_state_icon }} me-1"></i>
+                                            {{ batch.list_state_label }}
+                                        </span>
+                                    </div>
+
+                                    <div class="batch-list-meta">
+                                        <span>{{ batch.created_at|date:"d.m.Y H:i" }}</span>
+                                        <span>{{ batch.created_by.get_full_name|default:batch.created_by.username }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="batch-list-actions">
+                                    {% if batch.list_state_key == "generated" or batch.list_state_key == "ready_to_generate" %}
+                                        <a href="{% url 'documents:id_handover_batch_detail' batch.id %}"
+                                           class="btn btn-primary btn-sm">
+                                            <i class="bi bi-folder2-open me-1"></i>
+                                            {{ batch.primary_action_label }}
+                                        </a>
+                                    {% else %}
+                                        <a href="{% url 'documents:id_handover_batch_master' batch.id %}?step={{ batch.primary_step }}"
+                                           class="btn btn-primary btn-sm">
+                                            <i class="bi bi-arrow-right-circle me-1"></i>
+                                            {{ batch.primary_action_label }}
+                                        </a>
+                                    {% endif %}
+
+                                    <a href="{% url 'documents:id_handover_batch_master' batch.id %}"
+                                       class="btn btn-outline-secondary btn-sm">
+                                        <i class="bi bi-sliders me-1"></i>
+                                        Настроить
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="batch-list-progress-line">
+                                <div class="batch-list-progress-copy">
+                                    Проверено шифров:
+                                    <strong>{{ batch.reviewed_projects_count }}</strong>
+                                    из
+                                    <strong>{{ batch.projects_count }}</strong>
+                                </div>
+                                <div class="batch-list-progress">
+                                    <div style="width: {{ batch.review_progress_percent }}%;"></div>
+                                </div>
+                            </div>
+
+                            <div class="batch-list-projects">
+                                {% if batch.project_codes_preview %}
+                                    {% for code in batch.project_codes_preview %}
+                                        <span>{{ code }}</span>
+                                    {% endfor %}
+                                    {% if batch.project_codes_more_count %}
+                                        <span class="is-muted">+{{ batch.project_codes_more_count }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="is-muted">Проекты ещё не добавлены</span>
+                                {% endif %}
+                            </div>
+
+                            {% if batch.comment %}
+                                <div class="batch-list-comment">{{ batch.comment|truncatechars:140 }}</div>
+                            {% endif %}
+
+                            {% if batch.in_progress_user_names %}
+                                <div class="batch-list-work">
+                                    <i class="bi bi-person-workspace me-1"></i>
+                                    Сейчас проверяют: {{ batch.in_progress_user_names|join:", " }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="batch-list-facts">
+                            <div class="batch-list-fact">
+                                <span>Период</span>
+                                <strong>{{ batch.period_label }}</strong>
+                            </div>
+                            <div class="batch-list-fact">
+                                <span>Режим</span>
+                                <strong>{{ batch.generation_mode_label }}</strong>
+                            </div>
+                            <div class="batch-list-fact">
+                                <span>Файлы</span>
+                                <strong>
+                                    {% if batch.generated_documents_count %}
+                                        {{ batch.actual_generated_documents_count }}/{{ batch.generated_documents_count }}
+                                    {% else %}
+                                        Нет
+                                    {% endif %}
+                                </strong>
+                            </div>
+                            <div class="batch-list-fact">
+                                <span>Обновлено</span>
+                                <strong>{{ batch.latest_generated_at|date:"d.m.Y H:i"|default:"—" }}</strong>
+                            </div>
+                            <div class="batch-list-fact">
+                                <span>Письмо</span>
+                                <strong>{% if batch.has_stamped_letter_attachment %}Есть{% else %}Нет{% endif %}</strong>
+                            </div>
+                            <div class="batch-list-fact">
+                                <span>Маркзамеры</span>
+                                <strong>{{ batch.marksurvey_attachments_count }}</strong>
+                            </div>
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="batch-list-empty">
+                <i class="bi bi-inboxes"></i>
+                <h5>Комплекты не найдены</h5>
+                <p>Измени поиск или сбрось фильтры, чтобы увидеть другие комплекты.</p>
+                {% if user.is_superuser or perms.documents_app.add_documentbatch %}
+                    <a href="{% url 'documents:id_handover_master' %}" class="btn btn-primary">
+                        Создать комплект
+                    </a>
+                {% endif %}
+            </div>
+        {% endif %}
+
+    </section>
+
+    <style>
+        .batch-list-page {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .batch-list-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 1rem;
+            border: 1px solid #dbe4f0;
+            border-radius: 0.75rem;
+            background: #fff;
+        }
+
+        .batch-list-search {
+            flex: 1 1 620px;
+            max-width: 760px;
+        }
+
+        .batch-list-count {
+            color: #667085;
+            white-space: nowrap;
+        }
+
+        .batch-list-filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .batch-list-filter,
+        .batch-list-reset {
+            display: inline-flex;
+            align-items: center;
+            min-height: 34px;
+            padding: 0.35rem 0.75rem;
+            border: 1px solid #d0d7e2;
+            border-radius: 999px;
+            background: #fff;
+            color: #344054;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .batch-list-filter:hover,
+        .batch-list-reset:hover {
+            color: #0d6efd;
+            border-color: #9ec5fe;
+        }
+
+        .batch-list-filter.is-active {
+            color: #fff;
+            border-color: #0d6efd;
+            background: #0d6efd;
+        }
+
+        .batch-list-reset {
+            margin-left: auto;
+            color: #667085;
+        }
+
+        .batch-list-summary {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 0.75rem;
+        }
+
+        .batch-list-summary-item {
+            padding: 0.85rem 1rem;
+            border: 1px solid #dbe4f0;
+            border-radius: 0.75rem;
+            background: #fff;
+        }
+
+        .batch-list-summary-item span {
+            display: block;
+            color: #667085;
+            font-size: 0.86rem;
+        }
+
+        .batch-list-summary-item strong {
+            display: block;
+            margin-top: 0.15rem;
+            font-size: 1.35rem;
+            color: #101828;
+        }
+
+        .batch-list-stack {
+            display: grid;
+            gap: 0.85rem;
+        }
+
+        .batch-list-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(230px, 300px);
+            gap: 1rem;
+            padding: 1.15rem 1.25rem;
+            border: 1px solid #dbe4f0;
+            border-radius: 0.75rem;
+            background: #fff;
+            box-shadow: 0 0.75rem 2rem rgba(15, 23, 42, 0.04);
+        }
+
+        .batch-list-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+
+        .batch-list-title {
+            color: #17365d;
+            font-size: 1.18rem;
+            font-weight: 800;
+            line-height: 1.25;
+        }
+
+        .batch-list-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem 0.9rem;
+            color: #667085;
+            font-size: 0.86rem;
+        }
+
+        .batch-list-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 0.45rem;
+            flex: 0 0 auto;
+        }
+
+        .batch-list-progress-line {
+            display: grid;
+            gap: 0.45rem;
+            margin-top: 0.95rem;
+        }
+
+        .batch-list-progress-copy {
+            color: #475467;
+            font-size: 0.9rem;
+        }
+
+        .batch-list-progress {
+            height: 0.55rem;
+            overflow: hidden;
+            border-radius: 999px;
+            background: #edf2f7;
+        }
+
+        .batch-list-progress > div {
+            height: 100%;
+            border-radius: inherit;
+            background: #198754;
+        }
+
+        .batch-list-projects {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin-top: 0.85rem;
+        }
+
+        .batch-list-projects span {
+            display: inline-flex;
+            align-items: center;
+            min-height: 1.6rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            background: #f2f4f7;
+            color: #344054;
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .batch-list-projects span.is-muted {
+            color: #667085;
+            background: #f8fafc;
+        }
+
+        .batch-list-comment,
+        .batch-list-work {
+            margin-top: 0.75rem;
+            color: #667085;
+            font-size: 0.9rem;
+        }
+
+        .batch-list-work {
+            color: #92400e;
+        }
+
+        .batch-list-facts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.6rem;
+            align-content: start;
+        }
+
+        .batch-list-fact {
+            min-height: 72px;
+            padding: 0.75rem;
+            border: 1px solid #e4e7ec;
+            border-radius: 0.65rem;
+            background: #fbfdff;
+        }
+
+        .batch-list-fact span {
+            display: block;
+            color: #667085;
+            font-size: 0.78rem;
+        }
+
+        .batch-list-fact strong {
+            display: block;
+            margin-top: 0.2rem;
+            color: #101828;
+            font-size: 0.95rem;
+            line-height: 1.25;
+        }
+
+        .batch-list-empty {
+            padding: 3rem 1rem;
+            border: 1px dashed #cbd5e1;
+            border-radius: 0.75rem;
+            background: #fff;
+            text-align: center;
+            color: #667085;
+        }
+
+        .batch-list-empty .bi {
+            color: #98a2b3;
+            font-size: 2.4rem;
+        }
+
+        .batch-list-empty h5 {
+            margin-top: 0.75rem;
+            color: #101828;
+        }
+
+        @media (max-width: 1200px) {
+            .batch-list-card {
+                grid-template-columns: 1fr;
+            }
+
+            .batch-list-facts {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .batch-list-toolbar,
+            .batch-list-head {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .batch-list-count {
+                white-space: normal;
+            }
+
+            .batch-list-summary,
+            .batch-list-facts {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .batch-list-actions {
+                justify-content: flex-start;
+            }
+
+            .batch-list-reset {
+                margin-left: 0;
+            }
+        }
+    </style>
+
+{% endblock %}
