@@ -105,6 +105,16 @@
                         const previewTitle = button.getAttribute("data-preview-title") || "PDF";
                         if (!url) return;
 
+                        const isSamePreviewOpen = previewEl.classList.contains("show")
+                            && button.classList.contains("active")
+                            && frame.getAttribute("src") === url;
+
+                        if (isSamePreviewOpen) {
+                            button.classList.remove("active");
+                            collapse.hide();
+                            return;
+                        }
+
                         buttons.forEach(btn => btn.classList.remove("active"));
                         button.classList.add("active");
 

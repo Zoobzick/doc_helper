@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-import subprocess
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -33,6 +32,11 @@ from acts_app.models import (
 )
 
 from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx
+from acts_app.services.registry_sheet_counter import (
+    RegistrySheetCountError,
+    docx_to_pdf_cached as _shared_docx_to_pdf_cached,
+    refresh_registry_sheets_count,
+)
 
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError, get_act_docx_paths
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
@@ -360,51 +364,31 @@ def _first_existing_file_url(obj) -> str | None:
 
 
 def _docx_to_pdf_cached(docx_path: Path) -> Path:
-    """
-    (docx_path) путь к docx.
-    Возвращает путь к pdf рядом с docx.
-    Если pdf нет или он старее docx — пересобирает через LibreOffice.
-    """
-    if not docx_path.exists():
-        raise FileNotFoundError(f"DOCX not found: {docx_path}")
+    return _shared_docx_to_pdf_cached(docx_path)
 
-    out_dir = docx_path.parent
-    pdf_path = out_dir / (docx_path.stem + ".pdf")
 
-    if pdf_path.exists():
-        try:
-            if pdf_path.stat().st_mtime >= docx_path.stat().st_mtime:
-                return pdf_path
-        except Exception:
-            pass
+def _refresh_registry_sheets_and_act_outputs(*, act: Act, registry: ActAttachment, docx_path: Path) -> None:
+    old_sheets = int(registry.sheets_count or 0)
+    refresh_registry_sheets_count(registry=registry, docx_path=Path(docx_path))
+    registry.refresh_from_db(fields=["sheets_count"])
 
-    cmd = [
-        "libreoffice",
-        "--headless",
-        "--nologo",
-        "--nofirststartwizard",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        str(out_dir),
-        str(docx_path),
-    ]
-    try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except FileNotFoundError:
-        raise RuntimeError("LibreOffice не найден. Установи пакет libreoffice на сервере.")
-    except subprocess.CalledProcessError as e:
-        err = ""
-        try:
-            err = (e.stderr or b"").decode("utf-8", errors="ignore")
-        except Exception:
-            err = str(e)
-        raise RuntimeError(f"Не удалось конвертировать DOCX→PDF: {err[:500]}")
+    if int(registry.sheets_count or 0) == old_sheets:
+        return
 
-    if not pdf_path.exists():
-        raise RuntimeError("Конвертация завершилась без ошибки, но PDF не появился.")
+    AppendixBuilder(act).rebuild()
+    generate_act_docx(act)
 
-    return pdf_path
+
+def _generate_p3_registry_and_refresh_act_outputs(*, act: Act, registry: ActAttachment) -> list[Path]:
+    old_sheets = int(registry.sheets_count or 0)
+    paths = generate_and_save_registry_p3_docx(act=act, registry=registry)
+    registry.refresh_from_db(fields=["sheets_count"])
+
+    if int(registry.sheets_count or 0) != old_sheets:
+        AppendixBuilder(act).rebuild()
+        generate_act_docx(act)
+
+    return paths
 
 
 # -------------------------
@@ -1173,7 +1157,7 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             generate_act_docx(act)
             reg = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).order_by("-created_at", "-id").first()
             if reg:
-                generate_and_save_registry_p3_docx(act=act, registry=reg)
+                _generate_p3_registry_and_refresh_act_outputs(act=act, registry=reg)
             messages.success(request, "Акт сохранён. Приложения пересобраны. DOCX обновлён.")
         except AppendixBuilderError as e:
             messages.warning(request, f"Акт сохранён, но приложения не пересобраны: {e}")
@@ -1309,7 +1293,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             generate_act_docx(act)
             reg = act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY).order_by("-created_at", "-id").first()
             if reg:
-                generate_and_save_registry_p3_docx(act=act, registry=reg)
+                _generate_p3_registry_and_refresh_act_outputs(act=act, registry=reg)
             messages.success(request, "Изменения сохранены. Приложения пересобраны. DOCX обновлён.")
         except AppendixBuilderError as e:
             messages.warning(request, f"Изменения сохранены, но приложения не пересобраны: {e}")
@@ -1708,13 +1692,16 @@ class ActRegistryP3DocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin,
 
         from acts_app.services.registry_p3_docx_generator import (
             get_registry_p3_docx_paths,
-            generate_and_save_registry_p3_docx,
         )
 
         # 1) пробуем отдать уже сохранённый файл
         paths = get_registry_p3_docx_paths(act=act, registry=registry)
         for p in paths:
             if p.exists():
+                try:
+                    _refresh_registry_sheets_and_act_outputs(act=act, registry=registry, docx_path=p)
+                except (RegistrySheetCountError, AppendixBuilderError, DocxRenderError) as e:
+                    return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
                 return FileResponse(
                     open(p, "rb"),
                     as_attachment=True,
@@ -1724,8 +1711,8 @@ class ActRegistryP3DocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin,
 
         # 2) если файла нет — генерим и отдаём
         try:
-            paths = generate_and_save_registry_p3_docx(act=act, registry=registry)
-        except DocxRenderError as e:
+            paths = _generate_p3_registry_and_refresh_act_outputs(act=act, registry=registry)
+        except (DocxRenderError, AppendixBuilderError) as e:
             return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
 
         if not paths:
@@ -1758,7 +1745,6 @@ class ActRegistryP3PdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, V
 
         from acts_app.services.registry_p3_docx_generator import (
             get_registry_p3_docx_paths,
-            generate_and_save_registry_p3_docx,
         )
 
         paths = get_registry_p3_docx_paths(act=act, registry=registry)
@@ -1766,13 +1752,17 @@ class ActRegistryP3PdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, V
         for p in paths:
             if p.exists():
                 docx_path = p
+                try:
+                    _refresh_registry_sheets_and_act_outputs(act=act, registry=registry, docx_path=p)
+                except (RegistrySheetCountError, AppendixBuilderError, DocxRenderError) as e:
+                    return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
                 break
 
         if docx_path is None:
             try:
-                paths = generate_and_save_registry_p3_docx(act=act, registry=registry)
+                paths = _generate_p3_registry_and_refresh_act_outputs(act=act, registry=registry)
                 docx_path = paths[0] if paths else None
-            except DocxRenderError as e:
+            except (DocxRenderError, AppendixBuilderError) as e:
                 return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
 
         if docx_path is None or not docx_path.exists():

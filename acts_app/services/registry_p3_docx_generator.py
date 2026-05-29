@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
@@ -19,6 +19,7 @@ from acts_app.services.act_docx_context import build_projects_text
 from acts_app.services.act_docx_generator import DocxRenderError, get_act_docx_paths, replace_tokens
 from acts_app.services.date_format import fmt_date_g
 from acts_app.services.material_resolver import resolve_material_fields
+from acts_app.services.registry_sheet_counter import RegistrySheetCountError, refresh_registry_sheets_count
 from directive_app.models import ActRole, Authorization
 
 
@@ -251,6 +252,13 @@ def _compact_cell_to_single_line(cell, *, template_cell) -> None:
         pass
 
 
+def _keep_row_with_next(row) -> None:
+    for cell in row.cells:
+        for paragraph in cell.paragraphs:
+            paragraph.paragraph_format.keep_with_next = True
+            paragraph.paragraph_format.keep_together = True
+
+
 def _center_cell(cell) -> None:
     try:
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -277,6 +285,7 @@ class _MatRow:
     doc_date_str: str
     pages: int
     v: int | None
+    material_merge_key: str = ""
 
     @property
     def doc_key(self) -> tuple[str, str, str]:
@@ -404,33 +413,73 @@ def _collect_material_rows_for_registry(act: Act) -> list[_MatRow]:
         )
 
     # Группируем по документу, чтобы один паспорт печатался один раз для нескольких материалов.
+    def material_key_of(row: _MatRow) -> str:
+        return _norm_spaces(row.material_name).lower()
+
     doc_buckets: dict[tuple[str, str, str], list[_MatRow]] = {}
+    doc_materials: dict[tuple[str, str, str], set[str]] = {}
     doc_order: list[tuple[str, str, str]] = []
+    material_docs: dict[str, list[tuple[str, str, str]]] = {}
+    material_order: list[str] = []
+
     for r in raw:
-        key = r.doc_key
-        if key not in doc_buckets:
-            doc_buckets[key] = []
-            doc_order.append(key)
-        doc_buckets[key].append(r)
+        doc_key = r.doc_key
+        material_key = material_key_of(r)
+
+        if doc_key not in doc_buckets:
+            doc_buckets[doc_key] = []
+            doc_materials[doc_key] = set()
+            doc_order.append(doc_key)
+        doc_buckets[doc_key].append(r)
+        doc_materials[doc_key].add(material_key)
+
+        if material_key not in material_docs:
+            material_docs[material_key] = []
+            material_order.append(material_key)
+        if doc_key not in material_docs[material_key]:
+            material_docs[material_key].append(doc_key)
 
     grouped: list[_MatRow] = []
-    for doc_key in doc_order:
-        material_buckets: dict[str, list[_MatRow]] = {}
-        material_order: list[str] = []
-        for r in doc_buckets[doc_key]:
-            material_key = _norm_spaces(r.material_name).lower()
-            if material_key not in material_buckets:
-                material_buckets[material_key] = []
-                material_order.append(material_key)
-            material_buckets[material_key].append(r)
+    emitted_docs: set[tuple[str, str, str]] = set()
+    merge_group_no = 0
 
-        for material_key in material_order:
-            grouped.extend(material_buckets[material_key])
+    def append_rows(rows_to_add: list[_MatRow], *, merge_key: str) -> None:
+        grouped.extend(replace(row, material_merge_key=merge_key) for row in rows_to_add)
+
+    for material_key in material_order:
+        docs_for_material = [doc_key for doc_key in material_docs[material_key] if doc_key not in emitted_docs]
+        private_docs = [doc_key for doc_key in docs_for_material if len(doc_materials.get(doc_key, set())) == 1]
+        shared_docs = [doc_key for doc_key in docs_for_material if len(doc_materials.get(doc_key, set())) > 1]
+
+        if private_docs:
+            merge_group_no += 1
+            merge_key = f"material:{merge_group_no}:{material_key}"
+            for doc_key in private_docs:
+                append_rows(
+                    [row for row in doc_buckets[doc_key] if material_key_of(row) == material_key],
+                    merge_key=merge_key,
+                )
+                emitted_docs.add(doc_key)
+
+        for doc_key in shared_docs:
+            merge_group_no += 1
+            doc_group_no = merge_group_no
+            for row in doc_buckets[doc_key]:
+                append_rows([row], merge_key=f"shared-doc:{doc_group_no}:{material_key_of(row)}")
+            emitted_docs.add(doc_key)
+
+    for doc_key in doc_order:
+        if doc_key in emitted_docs:
+            continue
+        merge_group_no += 1
+        doc_group_no = merge_group_no
+        for row in doc_buckets[doc_key]:
+            append_rows([row], merge_key=f"fallback:{doc_group_no}:{material_key_of(row)}")
 
     # перенумерация pp по итоговому порядку в реестре
     out: list[_MatRow] = []
     for i, r in enumerate(grouped, start=1):
-        out.append(_MatRow(pp=i, **{k: getattr(r, k) for k in r.__dataclass_fields__ if k != "pp"}))
+        out.append(replace(r, pp=i))
 
     return out
 
@@ -540,7 +589,7 @@ def generate_registry_p3_docx_bytes(*, act: Act, registry: ActAttachment) -> byt
         col_idx=1,
         start_row=start,
         end_row=end,
-        key_getter=lambda ri: "\x1f".join(rows[ri - start].doc_key) + "\x1f" + table.cell(ri, 1).text,
+        key_getter=lambda ri: rows[ri - start].material_merge_key or _norm_spaces(table.cell(ri, 1).text).lower(),
     )
 
     _merge_vertical_groups(
@@ -565,6 +614,9 @@ def generate_registry_p3_docx_bytes(*, act: Act, registry: ActAttachment) -> byt
     for ri in range(start, end + 1):
         _compact_cell_to_single_line(table.cell(ri, 1), template_cell=tpl_cells[1])
 
+    if rows:
+        _keep_row_with_next(table.rows[end])
+
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
@@ -582,5 +634,11 @@ def generate_and_save_registry_p3_docx(*, act: Act, registry: ActAttachment) -> 
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(content)
         saved.append(p)
+
+    if saved:
+        try:
+            refresh_registry_sheets_count(registry=registry, docx_path=saved[0])
+        except RegistrySheetCountError as exc:
+            raise DocxRenderError(f"DOCX реестра создан, но не удалось посчитать листы реестра: {exc}") from exc
 
     return saved
