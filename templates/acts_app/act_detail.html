@@ -30,25 +30,39 @@
                 <a class="btn btn-primary" href="{% url 'acts_app:act_update' act.uuid %}">
                     <i class="bi bi-pencil me-1"></i>Редактировать
                 </a>
-                <button class="btn btn-outline-danger" type="button" data-bs-toggle="collapse"
-                        data-bs-target="#pdfPreview"
-                        aria-expanded="false" aria-controls="pdfPreview">
-                    <i class="bi bi-filetype-pdf me-1"></i>PDF просмотр
+                <button class="btn btn-outline-danger js-pdf-preview-btn" type="button"
+                        data-preview-url="{{ pdf_preview_url }}"
+                        data-preview-title="Акт №{{ act.number }} от {{ act.act_date|date:'d.m.Y' }}"
+                        aria-controls="pdfPreview">
+                    <i class="bi bi-filetype-pdf me-1"></i>Акт
                 </button>
 
+                {% if has_p3_registry %}
+                    <button class="btn btn-outline-danger js-pdf-preview-btn" type="button"
+                            data-preview-url="{{ registry_pdf_preview_url }}"
+                            data-preview-title="Реестр П-3"
+                            aria-controls="pdfPreview">
+                        <i class="bi bi-filetype-pdf me-1"></i>Реестр
+                    </button>
+                {% else %}
+                    <button class="btn btn-outline-danger" type="button" disabled>
+                        <i class="bi bi-filetype-pdf me-1"></i>Реестр
+                    </button>
+                {% endif %}
+
                 <a class="btn btn-outline-success" href="{% url 'acts_app:act_docx_download' act.uuid %}">
-                    <i class="bi bi-download me-1"></i>Акт (DOCX)
+                    <i class="bi bi-download me-1"></i>Акт <i class="bi bi-filetype-docx ms-1"></i>
                 </a>
 
 
                 {% if has_p3_registry %}
                     <a class="btn btn-outline-success"
                        href="{% url 'acts_app:act_registry_p3_docx_download' act.uuid %}">
-                        <i class="bi bi-download me-1"></i>Реестр
+                        <i class="bi bi-download me-1"></i>Реестр <i class="bi bi-filetype-docx ms-1"></i>
                     </a>
                 {% else %}
                     <button class="btn btn-outline-success" type="button" disabled>
-                        <i class="bi bi-download me-1"></i>Реестр
+                        <i class="bi bi-download me-1"></i>Реестр <i class="bi bi-filetype-docx ms-1"></i>
                     </button>
                 {% endif %}
 
@@ -64,8 +78,11 @@
         <div class="collapse mb-3" id="pdfPreview">
             <div class="card">
                 <div class="card-body pt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0" id="pdfPreviewTitle">Акт</h5>
+                    </div>
                     <div class="ratio ratio-16x9">
-                        <iframe src="{{ pdf_preview_url }}" title="PDF preview" style="border:0;"></iframe>
+                        <iframe id="pdfPreviewFrame" src="" title="PDF preview" style="border:0;"></iframe>
                     </div>
                     <div class="small text-muted mt-2">
                         Если видишь ошибку PDF — значит на сервере нет LibreOffice или не удалось сконвертировать DOCX.
@@ -73,6 +90,36 @@
                 </div>
             </div>
         </div>
+
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                const previewEl = document.getElementById("pdfPreview");
+                const frame = document.getElementById("pdfPreviewFrame");
+                const title = document.getElementById("pdfPreviewTitle");
+                const buttons = Array.from(document.querySelectorAll(".js-pdf-preview-btn"));
+
+                if (!previewEl || !frame || !title || !window.bootstrap) return;
+
+                const collapse = bootstrap.Collapse.getOrCreateInstance(previewEl, {toggle: false});
+
+                buttons.forEach(button => {
+                    button.addEventListener("click", function () {
+                        const url = button.getAttribute("data-preview-url") || "";
+                        const previewTitle = button.getAttribute("data-preview-title") || "PDF";
+                        if (!url) return;
+
+                        buttons.forEach(btn => btn.classList.remove("active"));
+                        button.classList.add("active");
+
+                        title.textContent = previewTitle;
+                        if (frame.getAttribute("src") !== url) {
+                            frame.setAttribute("src", url);
+                        }
+                        collapse.show();
+                    });
+                });
+            });
+        </script>
 
         <div class="row g-3">
             <div class="col-12">

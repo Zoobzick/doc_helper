@@ -929,6 +929,10 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
             ctx["resolved_parties"] = resolve_act_parties(act)
 
         ctx["pdf_preview_url"] = reverse("acts_app:act_pdf_preview", kwargs={"uuid": str(act.uuid)})
+        ctx["registry_pdf_preview_url"] = reverse(
+            "acts_app:act_registry_p3_pdf_preview",
+            kwargs={"uuid": str(act.uuid)},
+        )
         return ctx
 
 
@@ -1734,6 +1738,60 @@ class ActRegistryP3DocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin,
             filename=p.name,
             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
+
+@method_decorator(xframe_options_sameorigin, name="dispatch")
+class ActRegistryP3PdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+
+        registry = (
+            act.attachments
+            .filter(type=AttachmentType.MATERIALS_REGISTRY)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if not registry:
+            return HttpResponse("Реестр П-3 не создан (материалов меньше 5 или приложения не пересобраны).", status=404)
+
+        from acts_app.services.registry_p3_docx_generator import (
+            get_registry_p3_docx_paths,
+            generate_and_save_registry_p3_docx,
+        )
+
+        paths = get_registry_p3_docx_paths(act=act, registry=registry)
+        docx_path = None
+        for p in paths:
+            if p.exists():
+                docx_path = p
+                break
+
+        if docx_path is None:
+            try:
+                paths = generate_and_save_registry_p3_docx(act=act, registry=registry)
+                docx_path = paths[0] if paths else None
+            except DocxRenderError as e:
+                return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
+
+        if docx_path is None or not docx_path.exists():
+            return HttpResponse("DOCX ERROR: файл не был создан.", status=500, content_type="text/plain; charset=utf-8")
+
+        try:
+            pdf_path = _docx_to_pdf_cached(Path(docx_path))
+        except Exception as e:
+            return HttpResponse(f"PDF ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
+
+        resp = FileResponse(open(pdf_path, "rb"), content_type="application/pdf")
+
+        date_value = registry.doc_date or act.work_end_date or act.act_date
+        safe_date = date_value.strftime("%d.%m.%Y") if date_value else ""
+        registry_no = (registry.doc_no or f"П-3.{act.number}").strip()
+        download_name = f"Реестр №{registry_no} от {safe_date}.pdf".strip()
+
+        resp["Content-Disposition"] = f'inline; filename="{download_name}"'
+        return resp
 
 
 class PassportOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
