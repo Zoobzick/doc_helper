@@ -164,7 +164,7 @@ class ActMaterialItemForm(forms.ModelForm):
 
         from passports_app.models import Passport  # noqa: WPS433
 
-        self.fields["passport"].queryset = Passport.objects.all().order_by("-id")
+        self.fields["passport"].queryset = Passport.objects.all().order_by("-document_date", "-id")
 
         self.fields["sheets_count"].required = False
         if self.initial.get("sheets_count") in (None, ""):

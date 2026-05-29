@@ -1046,7 +1046,7 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
 
         records_filtered = qs.count()
-        qs = qs.order_by("-id")[start:start + length]
+        qs = qs.order_by("-document_date", "-id")[start:start + length]
 
         data = []
         for p in qs:
@@ -1063,7 +1063,9 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "doc_name": doc_name,
                     "doc_no": doc_no,
                     "doc_date": doc_date,
+                    "doc_date_iso": p.document_date.isoformat() if p.document_date else "",
                     "label": label,
+                    "preview_url": reverse("acts_app:passport_open", kwargs={"pk": p.id}),
                 }
             )
 

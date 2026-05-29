@@ -632,6 +632,7 @@
                                 <th>Документ</th>
                                 <th>№</th>
                                 <th>Дата</th>
+                                <th style="width: 90px;">PDF</th>
                             </tr>
                             </thead>
                             <tbody></tbody>
@@ -1235,6 +1236,7 @@
             const modalEl = document.getElementById("passportModal");
             const btnPickMany = document.getElementById("btnPickPassports");
             let passportDT = null;
+            let passportModalNeedsReload = false;
 
             // (currentHiddenId) hidden input id в строке, куда пишем первый выбранный паспорт
             let currentHiddenId = null;
@@ -1328,81 +1330,107 @@
                 });
             }
 
+            function ensurePassportDataTable() {
+                if (passportDT) return passportDT;
+
+                passportDT = $('#passportPickTable').DataTable({
+                    processing: true,
+                    serverSide: true,
+                    searching: true,
+                    ordering: false,
+                    autoWidth: false,
+                    pageLength: 10,
+                    lengthMenu: [10, 25, 50],
+                    language: {
+                        url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json',
+                        emptyTable: "РџР°СЃРїРѕСЂС‚Р° РЅРµ РЅР°Р№РґРµРЅС‹"
+                    },
+                    ajax: {
+                        url: "{% url 'acts_app:passports_datatable' %}",
+                        dataSrc: "data"
+                    },
+                    columns: [
+                        {
+                            data: null,
+                            render: function (data, type, row) {
+                                return `<input type="checkbox" class="passport-pick-cb" value="${row.id}">`;
+                            }
+                        },
+                        {data: "material"},
+                        {data: "doc_name"},
+                        {data: "doc_no"},
+                        {data: "doc_date"},
+                        {
+                            data: "preview_url",
+                            orderable: false,
+                            searchable: false,
+                            render: function (data, type, row) {
+                                if (!data) return "";
+                                return `<a href="${data}" target="_blank" class="btn btn-sm btn-outline-secondary" title="РћС‚РєСЂС‹С‚СЊ PDF">PDF</a>`;
+                            }
+                        },
+                    ],
+                    rowCallback: function (row, data) {
+                        row.dataset.passportId = data.id;
+                        row.dataset.material = data.material || "";
+                        row.dataset.docName = data.doc_name || "";
+                        row.dataset.docNo = data.doc_no || "";
+                        row.dataset.docDate = data.doc_date || "";
+                        row.dataset.docDateIso = data.doc_date_iso || "";
+                    }
+                });
+
+                $('#passportPickTable tbody').on('click', 'tr', function (e) {
+                    if (e.target && e.target.closest('input, a, button')) return;
+                    const cb = this.querySelector('input.passport-pick-cb');
+                    if (!cb) return;
+                    cb.checked = !cb.checked;
+                    cb.dispatchEvent(new Event("change", {bubbles: true}));
+                });
+
+                $('#passportPickTable tbody').on('change', 'input.passport-pick-cb', function () {
+                    const cb = this;
+                    const tr = cb.closest("tr");
+                    if (!tr) return;
+                    const payload = _readPayloadFromTr(tr);
+                    if (!payload) return;
+                    _togglePassportSelected(payload, cb.checked);
+                });
+
+                $('#passportPickTable').on('draw.dt', function () {
+                    _syncCheckboxStateOnDraw();
+                });
+
+                return passportDT;
+            }
+
             function openPassportModal(hiddenId) {
                 currentHiddenId = hiddenId;
 
-                // ✅ каждый новый заход в модалку — начинаем с чистого выбора
                 selectedPassportIds.clear();
                 selectedPassportPayload.clear();
 
-                if (!passportDT) {
-                    passportDT = $('#passportPickTable').DataTable({
-                        processing: true,
-                        serverSide: true,
-                        searching: true,
-                        ordering: false,
-                        pageLength: 10,
-                        lengthMenu: [10, 25, 50],
-                        language: {
-                            url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json',
-                            emptyTable: "Паспорта не найдены"
-                        },
-                        ajax: {
-                            url: "{% url 'acts_app:passports_datatable' %}",
-                            dataSrc: "data"
-                        },
-                        columns: [
-                            {
-                                data: null,
-                                render: function (data, type, row) {
-                                    return `<input type="checkbox" class="passport-pick-cb" value="${row.id}">`;
-                                }
-                            },
-                            {data: "material"},
-                            {data: "doc_name"},
-                            {data: "doc_no"},
-                            {data: "doc_date"},
-                        ],
-                        rowCallback: function (row, data) {
-                            row.dataset.passportId = data.id;
-                            row.dataset.material = data.material || "";
-                            row.dataset.docName = data.doc_name || "";
-                            row.dataset.docNo = data.doc_no || "";
-                            row.dataset.docDate = data.doc_date || "";
-                            row.dataset.docDateIso = data.doc_date_iso || "";
-                        }
-                    });
-
-                    // click row toggles checkbox
-                    $('#passportPickTable tbody').on('click', 'tr', function (e) {
-                        if (e.target && e.target.closest('input')) return;
-                        const cb = this.querySelector('input.passport-pick-cb');
-                        if (!cb) return;
-                        cb.checked = !cb.checked;
-                        cb.dispatchEvent(new Event("change", {bubbles: true}));
-                    });
-
-                    // checkbox change persists selection
-                    $('#passportPickTable tbody').on('change', 'input.passport-pick-cb', function () {
-                        const cb = this;
-                        const tr = cb.closest("tr");
-                        if (!tr) return;
-                        const payload = _readPayloadFromTr(tr);
-                        if (!payload) return;
-                        _togglePassportSelected(payload, cb.checked);
-                    });
-
-                    // restore on draw
-                    $('#passportPickTable').on('draw.dt', function () {
-                        _syncCheckboxStateOnDraw();
-                    });
-                } else {
-                    passportDT.ajax.reload(null, false);
-                }
-
-                const bsModal = new bootstrap.Modal(modalEl);
+                passportModalNeedsReload = !!passportDT;
+                const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
                 bsModal.show();
             }
+
+            modalEl?.addEventListener("shown.bs.modal", function () {
+                const dt = ensurePassportDataTable();
+                if (!dt) return;
+
+                dt.columns.adjust();
+
+                if (passportModalNeedsReload) {
+                    dt.ajax.reload(function () {
+                        dt.columns.adjust();
+                    }, false);
+                    passportModalNeedsReload = false;
+                    return;
+                }
+
+                dt.draw(false);
+            });
 
             btnPickMany?.addEventListener("click", function () {
                 if (!currentHiddenId) return;
@@ -1976,3 +2004,4 @@
     </script>
 
 {% endblock %}
+
