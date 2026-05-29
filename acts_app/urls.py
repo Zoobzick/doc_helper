@@ -18,6 +18,8 @@ urlpatterns = [
     path("<uuid:uuid>/pdf/", views.ActPdfPreviewView.as_view(), name="act_pdf_preview"),
     path("<uuid:uuid>/registry-p3/", views.ActRegistryP3DocxDownloadView.as_view(),
          name="act_registry_p3_docx_download"),
+    path("<uuid:uuid>/registry-p3/pdf/", views.ActRegistryP3PdfPreviewView.as_view(),
+         name="act_registry_p3_pdf_preview"),
 
     # пересборка / финализация
     path("<uuid:uuid>/rebuild-appendix/", views.ActRebuildAppendixView.as_view(), name="act_rebuild_appendix"),

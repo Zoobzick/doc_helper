@@ -12,6 +12,7 @@ from django.conf import settings
 from django.db.models import Q
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from acts_app.models import Act, ActAttachment, AttachmentType
 from acts_app.services.act_docx_context import build_projects_text
@@ -53,6 +54,13 @@ def _doc_no_with_sign(no: str) -> str:
     if no.startswith("№"):
         return no
     return f"№{no}"
+
+
+def _doc_no_key(no: str) -> str:
+    no = _norm_spaces(no).lower()
+    while no.startswith(("в„–", "№")):
+        no = no[1:].strip()
+    return no
 
 
 def _pick_registry_date(act: Act, registry: ActAttachment):
@@ -243,6 +251,19 @@ def _compact_cell_to_single_line(cell, *, template_cell) -> None:
         pass
 
 
+def _center_cell(cell) -> None:
+    try:
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    except Exception:
+        pass
+
+    for paragraph in cell.paragraphs:
+        try:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except Exception:
+            pass
+
+
 # -------------------------
 # row model
 # -------------------------
@@ -256,6 +277,14 @@ class _MatRow:
     doc_date_str: str
     pages: int
     v: int | None
+
+    @property
+    def doc_key(self) -> tuple[str, str, str]:
+        return (
+            _norm_spaces(self.doc_name).lower(),
+            _doc_no_key(self.doc_no),
+            _norm_spaces(self.doc_date_str).lower(),
+        )
 
     @property
     def doc_full(self) -> str:
@@ -283,6 +312,25 @@ def _append_row_clone(table, template_row_idx: int) -> None:
     table._tbl.append(new_tr)
 
 
+def _set_cell_vmerge(cell, value: str) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    tc_pr = cell._tc.get_or_add_tcPr()
+    for old in tc_pr.findall(qn("w:vMerge")):
+        tc_pr.remove(old)
+    for old in tc_pr.findall(qn("w:vAlign")):
+        tc_pr.remove(old)
+
+    v_merge = OxmlElement("w:vMerge")
+    v_merge.set(qn("w:val"), value)
+    tc_pr.append(v_merge)
+
+    v_align = OxmlElement("w:vAlign")
+    v_align.set(qn("w:val"), "center")
+    tc_pr.append(v_align)
+
+
 def _merge_vertical_groups(table, *, col_idx: int, start_row: int, end_row: int, key_getter) -> None:
     """
     Объединяем подряд идущие одинаковые значения.
@@ -295,6 +343,15 @@ def _merge_vertical_groups(table, *, col_idx: int, start_row: int, end_row: int,
     def key_of(r: int) -> str:
         return _norm_spaces(key_getter(r))
 
+    def apply_merge(group_start: int, group_end: int) -> None:
+        if group_end <= group_start:
+            return
+        for rr in range(group_start + 1, group_end + 1):
+            _clear_cell(table.cell(rr, col_idx))
+        _set_cell_vmerge(table.cell(group_start, col_idx), "restart")
+        for rr in range(group_start + 1, group_end + 1):
+            _set_cell_vmerge(table.cell(rr, col_idx), "continue")
+
     group_start = start_row
     prev_key = key_of(start_row)
 
@@ -304,17 +361,13 @@ def _merge_vertical_groups(table, *, col_idx: int, start_row: int, end_row: int,
             continue
 
         if r - 1 > group_start and prev_key:
-            for rr in range(group_start + 1, r):
-                _clear_cell(table.cell(rr, col_idx))
-            table.cell(group_start, col_idx).merge(table.cell(r - 1, col_idx))
+            apply_merge(group_start, r - 1)
 
         group_start = r
         prev_key = cur_key
 
     if end_row > group_start and prev_key:
-        for rr in range(group_start + 1, end_row + 1):
-            _clear_cell(table.cell(rr, col_idx))
-        table.cell(group_start, col_idx).merge(table.cell(end_row, col_idx))
+        apply_merge(group_start, end_row)
 
 
 # -------------------------
@@ -350,19 +403,29 @@ def _collect_material_rows_for_registry(act: Act) -> list[_MatRow]:
             )
         )
 
-    # ✅ Группируем по material_name, сохраняя порядок первого появления материала
-    buckets: dict[str, list[_MatRow]] = {}
-    order: list[str] = []
+    # Группируем по документу, чтобы один паспорт печатался один раз для нескольких материалов.
+    doc_buckets: dict[tuple[str, str, str], list[_MatRow]] = {}
+    doc_order: list[tuple[str, str, str]] = []
     for r in raw:
-        key = _norm_spaces(r.material_name).lower()
-        if key not in buckets:
-            buckets[key] = []
-            order.append(key)
-        buckets[key].append(r)
+        key = r.doc_key
+        if key not in doc_buckets:
+            doc_buckets[key] = []
+            doc_order.append(key)
+        doc_buckets[key].append(r)
 
     grouped: list[_MatRow] = []
-    for key in order:
-        grouped.extend(buckets[key])
+    for doc_key in doc_order:
+        material_buckets: dict[str, list[_MatRow]] = {}
+        material_order: list[str] = []
+        for r in doc_buckets[doc_key]:
+            material_key = _norm_spaces(r.material_name).lower()
+            if material_key not in material_buckets:
+                material_buckets[material_key] = []
+                material_order.append(material_key)
+            material_buckets[material_key].append(r)
+
+        for material_key in material_order:
+            grouped.extend(material_buckets[material_key])
 
     # перенумерация pp по итоговому порядку в реестре
     out: list[_MatRow] = []
@@ -477,17 +540,28 @@ def generate_registry_p3_docx_bytes(*, act: Act, registry: ActAttachment) -> byt
         col_idx=1,
         start_row=start,
         end_row=end,
-        key_getter=lambda ri: table.cell(ri, 1).text,
+        key_getter=lambda ri: "\x1f".join(rows[ri - start].doc_key) + "\x1f" + table.cell(ri, 1).text,
     )
 
-    if not is_concrete:
-        _merge_vertical_groups(
-            table,
-            col_idx=2,
-            start_row=start,
-            end_row=end,
-            key_getter=lambda ri: table.cell(ri, 2).text,
-        )
+    _merge_vertical_groups(
+        table,
+        col_idx=2,
+        start_row=start,
+        end_row=end,
+        key_getter=lambda ri: "\x1f".join(rows[ri - start].doc_key),
+    )
+    pages_col_idx = 4 if is_concrete else 3
+    _merge_vertical_groups(
+        table,
+        col_idx=pages_col_idx,
+        start_row=start,
+        end_row=end,
+        key_getter=lambda ri: "\x1f".join(rows[ri - start].doc_key),
+    )
+    for ri in range(start, end + 1):
+        _center_cell(table.cell(ri, 2))
+        _center_cell(table.cell(ri, pages_col_idx))
+
     for ri in range(start, end + 1):
         _compact_cell_to_single_line(table.cell(ri, 1), template_cell=tpl_cells[1])
 
