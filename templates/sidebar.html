@@ -89,6 +89,14 @@
                                         <span>Протоколы</span>
                                     </a>
                                 </li>
+
+                                <li>
+                                    <a href="{% url 'acts_app:act_bulk_export' %}"
+                                       class="{% if rn == 'act_bulk_export' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Выгрузка за период</span>
+                                    </a>
+                                </li>
                             {% endif %}
                         </ul>
                     </li>

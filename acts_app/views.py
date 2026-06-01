@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db import transaction
 from django.db.models import Q, Max
@@ -33,6 +34,7 @@ from acts_app.models import (
 )
 
 from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx
+from acts_app.services.bulk_export import build_acts_bulk_export_zip
 
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError, get_act_docx_paths
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
@@ -97,6 +99,18 @@ def _parse_iso_date(raw: str):
         return datetime.strptime(s, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def _build_bulk_export_filename(date_from, date_to) -> str:
+    if date_from and date_to:
+        period = f"{date_from:%d.%m.%Y}-{date_to:%d.%m.%Y}"
+    elif date_from:
+        period = f"from-{date_from:%d.%m.%Y}"
+    elif date_to:
+        period = f"to-{date_to:%d.%m.%Y}"
+    else:
+        period = "all"
+    return f"acts_export_{period}.zip"
 
 
 def _organizations_qs():
@@ -1610,6 +1624,86 @@ class PassportsLabelsView(LoginRequiredMixin, PermissionRequiredMixin, View):
             labels[str(p.id)] = f"{material} — {doc_name} №{doc_no} от {doc_date}"
 
         return JsonResponse({"labels": labels})
+
+
+class ActBulkExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+    template_name = "acts_app/act_bulk_export.html"
+
+    def _base_queryset(self, request: HttpRequest):
+        date_from = _parse_iso_date(request.GET.get("date_from", ""))
+        date_to = _parse_iso_date(request.GET.get("date_to", ""))
+        if date_from is not None and date_to is not None and date_from > date_to:
+            date_from, date_to = date_to, date_from
+
+        creator_id = (request.GET.get("created_by") or "").strip()
+        project_id = (request.GET.get("project") or "").strip()
+        q = (request.GET.get("q") or "").strip()
+
+        qs = Act.objects.prefetch_related("projects", "attachments").order_by("act_date", "number", "id")
+        if date_from is not None:
+            qs = qs.filter(act_date__gte=date_from)
+        if date_to is not None:
+            qs = qs.filter(act_date__lte=date_to)
+        if creator_id.isdigit():
+            qs = qs.filter(created_by_id=int(creator_id))
+        if project_id.isdigit():
+            qs = qs.filter(projects__id=int(project_id))
+        if q:
+            qs = qs.filter(Q(number__icontains=q) | Q(work_name__icontains=q))
+
+        return qs.distinct(), date_from, date_to, creator_id, project_id, q
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        qs, date_from, date_to, creator_id, project_id, q = self._base_queryset(request)
+
+        if request.GET.get("download") == "1":
+            if not qs.exists():
+                messages.error(request, "За выбранный период и фильтры акты не найдены. Архив не сформирован.")
+                query = request.GET.copy()
+                query.pop("download", None)
+                url = reverse("acts_app:act_bulk_export")
+                if query:
+                    url = f"{url}?{query.urlencode()}"
+                return redirect(url)
+
+            result = build_acts_bulk_export_zip(qs)
+            response = HttpResponse(result.content, content_type="application/zip")
+            response["Content-Disposition"] = f'attachment; filename="{_build_bulk_export_filename(date_from, date_to)}"'
+            download_token = (request.GET.get("download_token") or "").strip()
+            if download_token:
+                response.set_cookie("bulk_export_download_done", download_token, max_age=60, path="/", samesite="Lax")
+            return response
+
+        User = get_user_model()
+        creators = (
+            User.objects.filter(created_acts__isnull=False)
+            .distinct()
+            .order_by("last_name", "first_name", "email")
+        )
+
+        projects = []
+        if Project is not None:
+            projects = (
+                Project.objects.filter(acts__isnull=False)
+                .distinct()
+                .order_by("full_code", "id")
+            )
+
+        return render(
+            request,
+            self.template_name,
+            {
+                "date_from": date_from,
+                "date_to": date_to,
+                "selected_creator_id": int(creator_id) if creator_id.isdigit() else None,
+                "selected_project_id": int(project_id) if project_id.isdigit() else None,
+                "q": q,
+                "acts_count": qs.count(),
+                "creators": creators,
+                "projects": projects,
+            },
+        )
 
 
 class ActDocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):

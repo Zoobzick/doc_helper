@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Выгрузка актов{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <h1 class="mb-1">Выгрузка актов</h1>
+        <nav>
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
+                <li class="breadcrumb-item active">Выгрузка</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section">
+        <div class="card">
+            <div class="card-body pt-3">
+                <form method="get" class="row g-3 align-items-end" id="bulkExportForm" data-acts-count="{{ acts_count }}">
+                    <input type="hidden" name="download" id="bulkExportDownloadFlag" value="">
+                    <input type="hidden" name="download_token" id="bulkExportDownloadToken" value="">
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">С</label>
+                        <input type="date" class="form-control" name="date_from" value="{{ date_from|date:'Y-m-d' }}">
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">По</label>
+                        <input type="date" class="form-control" name="date_to" value="{{ date_to|date:'Y-m-d' }}">
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Кто делал</label>
+                        <select class="form-select" name="created_by">
+                            <option value="">Все пользователи</option>
+                            {% for creator in creators %}
+                                <option value="{{ creator.id }}" {% if selected_creator_id == creator.id %}selected{% endif %}>
+                                    {{ creator.last_name }} {{ creator.first_name }}{% if not creator.last_name and not creator.first_name %}{{ creator.email }}{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Проект</label>
+                        <select class="form-select" name="project">
+                            <option value="">Все проекты</option>
+                            {% for project in projects %}
+                                <option value="{{ project.id }}" {% if selected_project_id == project.id %}selected{% endif %}>
+                                    {% if project.full_code %}{{ project.full_code }}{% else %}{{ project }}{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Поиск</label>
+                        <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="№ акта или работы">
+                    </div>
+                    <div class="col-12 col-md-6 d-flex gap-2 justify-content-end">
+                        <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_bulk_export' %}">Сброс</a>
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-search me-1"></i>Показать
+                        </button>
+                        <button class="btn btn-success" type="button" id="downloadArchiveBtn">
+                            <i class="bi bi-file-earmark-zip me-1"></i>Скачать архив
+                        </button>
+                    </div>
+                </form>
+
+                <hr>
+
+                <div class="alert alert-info mb-0">
+                    В архив попадут акты DOCX и реестры материалов П-3, если они есть.
+                    Файлы будут разложены по папкам шифров проектов. Найдено актов: <strong>{{ acts_count }}</strong>.
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="modal fade" id="bulkExportProgressModal" tabindex="-1" aria-hidden="true"
+         data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body p-4">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="spinner-border text-primary flex-shrink-0" role="status" aria-hidden="true"></div>
+                        <div>
+                            <h5 class="mb-1">Собираем архив</h5>
+                            <div class="text-muted">
+                                Не закрывайте страницу до начала скачивания. Это может занять немного времени.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script>
+        (function () {
+            const form = document.getElementById("bulkExportForm");
+            const button = document.getElementById("downloadArchiveBtn");
+            const modalEl = document.getElementById("bulkExportProgressModal");
+            const downloadFlag = document.getElementById("bulkExportDownloadFlag");
+            const tokenInput = document.getElementById("bulkExportDownloadToken");
+
+            if (!form || !button || !modalEl || !downloadFlag || !tokenInput || typeof bootstrap === "undefined") return;
+
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            let pollTimer = null;
+
+            function getCookie(name) {
+                const prefix = name + "=";
+                return document.cookie
+                    .split(";")
+                    .map(function (item) { return item.trim(); })
+                    .find(function (item) { return item.indexOf(prefix) === 0; })
+                    ?.substring(prefix.length) || "";
+            }
+
+            function deleteCookie(name) {
+                document.cookie = name + "=; Max-Age=0; path=/";
+            }
+
+            form.addEventListener("submit", function () {
+                downloadFlag.value = "";
+                tokenInput.value = "";
+            });
+
+            button.addEventListener("click", function () {
+                const actsCount = Number(form.dataset.actsCount || "0");
+                if (actsCount < 1) {
+                    alert("За выбранный период и фильтры акты не найдены. Архив не сформирован.");
+                    return;
+                }
+
+                const token = String(Date.now()) + Math.random().toString(16).slice(2);
+                downloadFlag.value = "1";
+                tokenInput.value = token;
+                deleteCookie("bulk_export_download_done");
+
+                modal.show();
+                button.disabled = true;
+
+                if (pollTimer) window.clearInterval(pollTimer);
+                pollTimer = window.setInterval(function () {
+                    if (getCookie("bulk_export_download_done") !== token) return;
+
+                    window.clearInterval(pollTimer);
+                    pollTimer = null;
+                    deleteCookie("bulk_export_download_done");
+                    button.disabled = false;
+                    modal.hide();
+                }, 500);
+
+                const params = new URLSearchParams(new FormData(form));
+                const action = form.getAttribute("action") || window.location.pathname;
+                window.location.href = action + "?" + params.toString();
+            });
+        })();
+    </script>
+{% endblock %}
