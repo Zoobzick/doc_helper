@@ -8,6 +8,7 @@ urlpatterns = [
     # список / создание
     path("", views.ActListView.as_view(), name="act_list"),
     path("create/", views.ActCreateView.as_view(), name="act_create"),
+    path("export/", views.ActBulkExportView.as_view(), name="act_bulk_export"),
 
     # детали / редактирование
     path("<uuid:uuid>/", views.ActDetailView.as_view(), name="act_detail"),
