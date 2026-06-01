@@ -28,6 +28,7 @@ urlpatterns = [
     path("approvals/", include(("approvals_app.urls", "approvals"), namespace="approvals")),
     path("documents/", include(('documents_app.urls', 'documents'), namespace='documents')),
     path("orgs/", include("orgs_app.urls", namespace="orgs_app")),
+    path("statistics/", include("statistics_app.urls", namespace="statistics_app")),
 
     path("", include("health_app.urls")),
     path("acts/", include("acts_app.urls", namespace="acts")),

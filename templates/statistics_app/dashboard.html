@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Статистика{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <h1 class="mb-1">Статистика актов</h1>
+        <nav>
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item active">Статистика</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section dashboard">
+        <form method="get" class="card mb-3">
+            <div class="card-body pt-3">
+                <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-3 col-xl-2">
+                        <label class="form-label">С</label>
+                        <input type="date" class="form-control" name="date_from" value="{{ date_from|date:'Y-m-d' }}">
+                    </div>
+                    <div class="col-12 col-md-3 col-xl-2">
+                        <label class="form-label">По</label>
+                        <input type="date" class="form-control" name="date_to" value="{{ date_to|date:'Y-m-d' }}">
+                    </div>
+                    <div class="col-12 col-md-3 col-xl-2">
+                        <label class="form-label">Кто делал</label>
+                        <select class="form-select" name="created_by">
+                            <option value="">Все пользователи</option>
+                            {% for creator in creators %}
+                                <option value="{{ creator.id }}" {% if selected_creator_id == creator.id %}selected{% endif %}>
+                                    {{ creator.last_name }} {{ creator.first_name }}{% if not creator.last_name and not creator.first_name %}{{ creator.email }}{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-2">
+                        <label class="form-label">Проект</label>
+                        <select class="form-select" name="project">
+                            <option value="">Все проекты</option>
+                            {% for project in projects %}
+                                <option value="{{ project.id }}" {% if selected_project_id == project.id %}selected{% endif %}>
+                                    {% if project.full_code %}{{ project.full_code }}{% else %}{{ project }}{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-2">
+                        <label class="form-label">Поиск</label>
+                        <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="№ или работы">
+                    </div>
+                    <div class="col-12 d-flex gap-2 justify-content-end mt-3">
+                        <a href="{% url 'statistics_app:dashboard' %}" class="btn btn-outline-secondary">Сброс</a>
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-funnel me-1"></i>Показать
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-md-4">
+                <div class="card info-card sales-card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Всего актов за весь период</h5>
+                        <div class="d-flex align-items-center">
+                            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                                <i class="bi bi-collection"></i>
+                            </div>
+                            <div class="ps-3"><h6>{{ total_all_time }}</h6></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="card info-card revenue-card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">В текущей выборке</h5>
+                        <div class="d-flex align-items-center">
+                            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                                <i class="bi bi-filter-square"></i>
+                            </div>
+                            <div class="ps-3">
+                                <h6>{{ totals.total }}</h6>
+                                <span class="text-muted small">С учётом выбранных фильтров</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="card info-card customers-card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Листов в выборке</h5>
+                        <div class="d-flex align-items-center">
+                            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                                <i class="bi bi-layers"></i>
+                            </div>
+                            <div class="ps-3"><h6>{{ totals.sheets_total }}</h6></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-12 col-xl-8">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Кто сколько актов сделал</h5>
+                        <canvas id="actsByUserChart" height="130"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Итого по пользователям</h5>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Пользователь</th>
+                                    <th class="text-end">Актов</th>
+                                    <th class="text-end">Листов</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for item in creator_stats %}
+                                    <tr>
+                                        <td>
+                                            <span class="d-inline-block rounded-circle me-2"
+                                                  style="width: 10px; height: 10px; background: {{ item.color }};"></span>
+                                            {{ item.label }}
+                                        </td>
+                                        <td class="text-end fw-semibold">{{ item.count }}</td>
+                                        <td class="text-end">{{ item.sheets_total }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="3" class="text-center text-muted py-4">Нет данных.</td></tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body">
+                <h5 class="card-title">Последние акты в выборке</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>Дата</th>
+                            <th>Работы</th>
+                            <th>Кем</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for act in recent_acts %}
+                            <tr>
+                                <td><a href="{% url 'acts_app:act_detail' act.uuid %}">{{ act.number }}</a></td>
+                                <td class="text-nowrap">{{ act.act_date|date:"d.m.Y" }}</td>
+                                <td>{{ act.work_name }}</td>
+                                <td>
+                                    {% if act.created_by %}
+                                        {{ act.created_by.last_name }} {{ act.created_by.first_name }}{% if not act.created_by.last_name and not act.created_by.first_name %}{{ act.created_by.email }}{% endif %}
+                                    {% else %}
+                                        <span class="text-muted">Не указан</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="4" class="text-center text-muted py-4">Нет данных.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {{ user_chart|json_script:"acts-by-user-chart-data" }}
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script>
+        (function () {
+            const dataNode = document.getElementById("acts-by-user-chart-data");
+            const ctx = document.getElementById("actsByUserChart");
+            if (!dataNode || !ctx || typeof Chart === "undefined") return;
+
+            const chartData = JSON.parse(dataNode.textContent);
+            new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: chartData.labels,
+                    datasets: chartData.datasets.map(function (dataset) {
+                        return {
+                            label: dataset.label,
+                            data: dataset.data,
+                            backgroundColor: dataset.backgroundColor,
+                            borderColor: dataset.borderColor,
+                            borderWidth: 1,
+                            borderRadius: 4
+                        };
+                    })
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {display: false}
+                    },
+                    scales: {
+                        x: {stacked: false},
+                        y: {
+                            beginAtZero: true,
+                            ticks: {precision: 0}
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
+{% endblock %}

@@ -17,11 +17,12 @@ from acts_app.models import (
 
 @admin.register(Act)
 class ActAdmin(admin.ModelAdmin):
-    list_display = ("number", "act_date", "status", "act_year", "act_month", "created_at")
-    list_filter = ("status", "act_year", "act_month")
+    list_display = ("number", "act_date", "status", "created_by", "act_year", "act_month", "created_at")
+    list_filter = ("status", "created_by", "act_year", "act_month")
     search_fields = ("number", "work_name")
     date_hierarchy = "act_date"
     ordering = ("-act_date", "-id")
+    list_editable = ("created_by",)
     filter_horizontal = ("projects", "approvals")
     readonly_fields = ("uuid", "act_year", "act_month", "created_at", "updated_at")
 
@@ -40,6 +41,15 @@ class ActAdmin(admin.ModelAdmin):
         ("Дополнительно", {"fields": ("approvals", "copies_count", "sheets_total")}),
         ("Системные поля", {"fields": ("act_year", "act_month", "created_at", "updated_at")}),
     )
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        label, options = fieldsets[-1]
+        fields = tuple(options.get("fields", ()))
+        if "created_by" not in fields:
+            options = {**options, "fields": ("created_by", *fields)}
+            fieldsets[-1] = (label, options)
+        return tuple(fieldsets)
 
 
 @admin.register(ActAttachment)

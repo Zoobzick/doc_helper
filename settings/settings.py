@@ -152,7 +152,8 @@ INSTALLED_APPS = [
     'documents_app',
     'health_app',
     'orgs_app',
-    'acts_app'
+    'acts_app',
+    'statistics_app',
 ]
 
 MIDDLEWARE = [
