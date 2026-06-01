@@ -211,6 +211,14 @@
 
             {% if user.is_staff %}
                 <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.app_name == 'statistics_app' %}active{% else %}collapsed{% endif %}"
+                       href="{% url 'statistics_app:dashboard' %}">
+                        <i class="bi bi-bar-chart-line"></i>
+                        <span>Статистика</span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
                     <a class="nav-link collapsed" href="{% url 'admin:index' %}">
                         <i class="bi bi-shield-lock"></i>
                         <span>Админка</span>
