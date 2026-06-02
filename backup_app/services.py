@@ -142,12 +142,18 @@ def _write_meta(
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _create_backup_archive(*, trigger: str, reason: str, run_id: int | None = None) -> tuple[Path, int]:
+def _create_backup_archive(
+    *,
+    trigger: str,
+    reason: str,
+    run_id: int | None = None,
+    archive_path: Path | None = None,
+) -> tuple[Path, int]:
     backup_root = get_backup_root()
     backup_root.mkdir(parents=True, exist_ok=True)
 
     id_part = f"_{run_id}" if run_id else ""
-    archive_path = backup_root / f"doc_helper_backup_{_timestamp()}{id_part}.zip"
+    archive_path = archive_path or backup_root / f"doc_helper_backup_{_timestamp()}{id_part}.zip"
     with tempfile.TemporaryDirectory(prefix="doc_helper_backup_") as tmp:
         tmp_dir = Path(tmp)
         db_path = _dump_database(tmp_dir)
@@ -174,6 +180,27 @@ def create_filesystem_backup(
     trigger: str = BackupRun.Trigger.DEPLOY,
     reason: str = "",
 ) -> BackupResult:
+    trigger = trigger.upper()
+    if trigger == BackupRun.Trigger.DEPLOY:
+        backup_root = get_backup_root()
+        backup_root.mkdir(parents=True, exist_ok=True)
+        final_path = backup_root / "doc_helper_deploy_latest.zip"
+        tmp_path = backup_root / "doc_helper_deploy_latest.tmp.zip"
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+        try:
+            archive_path, size_bytes = _create_backup_archive(
+                trigger=trigger,
+                reason=reason,
+                archive_path=tmp_path,
+            )
+            archive_path.replace(final_path)
+            return BackupResult(run=None, path=final_path, size_bytes=final_path.stat().st_size)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+
     archive_path, size_bytes = _create_backup_archive(trigger=trigger, reason=reason)
     return BackupResult(run=None, path=archive_path, size_bytes=size_bytes)
 

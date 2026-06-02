@@ -263,12 +263,16 @@ sudo mkdir -p /var/lib/doc_helper/backups
 sudo chown -R webapp:webapp /var/lib/doc_helper/backups
 ```
 
-Скопировать архив `doc_helper_backup_*.zip` в `/var/lib/doc_helper/backups`.
+Скопировать архив в `/var/lib/doc_helper/backups`.
+
+Ручные бэкапы называются `doc_helper_backup_*.zip`. Автоматический pre-deploy бэкап называется `doc_helper_deploy_latest.zip` и перезаписывается при каждом деплое.
 
 ### 3. Распаковать бэкап
 
 ```bash
-BACKUP_ZIP=/var/lib/doc_helper/backups/doc_helper_backup_YYYYMMDD_HHMMSS.zip
+BACKUP_ZIP=/var/lib/doc_helper/backups/doc_helper_deploy_latest.zip
+# или:
+# BACKUP_ZIP=/var/lib/doc_helper/backups/doc_helper_backup_YYYYMMDD_HHMMSS.zip
 RESTORE_DIR=/tmp/doc_helper_restore
 
 rm -rf "$RESTORE_DIR"

@@ -2,7 +2,11 @@
 
 ## Что входит в бэкап
 
-Архив `doc_helper_backup_*.zip` содержит:
+Ручные бэкапы сохраняются как `doc_helper_backup_*.zip`.
+
+Pre-deploy бэкап сохраняется как `doc_helper_deploy_latest.zip` и перезаписывается при каждом деплое. Ручные бэкапы при этом не трогаются.
+
+Любой архив бэкапа содержит:
 
 - `db.dump` — PostgreSQL dump в custom-формате `pg_dump -Fc`;
 - `media/` — файлы из `MEDIA_ROOT`;
@@ -51,6 +55,8 @@ python manage.py create_backup --trigger manual --reason "manual backup"
 python manage.py create_backup --trigger deploy --reason "pre-migrate deploy backup" --no-db-record
 ```
 
+Этот бэкап обновляет файл `doc_helper_deploy_latest.zip`. Если сборка нового архива завершится ошибкой, предыдущий `doc_helper_deploy_latest.zip` останется на месте.
+
 ## Восстановление сервера из бэкапа
 
 Восстановление лучше делать вручную по SSH. Не запускайте restore из веб-интерфейса: приложение использует ту же БД, которую нужно заменить.
@@ -70,7 +76,9 @@ sudo systemctl stop nginx
 ### 2. Распаковать архив во временную папку
 
 ```bash
-BACKUP_ZIP=/var/lib/doc_helper/backups/doc_helper_backup_YYYYMMDD_HHMMSS.zip
+BACKUP_ZIP=/var/lib/doc_helper/backups/doc_helper_deploy_latest.zip
+# или:
+# BACKUP_ZIP=/var/lib/doc_helper/backups/doc_helper_backup_YYYYMMDD_HHMMSS.zip
 RESTORE_DIR=/tmp/doc_helper_restore
 
 rm -rf "$RESTORE_DIR"
