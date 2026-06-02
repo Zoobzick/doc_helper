@@ -4,7 +4,6 @@ import json
 import os
 import shutil
 import subprocess
-import tarfile
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -12,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
-from django.db import connections
+from django.db import close_old_connections, connections
 from django.utils import timezone
 
 from backup_app.models import BackupRun
@@ -55,8 +54,15 @@ def _dump_postgresql_database(output_path: Path) -> None:
     if password:
         env["PGPASSWORD"] = password
 
+    pg_dump = os.environ.get("PG_DUMP_PATH") or shutil.which("pg_dump")
+    if not pg_dump:
+        raise RuntimeError(
+            "Не найден pg_dump. Добавьте папку bin PostgreSQL в PATH "
+            "или укажите полный путь в переменной PG_DUMP_PATH."
+        )
+
     command = [
-        "pg_dump",
+        pg_dump,
         "-Fc",
         "-f",
         str(output_path),
@@ -92,29 +98,46 @@ def _dump_database(output_dir: Path) -> Path:
     raise RuntimeError(f"Неподдерживаемая БД для бэкапа: {engine}")
 
 
-def _tar_media(output_path: Path) -> None:
+def _write_media_files(archive: zipfile.ZipFile) -> int:
     media_root = Path(settings.MEDIA_ROOT)
     if not media_root.exists():
-        return
+        return 0
 
     backup_root = get_backup_root().resolve()
-    with tarfile.open(output_path, "w:gz") as archive:
-        for path in media_root.rglob("*"):
-            resolved = path.resolve()
-            if resolved == backup_root or backup_root in resolved.parents:
-                continue
-            archive.add(path, arcname=Path("media") / path.relative_to(media_root))
+    files_count = 0
+    for path in media_root.rglob("*"):
+        if not path.is_file():
+            continue
+
+        resolved = path.resolve()
+        if resolved == backup_root or backup_root in resolved.parents:
+            continue
+
+        archive.write(path, (Path("media") / path.relative_to(media_root)).as_posix())
+        files_count += 1
+
+    return files_count
 
 
-def _write_meta(output_path: Path, *, trigger: str, reason: str, run_id: int | None = None) -> None:
+def _write_meta(
+    output_path: Path,
+    *,
+    trigger: str,
+    reason: str,
+    run_id: int | None = None,
+    media_files_count: int = 0,
+) -> None:
     payload = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "trigger": trigger,
         "run_id": run_id,
         "reason": reason,
         "git_sha": _git_sha(),
+        "deploy_old_sha": os.environ.get("DOC_HELPER_DEPLOY_OLD_SHA", ""),
+        "deploy_new_sha": os.environ.get("DOC_HELPER_DEPLOY_NEW_SHA", ""),
         "database_engine": connections["default"].settings_dict["ENGINE"],
         "media_root": str(settings.MEDIA_ROOT),
+        "media_files_count": media_files_count,
     }
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -128,15 +151,19 @@ def _create_backup_archive(*, trigger: str, reason: str, run_id: int | None = No
     with tempfile.TemporaryDirectory(prefix="doc_helper_backup_") as tmp:
         tmp_dir = Path(tmp)
         db_path = _dump_database(tmp_dir)
-        media_path = tmp_dir / "media.tar.gz"
-        _tar_media(media_path)
-        meta_path = tmp_dir / "meta.json"
-        _write_meta(meta_path, trigger=trigger, reason=reason, run_id=run_id)
 
         with zipfile.ZipFile(archive_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(db_path, db_path.name)
-            if media_path.exists():
-                archive.write(media_path, media_path.name)
+            media_files_count = _write_media_files(archive)
+
+            meta_path = tmp_dir / "meta.json"
+            _write_meta(
+                meta_path,
+                trigger=trigger,
+                reason=reason,
+                run_id=run_id,
+                media_files_count=media_files_count,
+            )
             archive.write(meta_path, meta_path.name)
 
     return archive_path, archive_path.stat().st_size
@@ -162,9 +189,13 @@ def create_backup(
         trigger=trigger,
         reason=reason,
     )
+    return create_backup_for_run(run)
+
+
+def create_backup_for_run(run: BackupRun) -> BackupResult:
     archive_path = None
     try:
-        archive_path, size_bytes = _create_backup_archive(trigger=trigger, reason=reason, run_id=run.pk)
+        archive_path, size_bytes = _create_backup_archive(trigger=run.trigger, reason=run.reason, run_id=run.pk)
         run.mark_success(file_path=str(archive_path), size_bytes=size_bytes)
         return BackupResult(run=run, path=archive_path, size_bytes=size_bytes)
     except Exception as exc:
@@ -172,3 +203,12 @@ def create_backup(
             archive_path.unlink()
         run.mark_failed(str(exc))
         raise
+
+
+def create_backup_for_run_in_background(run_id: int) -> None:
+    close_old_connections()
+    try:
+        run = BackupRun.objects.get(pk=run_id)
+        create_backup_for_run(run)
+    finally:
+        close_old_connections()

@@ -73,8 +73,11 @@ jobs:
           # Проверка, что это git-репозиторий
           test -d "$PROJECT_DIR/.git"
 
+          OLD_SHA="$(sudo -u webapp git -C "$PROJECT_DIR" rev-parse HEAD)"
+
           # Код
           sudo -u webapp git -C "$PROJECT_DIR" pull
+          NEW_SHA="$(sudo -u webapp git -C "$PROJECT_DIR" rev-parse HEAD)"
           
           # LibreOffice (нужен для DOCX->PDF preview) и pg_dump для бэкапов
           sudo apt-get update -y
@@ -108,6 +111,8 @@ jobs:
             set -a
             source /etc/doc_helper/doc_helper.env
             set +a
+            export DOC_HELPER_DEPLOY_OLD_SHA='$OLD_SHA'
+            export DOC_HELPER_DEPLOY_NEW_SHA='$NEW_SHA'
             cd '$PROJECT_DIR'
             source venv/bin/activate
             python manage.py create_backup --trigger DEPLOY --reason 'pre-migrate deploy backup' --no-db-record

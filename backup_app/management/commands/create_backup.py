@@ -10,7 +10,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--trigger",
-            choices=[choice.value for choice in BackupRun.Trigger],
+            choices=[choice.value for choice in BackupRun.Trigger] + [choice.value.lower() for choice in BackupRun.Trigger],
             default=BackupRun.Trigger.MANUAL,
         )
         parser.add_argument("--reason", default="", help="Короткое описание причины бэкапа.")
@@ -21,15 +21,16 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        trigger = options["trigger"].upper()
         try:
             if options["no_db_record"]:
                 result = create_filesystem_backup(
-                    trigger=options["trigger"],
+                    trigger=trigger,
                     reason=options["reason"],
                 )
             else:
                 result = create_backup(
-                    trigger=options["trigger"],
+                    trigger=trigger,
                     reason=options["reason"],
                 )
         except Exception as exc:

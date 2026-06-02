@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from django.contrib import messages
@@ -11,7 +12,7 @@ from django.views import View
 from django.views.generic import ListView
 
 from backup_app.models import BackupRun
-from backup_app.services import create_backup
+from backup_app.services import create_backup_for_run_in_background
 
 
 class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
@@ -25,19 +26,31 @@ class BackupListView(StaffRequiredMixin, ListView):
     context_object_name = "backups"
     paginate_by = 20
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["has_running_backup"] = BackupRun.objects.filter(status=BackupRun.Status.RUNNING).exists()
+        return context
+
 
 class BackupCreateView(StaffRequiredMixin, View):
     def post(self, request: HttpRequest) -> HttpResponse:
-        try:
-            result = create_backup(
-                trigger=BackupRun.Trigger.MANUAL,
-                user=request.user,
-                reason="Запуск из интерфейса",
-            )
-        except Exception as exc:
-            messages.error(request, f"Не удалось создать бэкап: {exc}")
-        else:
-            messages.success(request, f"Бэкап #{result.run.pk} создан.")
+        running_exists = BackupRun.objects.filter(status=BackupRun.Status.RUNNING).exists()
+        if running_exists:
+            messages.warning(request, "Бэкап уже создаётся. Дождитесь завершения текущей сборки.")
+            return redirect(reverse("backup_app:backup_list"))
+
+        run = BackupRun.objects.create(
+            created_by=request.user,
+            trigger=BackupRun.Trigger.MANUAL,
+            reason="Запуск из интерфейса",
+        )
+        thread = threading.Thread(
+            target=create_backup_for_run_in_background,
+            args=(run.pk,),
+            daemon=True,
+        )
+        thread.start()
+        messages.info(request, f"Бэкап #{run.pk} запущен. Страница будет обновляться до завершения.")
         return redirect(reverse("backup_app:backup_list"))
 
 

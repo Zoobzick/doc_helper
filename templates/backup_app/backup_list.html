@@ -22,11 +22,18 @@
                     </div>
                     <form method="post" action="{% url 'backup_app:backup_create' %}">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary" {% if has_running_backup %}disabled{% endif %}>
                             <i class="bi bi-archive me-1"></i>Создать бэкап
                         </button>
                     </form>
                 </div>
+
+                {% if has_running_backup %}
+                    <div class="alert alert-warning d-flex align-items-center gap-2">
+                        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+                        <div>Бэкап создаётся. Можно оставаться на странице, список обновится автоматически.</div>
+                    </div>
+                {% endif %}
 
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
@@ -97,4 +104,15 @@
             </div>
         </div>
     </section>
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    {% if has_running_backup %}
+        <script>
+            window.setTimeout(function () {
+                window.location.reload();
+            }, 5000);
+        </script>
+    {% endif %}
 {% endblock %}
