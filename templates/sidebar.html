@@ -260,7 +260,8 @@
             <li class="nav-heading">Аккаунт</li>
 
             <li class="nav-item">
-                <a class="nav-link collapsed" href="#">
+                <a class="nav-link {% if request.resolver_match.app_name == 'authapp' and request.resolver_match.url_name == 'profile' %}active{% else %}collapsed{% endif %}"
+                   href="{% url 'authapp:profile' %}">
                     <i class="bi bi-person"></i>
                     <span>Профиль</span>
                 </a>

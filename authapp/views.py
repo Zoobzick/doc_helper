@@ -4,11 +4,11 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.urls import reverse_lazy
 from django.views import View
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, UpdateView
 
-from .forms import LoginForm, RegisterForm
+from .forms import LoginForm, ProfileForm, RegisterForm
 
 
 def _auth_messages_only(request):
@@ -111,6 +111,19 @@ class RegisterView(View):
 
 class HomeView(LoginRequiredMixin, TemplateView):
     template_name = "authapp/home.html"
+
+
+class ProfileView(LoginRequiredMixin, UpdateView):
+    template_name = "authapp/profile.html"
+    form_class = ProfileForm
+    success_url = reverse_lazy("authapp:profile")
+
+    def get_object(self, queryset=None):
+        return self.request.user
+
+    def form_valid(self, form):
+        messages.success(self.request, "Профиль обновлён.")
+        return super().form_valid(form)
 
 
 class LogoutView(View):

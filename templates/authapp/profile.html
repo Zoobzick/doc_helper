@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Профиль{% endblock %}
+
+{% block extra_css %}
+    <style>
+        .profile-choice-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: .5rem;
+        }
+
+        .profile-choice {
+            display: flex;
+            align-items: flex-start;
+            gap: .5rem;
+            min-height: 44px;
+            padding: .6rem .75rem;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        .profile-choice:has(input:checked) {
+            border-color: #0d6efd;
+            background: #f3f8ff;
+        }
+
+        .profile-choice input {
+            margin-top: .2rem;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <h1 class="mb-1">Профиль</h1>
+        <nav>
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Профиль</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section">
+        {% if messages %}
+            <div class="row">
+                <div class="col-12">
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body pt-3">
+                            <h5 class="card-title mb-2">Личные данные</h5>
+
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+                                    {{ form.first_name }}
+                                    {% if form.first_name.errors %}
+                                        <div class="text-danger small">{{ form.first_name.errors }}</div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+                                    {{ form.last_name }}
+                                    {% if form.last_name.errors %}
+                                        <div class="text-danger small">{{ form.last_name.errors }}</div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">Email</label>
+                                    <input type="text" class="form-control" value="{{ request.user.email }}" disabled>
+                                </div>
+
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label" for="{{ form.organization.id_for_label }}">{{ form.organization.label }}</label>
+                                    {{ form.organization }}
+                                    {% if form.organization.errors %}
+                                        <div class="text-danger small">{{ form.organization.errors }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12 col-xl-6">
+                    <div class="card">
+                        <div class="card-body pt-3">
+                            <h5 class="card-title mb-2">Рабочие линии</h5>
+
+                            {% if form.lines %}
+                                <div class="profile-choice-grid">
+                                    {% for checkbox in form.lines %}
+                                        <label class="profile-choice" for="{{ checkbox.id_for_label }}">
+                                            {{ checkbox.tag }}
+                                            <span>{{ checkbox.choice_label }}</span>
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="text-muted">Активных линий пока нет.</div>
+                            {% endif %}
+
+                            {% if form.lines.errors %}
+                                <div class="text-danger small mt-2">{{ form.lines.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-xl-6">
+                    <div class="card">
+                        <div class="card-body pt-3">
+                            <h5 class="card-title mb-2">Рабочие этапы</h5>
+
+                            {% if form.stages %}
+                                <div class="profile-choice-grid">
+                                    {% for checkbox in form.stages %}
+                                        <label class="profile-choice" for="{{ checkbox.id_for_label }}">
+                                            {{ checkbox.tag }}
+                                            <span>{{ checkbox.choice_label }}</span>
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="text-muted">Активных этапов пока нет.</div>
+                            {% endif %}
+
+                            {% if form.stages.errors %}
+                                <div class="text-danger small mt-2">{{ form.stages.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check2 me-1"></i>Сохранить
+                </button>
+                <a href="{% url 'authapp:home' %}" class="btn btn-outline-secondary">Отмена</a>
+            </div>
+        </form>
+
+    </section>
+{% endblock %}

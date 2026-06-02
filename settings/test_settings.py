@@ -22,11 +22,13 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "authapp",
     "projects_app",
+    "orgs_app",
 ]
 
 MIGRATION_MODULES = {
     "authapp": None,
     "projects_app": None,
+    "orgs_app": None,
 }
 
 BASE_ID_DIR = BASE_DIR / ".tmp_test_storage"

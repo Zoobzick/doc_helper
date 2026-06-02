@@ -14,6 +14,26 @@ class User(AbstractUser):
 
     # email делаем обязательным и уникальным
     email = models.EmailField("Email", unique=True)
+    organization = models.ForeignKey(
+        "orgs_app.Organization",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="users",
+        verbose_name="Организация",
+    )
+    lines = models.ManyToManyField(
+        "projects_app.Line",
+        blank=True,
+        related_name="users",
+        verbose_name="Рабочие линии",
+    )
+    stages = models.ManyToManyField(
+        "projects_app.Stage",
+        blank=True,
+        related_name="users",
+        verbose_name="Рабочие этапы",
+    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username", "first_name", "last_name"]

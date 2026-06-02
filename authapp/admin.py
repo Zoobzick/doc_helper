@@ -20,6 +20,7 @@ class UserAdmin(DjangoUserAdmin):
         "email",
         "first_name",
         "last_name",
+        "organization",
         "is_active",
         "is_staff",
         "is_superuser",
@@ -30,6 +31,7 @@ class UserAdmin(DjangoUserAdmin):
         "is_staff",
         "is_superuser",
         "groups",
+        "organization",
     )
     search_fields = (
         "email",
@@ -39,9 +41,12 @@ class UserAdmin(DjangoUserAdmin):
     ordering = ("email",)
 
     # --- Форма редактирования ---
+    filter_horizontal = ("groups", "user_permissions", "lines", "stages")
+
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Персональные данные", {"fields": ("first_name", "last_name")}),
+        ("Персональные данные", {"fields": ("first_name", "last_name", "organization")}),
+        ("Рабочая область", {"fields": ("lines", "stages")}),
         (
             "Доступ",
             {
@@ -67,6 +72,7 @@ class UserAdmin(DjangoUserAdmin):
                     "email",
                     "first_name",
                     "last_name",
+                    "organization",
                     "password1",
                     "password2",
                     "is_active",
