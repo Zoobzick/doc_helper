@@ -691,6 +691,7 @@
                                 <th>Проект</th>
                                 <th>Конструкция</th>
                                 <th>Описание</th>
+                                <th style="width:70px;">PDF</th>
                                 <th style="width:70px;">Добавить</th>
                             </tr>
                             </thead>
@@ -1609,6 +1610,14 @@
                       style="display:block; max-width:420px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                     ${safe(text)}
                 </span>`;
+                            }
+                        }, {
+                            data: "preview_url",
+                            orderable: false,
+                            searchable: false,
+                            render: function (data, type, row) {
+                                if (!data) return "";
+                                return `<a href="${data}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Открыть PDF">PDF</a>`;
                             }
                         }, {
                             data: null,

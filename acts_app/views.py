@@ -544,6 +544,7 @@ class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             "created_at",
             "construction",
             "description",
+            "file",
             "project__full_code",
         )
 
@@ -579,6 +580,7 @@ class ApprovalsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "description": desc_short,
                     "description_full": desc_full,
                     "label": _approval_label_short(a),
+                    "preview_url": reverse("acts_app:approval_open", kwargs={"pk": a.id}) if a.file else "",
                 }
             )
 
