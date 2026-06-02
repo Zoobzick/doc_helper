@@ -45,6 +45,34 @@ def _parse_date(raw: str) -> date | None:
         return None
 
 
+def _month_range_filter_q(d_from: date, d_to: date) -> Q:
+    y1, m1 = int(d_from.year), int(d_from.month)
+    y2, m2 = int(d_to.year), int(d_to.month)
+
+    if (y1, m1) > (y2, m2):
+        y1, m1, y2, m2 = y2, m2, y1, m1
+
+    left = Q(act_year__gt=y1) | (Q(act_year=y1) & Q(act_month__gte=m1))
+    right = Q(act_year__lt=y2) | (Q(act_year=y2) & Q(act_month__lte=m2))
+    return left & right
+
+
+def _apply_month_period_filter(qs, d_from: date | None, d_to: date | None):
+    if d_from and d_to:
+        return qs.filter(_month_range_filter_q(d_from, d_to))
+    if d_from:
+        return qs.filter(
+            Q(act_year__gt=d_from.year) |
+            (Q(act_year=d_from.year) & Q(act_month__gte=d_from.month))
+        )
+    if d_to:
+        return qs.filter(
+            Q(act_year__lt=d_to.year) |
+            (Q(act_year=d_to.year) & Q(act_month__lte=d_to.month))
+        )
+    return qs
+
+
 def _user_label(row: dict) -> str:
     if not row.get("created_by_id"):
         return "Не указан"
@@ -76,11 +104,7 @@ class StatisticsDashboardView(LoginRequiredMixin, UserPassesTestMixin, View):
         project_id = (request.GET.get("project") or "").strip()
         q = (request.GET.get("q") or "").strip()
 
-        acts = Act.objects.all()
-        if date_from is not None:
-            acts = acts.filter(act_date__gte=date_from)
-        if date_to is not None:
-            acts = acts.filter(act_date__lte=date_to)
+        acts = _apply_month_period_filter(Act.objects.all(), date_from, date_to)
         if creator_id.isdigit():
             acts = acts.filter(created_by_id=int(creator_id))
         if project_id.isdigit():

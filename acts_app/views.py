@@ -113,6 +113,39 @@ def _build_bulk_export_filename(date_from, date_to) -> str:
     return f"acts_export_{period}.zip"
 
 
+def _month_range_filter_q(d_from, d_to):
+    """
+    Фильтр по отчетному месяцу акта: act_year/act_month.
+    Эти поля считаются от даты окончания работ.
+    """
+    y1, m1 = int(d_from.year), int(d_from.month)
+    y2, m2 = int(d_to.year), int(d_to.month)
+
+    if (y1, m1) > (y2, m2):
+        y1, m1, y2, m2 = y2, m2, y1, m1
+
+    left = Q(act_year__gt=y1) | (Q(act_year=y1) & Q(act_month__gte=m1))
+    right = Q(act_year__lt=y2) | (Q(act_year=y2) & Q(act_month__lte=m2))
+
+    return left & right
+
+
+def _apply_month_period_filter(qs, d_from, d_to):
+    if d_from and d_to:
+        return qs.filter(_month_range_filter_q(d_from, d_to))
+    if d_from:
+        return qs.filter(
+            Q(act_year__gt=d_from.year) |
+            (Q(act_year=d_from.year) & Q(act_month__gte=d_from.month))
+        )
+    if d_to:
+        return qs.filter(
+            Q(act_year__lt=d_to.year) |
+            (Q(act_year=d_to.year) & Q(act_month__lte=d_to.month))
+        )
+    return qs
+
+
 def _organizations_qs():
     from orgs_app.models import Organization  # noqa: WPS433
     return Organization.objects.filter(is_active=True).order_by("short_name")
@@ -577,24 +610,6 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
             return d
         return _parse_search_date(raw)
 
-    def _month_range_filter_q(self, d_from, d_to):
-        """
-        Возвращает Q-фильтр по (act_year, act_month) в диапазоне месяцев [from..to] включительно.
-        """
-        y1, m1 = int(d_from.year), int(d_from.month)
-        y2, m2 = int(d_to.year), int(d_to.month)
-
-        # если пользователь перепутал местами
-        if (y1, m1) > (y2, m2):
-            y1, m1, y2, m2 = y2, m2, y1, m1
-
-        # (act_year > y1 OR (act_year = y1 AND act_month >= m1))
-        left = Q(act_year__gt=y1) | (Q(act_year=y1) & Q(act_month__gte=m1))
-        # (act_year < y2 OR (act_year = y2 AND act_month <= m2))
-        right = Q(act_year__lt=y2) | (Q(act_year=y2) & Q(act_month__lte=m2))
-
-        return left & right
-
     def get_queryset(self):
         # 1) базовый queryset + сортировка по created_at (самые свежие)
         qs = (
@@ -615,18 +630,7 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
         d_from = self._parse_any_date(date_from_raw) if date_from_raw else None
         d_to = self._parse_any_date(date_to_raw) if date_to_raw else None
 
-        if d_from and d_to:
-            qs = qs.filter(self._month_range_filter_q(d_from, d_to))
-        elif d_from:
-            qs = qs.filter(
-                Q(act_year__gt=d_from.year) |
-                (Q(act_year=d_from.year) & Q(act_month__gte=d_from.month))
-            )
-        elif d_to:
-            qs = qs.filter(
-                Q(act_year__lt=d_to.year) |
-                (Q(act_year=d_to.year) & Q(act_month__lte=d_to.month))
-            )
+        qs = _apply_month_period_filter(qs, d_from, d_to)
 
         # 4) статус (как было)
         status = (self.request.GET.get("status") or "").strip()
@@ -1640,11 +1644,8 @@ class ActBulkExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
         project_id = (request.GET.get("project") or "").strip()
         q = (request.GET.get("q") or "").strip()
 
-        qs = Act.objects.prefetch_related("projects", "attachments").order_by("act_date", "number", "id")
-        if date_from is not None:
-            qs = qs.filter(act_date__gte=date_from)
-        if date_to is not None:
-            qs = qs.filter(act_date__lte=date_to)
+        qs = Act.objects.prefetch_related("projects", "attachments").order_by("act_year", "act_month", "number", "id")
+        qs = _apply_month_period_filter(qs, date_from, date_to)
         if creator_id.isdigit():
             qs = qs.filter(created_by_id=int(creator_id))
         if project_id.isdigit():
