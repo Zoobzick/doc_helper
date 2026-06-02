@@ -21,7 +21,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include(("authapp.urls", "authapp"), namespace="authapp")),
     path('passports/', include('passports_app.urls')),
-    path('checker/', include('checker_app.urls')),
     path("directives/", include("directive_app.urls")),
 
     path("projects/", include(("projects_app.urls", "projects"), namespace="projects")),

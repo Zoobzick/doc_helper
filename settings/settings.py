@@ -147,7 +147,6 @@ INSTALLED_APPS = [
     'passports_app',
     'authapp',
     'projects_app',
-    'checker_app',
     'directive_app',
     'approvals_app',
     'documents_app',

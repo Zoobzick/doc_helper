@@ -1,8 +1,6 @@
 {% extends "base.html" %}
-{% load static %}
 
 {% block content %}
-
     <div class="pagetitle">
         <h1>Главная</h1>
         <nav>
@@ -14,16 +12,13 @@
 
     <section class="section">
         <div class="row">
-
             <div class="col-lg-8">
-
                 <div class="card">
                     <div class="card-body">
                         <h5 class="card-title mb-2">Добро пожаловать, {{ user.get_username }}</h5>
                         <p class="text-muted mb-0">
-                            На этой странице собраны краткие инструкции по всем основным разделам системы.
-                            Нажмите на название раздела, чтобы перейти в него. Нажмите на область FAQ справа,
-                            чтобы открыть подробную памятку прямо на этой странице.
+                            На этой странице собраны памятки по основным разделам. Название раздела ведёт на рабочую
+                            страницу, а кнопка FAQ раскрывает подробную инструкцию.
                         </p>
 
                         <hr>
@@ -31,11 +26,9 @@
                         <div class="alert alert-info mb-0">
                             <div class="fw-semibold mb-1">Быстрый старт</div>
                             <ul class="mb-0 ps-3">
-                                <li>Откройте нужный раздел по названию.</li>
-                                <li>Если нужно понять порядок работы — раскройте FAQ у нужного раздела.</li>
-                                <li>Если раздел недоступен или появляется 403 — обратитесь к администратору для выдачи
-                                    прав.
-                                </li>
+                                <li>Сначала выберите рабочий раздел: акты, документы, паспорта, проекты или согласования.</li>
+                                <li>Если акт не попадает в период, проверьте дату окончания работ.</li>
+                                <li>Если раздел недоступен или появляется 403, обратитесь к администратору за правами.</li>
                             </ul>
                         </div>
                     </div>
@@ -46,86 +39,49 @@
                         <h5 class="card-title">Разделы и FAQ</h5>
 
                         <div class="d-flex flex-column gap-2">
-
-                            {# ===================== Документы ===================== #}
                             {% if user.is_superuser or perms.documents_app.view_box_label_page or perms.documents_app.add_documentbatch or perms.documents_app.view_documentbatch %}
                                 <div class="border rounded overflow-hidden">
                                     <div class="d-flex align-items-stretch">
-                                        <a href="{% url 'documents:id_handover_master' %}"
+                                        <a href="{% if user.is_superuser or perms.documents_app.view_documentbatch %}{% url 'documents:id_handover_batch_list' %}{% else %}{% url 'documents:box_label_page' %}{% endif %}"
                                            class="flex-shrink-0 text-decoration-none text-dark px-3 py-3 border-end d-flex align-items-center fw-semibold"
                                            style="min-width: 220px;">
-                                            <i class="bi bi-folder2-open me-2"></i>
-                                            Документы
+                                            <i class="bi bi-folder2-open me-2"></i>Документы
                                         </a>
-
-                                        <button
-                                                class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#faq-documents"
-                                                aria-expanded="false"
-                                                aria-controls="faq-documents">
+                                        <button class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#faq-documents">
                                             <div class="d-flex justify-content-between align-items-center">
-                                                <span class="text-muted">
-                                                    Наклейки на коробки, комплекты исполнительной документации, формирование сопроводительных файлов
-                                                </span>
-                                                <span class="ms-3 text-primary fw-semibold">
-                                                    FAQ <i class="bi bi-chevron-down ms-1"></i>
-                                                </span>
+                                                <span class="text-muted">Комплекты ИД, реестры, титульные листы, наклейки и сопроводительные документы</span>
+                                                <span class="ms-3 text-primary fw-semibold">FAQ <i class="bi bi-chevron-down ms-1"></i></span>
                                             </div>
                                         </button>
                                     </div>
-
                                     <div class="collapse" id="faq-documents">
                                         <div class="border-top px-3 py-3 bg-light-subtle">
                                             <h6 class="fw-bold mb-3">FAQ — Документы</h6>
-
                                             <div class="mb-3">
                                                 <div class="fw-semibold">Для чего нужен раздел</div>
                                                 <div class="text-muted">
-                                                    Раздел используется для формирования итоговых документов: наклеек на
-                                                    коробки,
-                                                    комплектов исполнительной документации, реестров и сопроводительных
-                                                    писем.
+                                                    Раздел используется для подготовки комплектов исполнительной документации:
+                                                    система подбирает акты по проектам и отчётному периоду, помогает проверить
+                                                    состав комплекта и сформировать итоговые документы.
                                                 </div>
                                             </div>
-
                                             <div class="mb-3">
-                                                <div class="fw-semibold">Какой типовой сценарий работы</div>
+                                                <div class="fw-semibold">Типовой сценарий</div>
                                                 <ol class="mb-0 ps-3">
-                                                    <li>Открыть раздел <span class="fw-semibold">Документы</span>.</li>
-                                                    <li>Выбрать нужный функционал: наклейка на коробку или комплекты.
-                                                    </li>
-                                                    <li>Для комплекта выбрать проекты и период.</li>
-                                                    <li>Проверить состав актов и порядок документов.</li>
-                                                    <li>Сгенерировать итоговые файлы и проверить результат.</li>
+                                                    <li>Открыть создание комплекта или список уже созданных комплектов.</li>
+                                                    <li>Выбрать проекты и период.</li>
+                                                    <li>Проверить найденные акты и при необходимости добавить акт вручную.</li>
+                                                    <li>Проверить порядок, листы и замечания по проектам.</li>
+                                                    <li>Сгенерировать документы и открыть результат для проверки.</li>
                                                 </ol>
                                             </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Что важно понимать по комплектам</div>
-                                                <ul class="mb-0 ps-3">
-                                                    <li>Комплект обычно формируется по выбранным проектам и периоду.
-                                                    </li>
-                                                    <li>Система автоматически подтягивает акты, попадающие в период.
-                                                    </li>
-                                                    <li>Если нужный акт не попал в период, его можно добавить вручную в
-                                                        состав комплекта.
-                                                    </li>
-                                                    <li>Перед генерацией важно проверить порядок актов и итоговое
-                                                        количество листов.
-                                                    </li>
-                                                </ul>
-                                            </div>
-
                                             <div class="mb-0">
-                                                <div class="fw-semibold">Что проверить, если результат не устраивает
-                                                </div>
+                                                <div class="fw-semibold">Если акт не попал в комплект</div>
                                                 <ul class="mb-0 ps-3">
-                                                    <li>Указан ли правильный период.</li>
-                                                    <li>Все ли нужные проекты выбраны.</li>
-                                                    <li>Есть ли у актов корректные приложения и листы.</li>
-                                                    <li>Не пропущены ли акты, которые нужно было добавить вручную.</li>
+                                                    <li>Проверьте, привязан ли акт к нужному проекту.</li>
+                                                    <li>Проверьте дату окончания работ: отчётный месяц считается по ней.</li>
+                                                    <li>Если акт нужен вне автоматической выборки, добавьте его вручную в комплект.</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -133,83 +89,60 @@
                                 </div>
                             {% endif %}
 
-                            {# ===================== Акты ===================== #}
                             {% if user.is_superuser or perms.acts_app.view_act or perms.acts_app.add_act %}
                                 <div class="border rounded overflow-hidden">
                                     <div class="d-flex align-items-stretch">
-                                        <a href="{% url 'acts_app:act_list' %}"
+                                        <a href="{% if user.is_superuser or perms.acts_app.view_act %}{% url 'acts_app:act_list' %}{% else %}{% url 'acts_app:act_create' %}{% endif %}"
                                            class="flex-shrink-0 text-decoration-none text-dark px-3 py-3 border-end d-flex align-items-center fw-semibold"
                                            style="min-width: 220px;">
-                                            <i class="bi bi-file-earmark-text me-2"></i>
-                                            Акты
+                                            <i class="bi bi-file-earmark-text me-2"></i>Акты
                                         </a>
-
-                                        <button
-                                                class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#faq-acts"
-                                                aria-expanded="false"
-                                                aria-controls="faq-acts">
+                                        <button class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#faq-acts">
                                             <div class="d-flex justify-content-between align-items-center">
-                                                <span class="text-muted">
-                                                    Создание, редактирование, просмотр актов, приложений, протоколов и печатных форм
-                                                </span>
-                                                <span class="ms-3 text-primary fw-semibold">
-                                                    FAQ <i class="bi bi-chevron-down ms-1"></i>
-                                                </span>
+                                                <span class="text-muted">Создание актов, приложения, подписанты, DOCX/PDF, протоколы и архивная выгрузка</span>
+                                                <span class="ms-3 text-primary fw-semibold">FAQ <i class="bi bi-chevron-down ms-1"></i></span>
                                             </div>
                                         </button>
                                     </div>
-
                                     <div class="collapse" id="faq-acts">
                                         <div class="border-top px-3 py-3 bg-light-subtle">
                                             <h6 class="fw-bold mb-3">FAQ — Акты</h6>
-
                                             <div class="mb-3">
-                                                <div class="fw-semibold">Для чего нужен раздел</div>
-                                                <div class="text-muted">
-                                                    Здесь создаются и ведутся акты освидетельствования скрытых работ:
-                                                    сами акты, материалы, приложения, согласования, подписанты,
-                                                    а также выходные DOCX/PDF-файлы.
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Как обычно работает пользователь</div>
+                                                <div class="fw-semibold">Как создать акт</div>
                                                 <ol class="mb-0 ps-3">
-                                                    <li>Создаёт новый акт или открывает существующий.</li>
-                                                    <li>Заполняет основные реквизиты: номер, дата, работы, проекты,
-                                                        периоды выполнения.
-                                                    </li>
-                                                    <li>Добавляет материалы, приложения, согласования и подписантов.
-                                                    </li>
-                                                    <li>Сохраняет акт.</li>
-                                                    <li>Проверяет итоговую печатную форму и приложения.</li>
+                                                    <li>Заполните номер, дату акта, наименование работ и даты выполнения работ.</li>
+                                                    <li>Выберите один или несколько шифров проекта.</li>
+                                                    <li>Проверьте подписантов: организации подтягиваются из предыдущего акта пользователя.</li>
+                                                    <li>Добавьте материалы, приложения и согласования.</li>
+                                                    <li>Сохраните акт и проверьте DOCX/PDF.</li>
                                                 </ol>
                                             </div>
-
                                             <div class="mb-3">
-                                                <div class="fw-semibold">На что обращать внимание</div>
-                                                <ul class="mb-0 ps-3">
-                                                    <li>Правильно ли выбраны проекты, к которым относится акт.</li>
-                                                    <li>Корректны ли даты начала и окончания работ.</li>
-                                                    <li>У всех ли приложений указано название и количество листов.</li>
-                                                    <li>Подтянуты ли нужные подписанты и полномочия на дату акта.</li>
-                                                </ul>
+                                                <div class="fw-semibold">Как считается период</div>
+                                                <div class="text-muted">
+                                                    Для поиска, статистики, комплектов и выгрузок используется отчётный месяц:
+                                                    <code>act_year</code> и <code>act_month</code>. Они считаются по
+                                                    <code>work_end_date</code>, то есть по дате окончания работ. Дата акта
+                                                    <code>act_date</code> остаётся датой документа и используется для печати,
+                                                    приказов и подписантов.
+                                                </div>
                                             </div>
-
+                                            <div class="mb-3">
+                                                <div class="fw-semibold">Как выгрузить акты за период</div>
+                                                <div class="text-muted">
+                                                    Откройте <strong>Акты → Выгрузка за период</strong>, выберите период,
+                                                    пользователя или проект и скачайте архив. В архив попадут DOCX актов и
+                                                    реестры материалов, если они есть. Файлы раскладываются по папкам проектов.
+                                                </div>
+                                            </div>
                                             <div class="mb-0">
-                                                <div class="fw-semibold">Частые ошибки</div>
+                                                <div class="fw-semibold">Что проверить, если печатная форма не та</div>
                                                 <ul class="mb-0 ps-3">
-                                                    <li>Сохранили акт без части приложений.</li>
-                                                    <li>Выбрали не тот проект или не все проекты.</li>
-                                                    <li>Указали неправильную дату акта, из-за чего не подтягиваются
-                                                        нужные данные.
-                                                    </li>
-                                                    <li>Проверили только карточку акта, но не посмотрели итоговый
-                                                        DOCX/PDF.
-                                                    </li>
+                                                    <li>Дату акта, даты работ и выбранные проекты.</li>
+                                                    <li>Подписантов и выбранные приказы.</li>
+                                                    <li>Материалы, количество листов и приложения.</li>
+                                                    <li>Наличие PDF/DOCX после сохранения.</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -217,149 +150,86 @@
                                 </div>
                             {% endif %}
 
-                            {# ===================== Паспорта ===================== #}
                             {% if user.is_superuser or perms.passports_app.view_passports_page %}
                                 <div class="border rounded overflow-hidden">
                                     <div class="d-flex align-items-stretch">
                                         <a href="{% url 'passports:passports_list' %}"
                                            class="flex-shrink-0 text-decoration-none text-dark px-3 py-3 border-end d-flex align-items-center fw-semibold"
                                            style="min-width: 220px;">
-                                            <i class="bi bi-journal-text me-2"></i>
-                                            Паспорта
+                                            <i class="bi bi-journal-text me-2"></i>Паспорта
                                         </a>
-
-                                        <button
-                                                class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#faq-passports"
-                                                aria-expanded="false"
-                                                aria-controls="faq-passports">
+                                        <button class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#faq-passports">
                                             <div class="d-flex justify-content-between align-items-center">
-                                                <span class="text-muted">
-                                                    Загрузка, хранение и быстрый доступ к паспортам материалов и изделий
-                                                </span>
-                                                <span class="ms-3 text-primary fw-semibold">
-                                                    FAQ <i class="bi bi-chevron-down ms-1"></i>
-                                                </span>
+                                                <span class="text-muted">Хранилище паспортов материалов и выбор паспортов в актах</span>
+                                                <span class="ms-3 text-primary fw-semibold">FAQ <i class="bi bi-chevron-down ms-1"></i></span>
                                             </div>
                                         </button>
                                     </div>
-
                                     <div class="collapse" id="faq-passports">
                                         <div class="border-top px-3 py-3 bg-light-subtle">
                                             <h6 class="fw-bold mb-3">FAQ — Паспорта</h6>
-
                                             <div class="mb-3">
                                                 <div class="fw-semibold">Для чего нужен раздел</div>
                                                 <div class="text-muted">
-                                                    Раздел нужен для централизованного хранения паспортов материалов,
-                                                    чтобы потом быстро подставлять их в акты и связанные документы.
+                                                    Здесь хранятся паспорта материалов. Их можно загружать, проверять,
+                                                    привязывать к материалам и выбирать при создании акта.
                                                 </div>
                                             </div>
-
                                             <div class="mb-3">
-                                                <div class="fw-semibold">Как работать</div>
-                                                <ol class="mb-0 ps-3">
-                                                    <li>Открыть список паспортов.</li>
-                                                    <li>Добавить новые паспорта через загрузку файла.</li>
-                                                    <li>Проверить, что карточка паспорта заполнена корректно.</li>
-                                                    <li>Использовать паспорт далее при создании акта.</li>
-                                                </ol>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Что важно проверить после загрузки</div>
-                                                <ul class="mb-0 ps-3">
-                                                    <li>Название материала.</li>
-                                                    <li>Номер и дата документа.</li>
-                                                    <li>Корректность файла и возможность его открыть.</li>
-                                                    <li>Нет ли дублирующих паспортов по одному и тому же материалу.</li>
-                                                </ul>
-                                            </div>
-
-                                            <div class="mb-0">
-                                                <div class="fw-semibold">Когда пользователь обычно идёт в этот раздел
-                                                </div>
+                                                <div class="fw-semibold">Как выбрать паспорт в акте</div>
                                                 <div class="text-muted">
-                                                    Когда нужно заранее наполнить базу паспортов или когда в акте
-                                                    не хватает нужного документа для выбора из справочника.
+                                                    В таблице материалов нажмите выбор паспорта. В модалке можно искать записи,
+                                                    выбрать один или несколько паспортов и открыть PDF предпросмотр кнопкой
+                                                    <strong>PDF</strong>.
                                                 </div>
+                                            </div>
+                                            <div class="mb-0">
+                                                <div class="fw-semibold">Если паспорт не находится</div>
+                                                <ul class="mb-0 ps-3">
+                                                    <li>Проверьте, загружен ли файл паспорта.</li>
+                                                    <li>Проверьте название материала, номер и дату документа.</li>
+                                                    <li>Если паспорт загружен с неполными данными, откройте карточку и поправьте поля.</li>
+                                                </ul>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             {% endif %}
 
-                            {# ===================== Проекты ===================== #}
                             {% if user.is_superuser or perms.projects_app.view_projects_page %}
                                 <div class="border rounded overflow-hidden">
                                     <div class="d-flex align-items-stretch">
                                         <a href="{% url 'projects:projects_list' %}"
                                            class="flex-shrink-0 text-decoration-none text-dark px-3 py-3 border-end d-flex align-items-center fw-semibold"
                                            style="min-width: 220px;">
-                                            <i class="bi bi-hdd-stack me-2"></i>
-                                            Проекты
+                                            <i class="bi bi-hdd-stack me-2"></i>Проекты
                                         </a>
-
-                                        <button
-                                                class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#faq-projects"
-                                                aria-expanded="false"
-                                                aria-controls="faq-projects">
+                                        <button class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#faq-projects">
                                             <div class="d-flex justify-content-between align-items-center">
-                                                <span class="text-muted">
-                                                    База шифров, разделов, этапов, ревизий и проектной структуры
-                                                </span>
-                                                <span class="ms-3 text-primary fw-semibold">
-                                                    FAQ <i class="bi bi-chevron-down ms-1"></i>
-                                                </span>
+                                                <span class="text-muted">Шифры проектов и классификаторы для актов и комплектов</span>
+                                                <span class="ms-3 text-primary fw-semibold">FAQ <i class="bi bi-chevron-down ms-1"></i></span>
                                             </div>
                                         </button>
                                     </div>
-
                                     <div class="collapse" id="faq-projects">
                                         <div class="border-top px-3 py-3 bg-light-subtle">
                                             <h6 class="fw-bold mb-3">FAQ — Проекты</h6>
-
                                             <div class="mb-3">
-                                                <div class="fw-semibold">Для чего нужен раздел</div>
+                                                <div class="fw-semibold">Где используются проекты</div>
                                                 <div class="text-muted">
-                                                    Здесь хранится проектная база: шифры, наименования, адреса,
-                                                    этапы, участки и ревизии проектной документации.
+                                                    Проекты используются в актах, комплектах исполнительной документации,
+                                                    выгрузке архивов и фильтрах. Шифр проекта определяет папку, в которую
+                                                    попадут акты при массовой выгрузке.
                                                 </div>
                                             </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Когда пользователь работает с проектами</div>
-                                                <ul class="mb-0 ps-3">
-                                                    <li>При первичном наполнении системы проектами.</li>
-                                                    <li>Когда появился новый шифр или новая ревизия.</li>
-                                                    <li>Когда нужно привязать акт к корректному проекту.</li>
-                                                    <li>Когда требуется проверить актуальность проектных данных.</li>
-                                                </ul>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Базовый порядок работы</div>
-                                                <ol class="mb-0 ps-3">
-                                                    <li>Создать проект или открыть существующий.</li>
-                                                    <li>Заполнить основные реквизиты проекта.</li>
-                                                    <li>При необходимости загрузить или обновить ревизию.</li>
-                                                    <li>Проверить, что проект доступен для выбора в связанных
-                                                        разделах.
-                                                    </li>
-                                                </ol>
-                                            </div>
-
                                             <div class="mb-0">
-                                                <div class="fw-semibold">Типовые ошибки</div>
+                                                <div class="fw-semibold">Что проверить в карточке проекта</div>
                                                 <ul class="mb-0 ps-3">
-                                                    <li>Создание дубля проекта вместо обновления существующего.</li>
-                                                    <li>Неверный шифр или неполное наименование.</li>
-                                                    <li>Неактуальная ревизия осталась основной.</li>
+                                                    <li>Полный шифр проекта.</li>
+                                                    <li>Классификаторы: линия, стадия, этап, участок, раздел.</li>
+                                                    <li>Корректность названия и привязок, если проект используется в документах.</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -367,76 +237,39 @@
                                 </div>
                             {% endif %}
 
-                            {# ===================== Приказы ===================== #}
-                            {% if user.is_superuser or perms.directive_app.view_directive or perms.directive_app.add_directive %}
+                            {% if user.is_superuser or perms.directive_app.view_directive %}
                                 <div class="border rounded overflow-hidden">
                                     <div class="d-flex align-items-stretch">
                                         <a href="{% url 'directive_app:directive_list' %}"
                                            class="flex-shrink-0 text-decoration-none text-dark px-3 py-3 border-end d-flex align-items-center fw-semibold"
                                            style="min-width: 220px;">
-                                            <i class="bi bi-person-square me-2"></i>
-                                            Приказы
+                                            <i class="bi bi-person-square me-2"></i>Приказы
                                         </a>
-
-                                        <button
-                                                class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#faq-directives"
-                                                aria-expanded="false"
-                                                aria-controls="faq-directives">
+                                        <button class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#faq-directives">
                                             <div class="d-flex justify-content-between align-items-center">
-                                                <span class="text-muted">
-                                                    Приказы, полномочия, ответственные лица и основание для подписания документов
-                                                </span>
-                                                <span class="ms-3 text-primary fw-semibold">
-                                                    FAQ <i class="bi bi-chevron-down ms-1"></i>
-                                                </span>
+                                                <span class="text-muted">Полномочия подписантов и подбор приказов на дату акта</span>
+                                                <span class="ms-3 text-primary fw-semibold">FAQ <i class="bi bi-chevron-down ms-1"></i></span>
                                             </div>
                                         </button>
                                     </div>
-
                                     <div class="collapse" id="faq-directives">
                                         <div class="border-top px-3 py-3 bg-light-subtle">
                                             <h6 class="fw-bold mb-3">FAQ — Приказы</h6>
-
                                             <div class="mb-3">
-                                                <div class="fw-semibold">Для чего нужен раздел</div>
+                                                <div class="fw-semibold">Как приказы связаны с актами</div>
                                                 <div class="text-muted">
-                                                    Раздел нужен для хранения приказов и связанной с ними информации
-                                                    о том, кто и на каком основании имеет право подписывать документы.
+                                                    При сохранении и предпросмотре акта система подбирает полномочия
+                                                    подписантов на дату акта. Если на одну роль найдено несколько действующих
+                                                    приказов, пользователь выбирает нужный вручную.
                                                 </div>
                                             </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Как используется в работе</div>
-                                                <div class="text-muted">
-                                                    Данные из приказов используются в актах и других документах при
-                                                    выборе
-                                                    подписантов и формировании корректных печатных форм.
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Как работать с приказом</div>
-                                                <ol class="mb-0 ps-3">
-                                                    <li>Создать новый приказ или открыть существующий.</li>
-                                                    <li>Заполнить реквизиты приказа.</li>
-                                                    <li>Добавить или проверить связанные полномочия.</li>
-                                                    <li>Убедиться, что нужные лица доступны в актах на соответствующие
-                                                        даты.
-                                                    </li>
-                                                </ol>
-                                            </div>
-
                                             <div class="mb-0">
-                                                <div class="fw-semibold">Частые причины проблем</div>
+                                                <div class="fw-semibold">Если подписант не подтягивается</div>
                                                 <ul class="mb-0 ps-3">
-                                                    <li>У приказа неверные даты или реквизиты.</li>
-                                                    <li>Не добавлены нужные полномочия.</li>
-                                                    <li>Пользователь ожидает увидеть подписанта в акте, но приказ не
-                                                        покрывает дату документа.
-                                                    </li>
+                                                    <li>Проверьте организацию в строке подписанта.</li>
+                                                    <li>Проверьте срок действия приказа.</li>
+                                                    <li>Проверьте роль полномочия и дату акта.</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -444,158 +277,78 @@
                                 </div>
                             {% endif %}
 
-                            {# ===================== Организации ===================== #}
                             {% if user.is_superuser or perms.orgs_app.view_organization or perms.orgs_app.view_person or perms.orgs_app.view_personnrs %}
                                 <div class="border rounded overflow-hidden">
                                     <div class="d-flex align-items-stretch">
                                         <a href="{% url 'orgs_app:organization_list' %}"
                                            class="flex-shrink-0 text-decoration-none text-dark px-3 py-3 border-end d-flex align-items-center fw-semibold"
                                            style="min-width: 220px;">
-                                            <i class="bi bi-building me-2"></i>
-                                            Организации
+                                            <i class="bi bi-building me-2"></i>Организации
                                         </a>
-
-                                        <button
-                                                class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#faq-orgs"
-                                                aria-expanded="false"
-                                                aria-controls="faq-orgs">
+                                        <button class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#faq-orgs">
                                             <div class="d-flex justify-content-between align-items-center">
-                                                <span class="text-muted">
-                                                    Организации, физические лица и НРС для дальнейшего использования в приказах и актах
-                                                </span>
-                                                <span class="ms-3 text-primary fw-semibold">
-                                                    FAQ <i class="bi bi-chevron-down ms-1"></i>
-                                                </span>
+                                                <span class="text-muted">Организации, люди, НРС и данные для подписантов</span>
+                                                <span class="ms-3 text-primary fw-semibold">FAQ <i class="bi bi-chevron-down ms-1"></i></span>
                                             </div>
                                         </button>
                                     </div>
-
                                     <div class="collapse" id="faq-orgs">
                                         <div class="border-top px-3 py-3 bg-light-subtle">
                                             <h6 class="fw-bold mb-3">FAQ — Организации</h6>
-
                                             <div class="mb-3">
                                                 <div class="fw-semibold">Для чего нужен раздел</div>
                                                 <div class="text-muted">
-                                                    Здесь ведётся справочник организаций, людей и данных НРС.
-                                                    Эти сведения используются в других разделах системы и не должны
-                                                    вводиться каждый раз вручную.
+                                                    Здесь ведутся организации, сотрудники и НРС. Эти данные используются в
+                                                    подписантах актов, приказах и печатных формах.
                                                 </div>
                                             </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Что обычно делает пользователь</div>
-                                                <ul class="mb-0 ps-3">
-                                                    <li>Создаёт организацию.</li>
-                                                    <li>Добавляет людей, относящихся к организации.</li>
-                                                    <li>При необходимости заполняет НРС.</li>
-                                                    <li>Далее использует эти данные в приказах, актах и других
-                                                        документах.
-                                                    </li>
-                                                </ul>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Как избежать путаницы</div>
-                                                <ul class="mb-0 ps-3">
-                                                    <li>Не создавать дубли организаций с чуть разным названием.</li>
-                                                    <li>Следить за полным и кратким наименованием.</li>
-                                                    <li>Проверять корректность ФИО и должностей.</li>
-                                                    <li>Не заводить одного и того же человека повторно без
-                                                        необходимости.
-                                                    </li>
-                                                </ul>
-                                            </div>
-
                                             <div class="mb-0">
-                                                <div class="fw-semibold">Когда сначала нужно идти сюда</div>
-                                                <div class="text-muted">
-                                                    Когда в актах или приказах не хватает нужной организации, сотрудника
-                                                    или данных для подписанта.
-                                                </div>
+                                                <div class="fw-semibold">Что проверить при ошибке в печати</div>
+                                                <ul class="mb-0 ps-3">
+                                                    <li>Краткое и полное название организации.</li>
+                                                    <li>ФИО и должность человека.</li>
+                                                    <li>Данные НРС и сроки действия, если они нужны для роли.</li>
+                                                </ul>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             {% endif %}
 
-                            {# ===================== Согласования ===================== #}
                             {% if user.is_superuser or perms.approvals_app.view_approvals_done_page or perms.approvals_app.view_approvals_pending_page %}
                                 <div class="border rounded overflow-hidden">
                                     <div class="d-flex align-items-stretch">
-                                        <a href="{% url 'approvals:done' %}"
+                                        <a href="{% if user.is_superuser or perms.approvals_app.view_approvals_done_page %}{% url 'approvals:done' %}{% else %}{% url 'approvals:pending' %}{% endif %}"
                                            class="flex-shrink-0 text-decoration-none text-dark px-3 py-3 border-end d-flex align-items-center fw-semibold"
                                            style="min-width: 220px;">
-                                            <i class="bi bi-briefcase-fill me-2"></i>
-                                            Согласования
+                                            <i class="bi bi-briefcase-fill me-2"></i>Согласования
                                         </a>
-
-                                        <button
-                                                class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#faq-approvals"
-                                                aria-expanded="false"
-                                                aria-controls="faq-approvals">
+                                        <button class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#faq-approvals">
                                             <div class="d-flex justify-content-between align-items-center">
-                                                <span class="text-muted">
-                                                    Учёт согласований, их статусов и последующее использование в актах
-                                                </span>
-                                                <span class="ms-3 text-primary fw-semibold">
-                                                    FAQ <i class="bi bi-chevron-down ms-1"></i>
-                                                </span>
+                                                <span class="text-muted">Согласованные документы, документы на согласовании и выбор в актах</span>
+                                                <span class="ms-3 text-primary fw-semibold">FAQ <i class="bi bi-chevron-down ms-1"></i></span>
                                             </div>
                                         </button>
                                     </div>
-
                                     <div class="collapse" id="faq-approvals">
                                         <div class="border-top px-3 py-3 bg-light-subtle">
                                             <h6 class="fw-bold mb-3">FAQ — Согласования</h6>
-
                                             <div class="mb-3">
-                                                <div class="fw-semibold">Для чего нужен раздел</div>
+                                                <div class="fw-semibold">Как используются согласования</div>
                                                 <div class="text-muted">
-                                                    Здесь хранятся согласования по проектам, которые затем могут
-                                                    использоваться
-                                                    в актах и сопутствующей документации.
+                                                    Согласования можно добавлять в акт как дополнительные сведения. При выборе
+                                                    согласования в акте доступна кнопка <strong>PDF</strong>, чтобы открыть
+                                                    исходный файл в новой вкладке.
                                                 </div>
                                             </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Основные состояния</div>
-                                                <ul class="mb-0 ps-3">
-                                                    <li><span class="fw-semibold">На согласовании</span> — документ ещё
-                                                        в работе.
-                                                    </li>
-                                                    <li><span class="fw-semibold">Все согласования</span> — итоговый
-                                                        перечень доступных согласований.
-                                                    </li>
-                                                </ul>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Какой рабочий сценарий</div>
-                                                <ol class="mb-0 ps-3">
-                                                    <li>Создать или открыть согласование.</li>
-                                                    <li>Проверить привязку к проекту и реквизиты.</li>
-                                                    <li>После завершения перевести в итоговое состояние.</li>
-                                                    <li>Использовать согласование в актах.</li>
-                                                </ol>
-                                            </div>
-
                                             <div class="mb-0">
-                                                <div class="fw-semibold">Что важно не забывать</div>
+                                                <div class="fw-semibold">Если согласования нет в списке выбора</div>
                                                 <ul class="mb-0 ps-3">
-                                                    <li>Проверять проект, к которому относится согласование.</li>
-                                                    <li>Следить, чтобы в системе не было дубликатов одного и того же
-                                                        документа.
-                                                    </li>
-                                                    <li>Открывать сам файл и проверять его перед использованием в
-                                                        акте.
-                                                    </li>
+                                                    <li>Проверьте, загружено ли оно в раздел согласований.</li>
+                                                    <li>Проверьте описание и проект, если поиск идёт по шифру.</li>
+                                                    <li>Проверьте, что у записи есть PDF-файл, если нужен предпросмотр.</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -603,98 +356,60 @@
                                 </div>
                             {% endif %}
 
-                            {# ===================== Checker ===================== #}
-                            {% if user.is_superuser or perms.checker_app.view_checker_section or perms.checker_app.check_projects_and_folder_page or perms.checker_app.check_doc_acts_page or perms.checker_app.check_directive_checker_page %}
+                            {% if user.is_staff %}
                                 <div class="border rounded overflow-hidden">
                                     <div class="d-flex align-items-stretch">
-                                        <a href="{% url 'checker_app_check_projects_and_folder' %}"
+                                        <a href="{% url 'statistics_app:dashboard' %}"
                                            class="flex-shrink-0 text-decoration-none text-dark px-3 py-3 border-end d-flex align-items-center fw-semibold"
                                            style="min-width: 220px;">
-                                            <i class="bi bi-check-circle me-2"></i>
-                                            Checker
+                                            <i class="bi bi-shield-lock me-2"></i>Администрирование
                                         </a>
-
-                                        <button
-                                                class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
-                                                type="button"
-                                                data-bs-toggle="collapse"
-                                                data-bs-target="#faq-checker"
-                                                aria-expanded="false"
-                                                aria-controls="faq-checker">
+                                        <button class="btn btn-light border-0 rounded-0 text-start flex-grow-1 px-3 py-3"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#faq-admin">
                                             <div class="d-flex justify-content-between align-items-center">
-                                                <span class="text-muted">
-                                                    Проверки структуры, шифров, наличия документов и технический контроль файлов
-                                                </span>
-                                                <span class="ms-3 text-primary fw-semibold">
-                                                    FAQ <i class="bi bi-chevron-down ms-1"></i>
-                                                </span>
+                                                <span class="text-muted">Статистика, Django-админка и управление бэкапами</span>
+                                                <span class="ms-3 text-primary fw-semibold">FAQ <i class="bi bi-chevron-down ms-1"></i></span>
                                             </div>
                                         </button>
                                     </div>
-
-                                    <div class="collapse" id="faq-checker">
+                                    <div class="collapse" id="faq-admin">
                                         <div class="border-top px-3 py-3 bg-light-subtle">
-                                            <h6 class="fw-bold mb-3">FAQ — Checker</h6>
-
+                                            <h6 class="fw-bold mb-3">FAQ — Администрирование</h6>
                                             <div class="mb-3">
-                                                <div class="fw-semibold">Для чего нужен раздел</div>
+                                                <div class="fw-semibold">Статистика</div>
                                                 <div class="text-muted">
-                                                    Checker предназначен для служебных проверок: поиска несоответствий,
-                                                    проверки шифров, структуры документов и наличия нужных файлов.
+                                                    Раздел показывает количество актов по пользователям и фильтрам. Период
+                                                    считается по отчётному месяцу акта, то есть по дате окончания работ.
                                                 </div>
                                             </div>
-
                                             <div class="mb-3">
-                                                <div class="fw-semibold">Когда им пользоваться</div>
-                                                <ul class="mb-0 ps-3">
-                                                    <li>Перед массовой сдачей или выгрузкой документов.</li>
-                                                    <li>Когда есть сомнения в корректности шифров в актах.</li>
-                                                    <li>Когда нужно проверить наличие файлов определённого типа.</li>
-                                                    <li>Когда нужно быстро выявить ошибки в структуре документации.</li>
-                                                </ul>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <div class="fw-semibold">Практический смысл</div>
+                                                <div class="fw-semibold">Бэкапы</div>
                                                 <div class="text-muted">
-                                                    Раздел помогает не искать ошибки вручную по папкам и файлам, а
-                                                    заранее увидеть
-                                                    проблемные места и исправить их до передачи документации дальше.
+                                                    Ручной бэкап включает dump PostgreSQL, папку <code>media/</code> и
+                                                    <code>meta.json</code>. Перед миграциями deploy создаёт pre-migrate backup
+                                                    автоматически.
                                                 </div>
                                             </div>
-
                                             <div class="mb-0">
-                                                <div class="fw-semibold">Какой результат считать хорошим</div>
+                                                <div class="fw-semibold">Админка</div>
                                                 <div class="text-muted">
-                                                    Проверка должна либо не находить проблем, либо давать понятный
-                                                    список замечаний,
-                                                    после исправления которых можно повторно запустить контроль.
+                                                    Используйте Django-админку для точечной правки записей, пользователей и
+                                                    прав доступа. Массовые действия лучше выполнять только после бэкапа.
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            {% endif %}
-                            {# ===================== Нет доступных разделов ===================== #}
-                            {% if not user.is_superuser %}
-                                {% if not perms.documents_app.view_box_label_page and not perms.documents_app.add_documentbatch and not perms.documents_app.view_documentbatch and not perms.acts_app.view_act and not perms.acts_app.add_act and not perms.passports_app.view_passports_page and not perms.projects_app.view_projects_page and not perms.directive_app.view_directive and not perms.directive_app.add_directive and not perms.orgs_app.view_organization and not perms.orgs_app.view_person and not perms.orgs_app.view_personnrs and not perms.approvals_app.view_approvals_done_page and not perms.approvals_app.view_approvals_pending_page and not perms.checker_app.view_checker_section and not perms.checker_app.check_projects_and_folder_page and not perms.checker_app.check_doc_acts_page and not perms.checker_app.check_directive_checker_page %}
-                                    <div class="border rounded px-3 py-3 text-muted">
-                                        У вас пока нет доступных разделов. Обратитесь к администратору.
-                                    </div>
-                                {% endif %}
                             {% endif %}
                         </div>
                     </div>
                 </div>
-
             </div>
 
             <div class="col-lg-4">
-
                 <div class="card">
                     <div class="card-body">
                         <h5 class="card-title">Аккаунт</h5>
-
                         <div class="small text-muted">Пользователь</div>
                         <div class="fw-semibold">{{ user.get_username }}</div>
 
@@ -713,38 +428,24 @@
 
                         <hr>
 
-                        <div class="small text-muted mb-2">Как пользоваться главной страницей</div>
+                        <div class="small text-muted mb-2">Как пользоваться FAQ</div>
                         <ul class="small mb-0 ps-3">
-                            <li>Название раздела — это переход.</li>
-                            <li>Правая часть строки — это раскрытие FAQ.</li>
-                            <li>FAQ открывается прямо на этой странице.</li>
+                            <li>Название раздела слева открывает рабочую страницу.</li>
+                            <li>Кнопка FAQ справа раскрывает памятку по разделу.</li>
+                            <li>Административные подсказки видны только staff-пользователям.</li>
                         </ul>
                     </div>
                 </div>
-
-                {% if user.is_superuser %}
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">Администрирование</h5>
-                            <a href="{% url 'admin:index' %}" class="btn btn-outline-primary w-100">
-                                <i class="bi bi-shield-lock me-1"></i> Открыть админку
-                            </a>
-                        </div>
-                    </div>
-                {% endif %}
 
                 <div class="card">
                     <div class="card-body">
                         <h5 class="card-title">Выход</h5>
                         <a href="{% url 'authapp:logout' %}" class="btn btn-outline-danger w-100">
-                            <i class="bi bi-box-arrow-right me-1"></i> Выйти
+                            <i class="bi bi-box-arrow-right me-1"></i>Выйти
                         </a>
                     </div>
                 </div>
-
             </div>
-
         </div>
     </section>
-
 {% endblock %}
