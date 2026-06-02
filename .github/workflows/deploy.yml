@@ -48,6 +48,7 @@ jobs:
           DJANGO_SECRET_KEY='$(escape "$DJANGO_SECRET_KEY")'
           DJANGO_ALLOWED_HOSTS='$(escape "$DJANGO_ALLOWED_HOSTS")'
           DOC_HELPER_BASE_ID_DIR='$(escape "$DOC_HELPER_BASE_ID_DIR")'
+          DOC_HELPER_BACKUP_DIR='/var/lib/doc_helper/backups'
           DB_NAME='$(escape "$DB_NAME")'
           DB_USER='$(escape "$DB_USER")'
           DB_PASSWORD='$(escape "$DB_PASSWORD")'
@@ -75,12 +76,13 @@ jobs:
           # Код
           sudo -u webapp git -C "$PROJECT_DIR" pull
           
-          # LibreOffice (нужен для DOCX->PDF preview)
+          # LibreOffice (нужен для DOCX->PDF preview) и pg_dump для бэкапов
           sudo apt-get update -y
-          sudo apt-get install -y libreoffice-writer
+          sudo apt-get install -y libreoffice-writer postgresql-client
 
           # Проверка
           libreoffice --version || true
+          pg_dump --version || true
 
 
           # env-файл
@@ -98,14 +100,17 @@ jobs:
           "
           
           sudo chown -R webapp:webapp "$PROJECT_DIR/staticfiles"
+          sudo mkdir -p /var/lib/doc_helper/backups
+          sudo chown -R webapp:webapp /var/lib/doc_helper/backups
 
-          # Миграции и статика (явно подгружаем env)
+          # Pre-migrate backup, миграции и статика (явно подгружаем env)
           sudo -u webapp bash -lc "
             set -a
             source /etc/doc_helper/doc_helper.env
             set +a
             cd '$PROJECT_DIR'
             source venv/bin/activate
+            python manage.py create_backup --trigger DEPLOY --reason 'pre-migrate deploy backup' --no-db-record
             python manage.py migrate --noinput
             python manage.py collectstatic --noinput
           "

@@ -74,6 +74,7 @@ PROJECTS_DIR = BASE_ID_DIR / "Проекты"
 PROJECTS_JSON = PROJECTS_DIR / "projects.json"
 ACTS_DIR = BASE_ID_DIR / "Акты"
 DOCUMENTS_DIR = BASE_ID_DIR / "Документы"
+BACKUP_ROOT = Path(os.environ.get("DOC_HELPER_BACKUP_DIR", BASE_DIR / "backups"))
 
 # Templates Документов
 DOCUMENT_TEMPLATES_DIR = BASE_DIR / "document_templates"
@@ -154,6 +155,7 @@ INSTALLED_APPS = [
     'orgs_app',
     'acts_app',
     'statistics_app',
+    'backup_app',
 ]
 
 MIDDLEWARE = [
