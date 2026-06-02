@@ -27,6 +27,7 @@ db.sqlite3-journal
 
 media/
 staticfiles/
+backups/
 
 # Django cache / sessions
 *.log

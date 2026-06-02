@@ -107,7 +107,7 @@ class Act(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        d: date = self.act_date
+        d: date = self.work_end_date or self.act_date
         self.act_year = int(d.year)
         self.act_month = int(d.month)
         super().save(*args, **kwargs)

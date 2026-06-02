@@ -132,6 +132,16 @@
                     </li>
                 {% endif %}
 
+                {% if user.is_staff %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'backup_app' %}active{% else %}collapsed{% endif %}"
+                           href="{% url 'backup_app:backup_list' %}">
+                            <i class="bi bi-archive"></i>
+                            <span>Бэкапы</span>
+                        </a>
+                    </li>
+                {% endif %}
+
                 {% if user.is_superuser or perms.orgs_app.view_organization or perms.orgs_app.view_person or perms.orgs_app.view_personnrs %}
                     <li class="nav-item">
                         <a class="nav-link {% if app == 'orgs_app' %}active{% else %}collapsed{% endif %}"

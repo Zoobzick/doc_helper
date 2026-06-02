@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Бэкапы{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <h1 class="mb-1">Бэкапы</h1>
+        <nav>
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item active">Бэкапы</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section">
+        <div class="card">
+            <div class="card-body pt-3">
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+                    <div class="text-muted">
+                        Архив включает dump базы данных и файлы из хранилища приложения.
+                    </div>
+                    <form method="post" action="{% url 'backup_app:backup_create' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary" {% if has_running_backup %}disabled{% endif %}>
+                            <i class="bi bi-archive me-1"></i>Создать бэкап
+                        </button>
+                    </form>
+                </div>
+
+                {% if has_running_backup %}
+                    <div class="alert alert-warning d-flex align-items-center gap-2">
+                        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+                        <div>Бэкап создаётся. Можно оставаться на странице, список обновится автоматически.</div>
+                    </div>
+                {% endif %}
+
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Статус</th>
+                            <th>Тип</th>
+                            <th>Создан</th>
+                            <th>Размер</th>
+                            <th>Ошибка</th>
+                            <th class="text-end">Действия</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for backup in backups %}
+                            <tr>
+                                <td>#{{ backup.id }}</td>
+                                <td>
+                                    {% if backup.status == "SUCCESS" %}
+                                        <span class="badge bg-success">{{ backup.get_status_display }}</span>
+                                    {% elif backup.status == "FAILED" %}
+                                        <span class="badge bg-danger">{{ backup.get_status_display }}</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">{{ backup.get_status_display }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ backup.get_trigger_display }}</td>
+                                <td>{{ backup.created_at|date:"d.m.Y H:i" }}</td>
+                                <td>
+                                    {% if backup.size_bytes %}
+                                        {{ backup.size_bytes|filesizeformat }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td class="text-danger small" style="max-width: 320px;">
+                                    {% if backup.error %}{{ backup.error|truncatechars:120 }}{% else %}—{% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if backup.status == "SUCCESS" %}
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           href="{% url 'backup_app:backup_download' backup.pk %}">
+                                            Скачать
+                                        </a>
+                                    {% endif %}
+                                    <form method="post"
+                                          action="{% url 'backup_app:backup_delete' backup.pk %}"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Удалить этот бэкап?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            Удалить
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    Бэкапов пока нет.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    {% if has_running_backup %}
+        <script>
+            window.setTimeout(function () {
+                window.location.reload();
+            }, 5000);
+        </script>
+    {% endif %}
+{% endblock %}
