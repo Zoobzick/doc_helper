@@ -117,24 +117,32 @@ class ApprovalDoneListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
         if not request.user.has_perm("approvals_app.add_approvals_done"):
             return redirect("approvals:done")
 
-        form = ApprovalForm(request.POST, request.FILES)
         pending_id = (request.POST.get("pending_id") or "").strip()
+        pending_obj = None
+        old_file_name = ""
+
+        if pending_id:
+            pending_obj = (
+                Approval.objects
+                .select_for_update()
+                .filter(pk=pending_id, status=Approval.Status.PENDING)
+                .first()
+            )
+            if pending_obj and pending_obj.file and getattr(pending_obj.file, "name", ""):
+                old_file_name = pending_obj.file.name
+
+        form = ApprovalForm(request.POST, request.FILES, instance=pending_obj)
 
         if form.is_valid():
             done_obj = form.save(commit=False)
             done_obj.status = Approval.Status.DONE
             done_obj.save()
 
-            if pending_id:
-                pending_obj = (
-                    Approval.objects
-                    .select_for_update()
-                    .filter(pk=pending_id, status=Approval.Status.PENDING)
-                    .first()
-                )
-                if pending_obj:
-                    _delete_approval_file(pending_obj)
-                    pending_obj.delete()
+            if old_file_name and old_file_name != getattr(done_obj.file, "name", ""):
+                try:
+                    done_obj.file.storage.delete(old_file_name)
+                except Exception:
+                    pass
 
             messages.success(request, "Добавлено в «Все согласования»")
             return redirect("approvals:done")
