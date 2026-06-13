@@ -42,6 +42,8 @@
                             <th>ID</th>
                             <th>Статус</th>
                             <th>Тип</th>
+                            <th>Источник</th>
+                            <th>Файл</th>
                             <th>Создан</th>
                             <th>Размер</th>
                             <th>Ошибка</th>
@@ -51,17 +53,21 @@
                         <tbody>
                         {% for backup in backups %}
                             <tr>
-                                <td>#{{ backup.id }}</td>
+                                <td>{{ backup.display_id }}</td>
                                 <td>
                                     {% if backup.status == "SUCCESS" %}
-                                        <span class="badge bg-success">{{ backup.get_status_display }}</span>
+                                        <span class="badge bg-success">{{ backup.status_label }}</span>
                                     {% elif backup.status == "FAILED" %}
-                                        <span class="badge bg-danger">{{ backup.get_status_display }}</span>
+                                        <span class="badge bg-danger">{{ backup.status_label }}</span>
                                     {% else %}
-                                        <span class="badge bg-warning text-dark">{{ backup.get_status_display }}</span>
+                                        <span class="badge bg-warning text-dark">{{ backup.status_label }}</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ backup.get_trigger_display }}</td>
+                                <td>{{ backup.trigger_label }}</td>
+                                <td>{{ backup.source_label }}</td>
+                                <td class="small" style="max-width: 280px; word-break: break-word;">
+                                    {% if backup.filename %}{{ backup.filename }}{% else %}—{% endif %}
+                                </td>
                                 <td>{{ backup.created_at|date:"d.m.Y H:i" }}</td>
                                 <td>
                                     {% if backup.size_bytes %}
@@ -74,26 +80,28 @@
                                     {% if backup.error %}{{ backup.error|truncatechars:120 }}{% else %}—{% endif %}
                                 </td>
                                 <td class="text-end">
-                                    {% if backup.status == "SUCCESS" %}
+                                    {% if backup.can_download %}
                                         <a class="btn btn-sm btn-outline-primary"
-                                           href="{% url 'backup_app:backup_download' backup.pk %}">
+                                           href="{% if backup.db_id %}{% url 'backup_app:backup_download' backup.db_id %}{% else %}{% url 'backup_app:backup_file_download' backup.filename %}{% endif %}">
                                             Скачать
                                         </a>
                                     {% endif %}
-                                    <form method="post"
-                                          action="{% url 'backup_app:backup_delete' backup.pk %}"
-                                          class="d-inline"
-                                          onsubmit="return confirm('Удалить этот бэкап?');">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            Удалить
-                                        </button>
-                                    </form>
+                                    {% if backup.can_delete %}
+                                        <form method="post"
+                                              action="{% if backup.db_id %}{% url 'backup_app:backup_delete' backup.db_id %}{% else %}{% url 'backup_app:backup_file_delete' backup.filename %}{% endif %}"
+                                              class="d-inline"
+                                              onsubmit="return confirm('Удалить этот бэкап?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                Удалить
+                                            </button>
+                                        </form>
+                                    {% endif %}
                                 </td>
                             </tr>
                         {% empty %}
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                                <td colspan="9" class="text-center text-muted py-4">
                                     Бэкапов пока нет.
                                 </td>
                             </tr>
