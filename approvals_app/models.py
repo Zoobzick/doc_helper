@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 
 import uuid
@@ -54,7 +55,7 @@ def approval_upload_to(instance: "Approval", filename: str) -> str:
     project_code = instance.project.full_code if instance.project else "Общие"
     project_dir = _safe_segment(project_code, fallback="Общие")
 
-    return os.path.join(status_dir, project_dir, _safe_filename(filename))
+    return posixpath.join(status_dir, project_dir, _safe_filename(filename))
 
 
 class Approval(models.Model):
@@ -80,6 +81,7 @@ class Approval(models.Model):
         "PDF файл",
         upload_to=approval_upload_to,
         storage=approvals_storage,  # <-- ключевое изменение
+        max_length=500,
     )
 
     status = models.CharField(
