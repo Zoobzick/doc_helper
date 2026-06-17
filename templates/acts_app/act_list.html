@@ -40,9 +40,9 @@
                     .acts-table { table-layout: fixed; width: 100%; }
                     .acts-col-num { width: 18%; }
                     .acts-col-date { width: 10%; }
-                    .acts-col-works { width: 34%; }
-                    .acts-col-project { width: 30%; }
-                    .acts-col-actions { width: 8%; }
+                    .acts-col-works { width: 32%; }
+                    .acts-col-project { width: 28%; }
+                    .acts-col-actions { width: 12%; }
 
                     .act-number-full {
                         display: block;
@@ -230,6 +230,22 @@
                                    aria-label="Редактировать">
                                     <i class="bi bi-pencil"></i>
                                 </a>
+
+                                {% if perms.acts_app.delete_act %}
+                                    <form method="post"
+                                          action="{% url 'acts_app:act_delete' act.uuid %}"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Удалить акт №{{ act.number|escapejs }}? Это действие нельзя отменить.');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-outline-danger icon-action ms-1"
+                                                title="Удалить"
+                                                aria-label="Удалить">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
                             </td>
                         </tr>
                     {% empty %}

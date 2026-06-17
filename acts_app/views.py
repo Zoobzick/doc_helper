@@ -2,16 +2,20 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import shutil
 import subprocess
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.db import transaction
+from django.db import router, transaction
 from django.db.models import Q, Max
+from django.db.models.deletion import Collector, ProtectedError
 from django.http import HttpRequest, HttpResponse, JsonResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 from django.views.generic import DetailView, ListView
 
@@ -33,7 +37,7 @@ from acts_app.models import (
     ActApprovalItem, ActAttachment,
 )
 
-from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx
+from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx, get_registry_p3_docx_paths
 from acts_app.services.bulk_export import build_acts_bulk_export_zip
 
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError, get_act_docx_paths
@@ -111,6 +115,109 @@ def _build_bulk_export_filename(date_from, date_to) -> str:
     else:
         period = "all"
     return f"acts_export_{period}.zip"
+
+
+def _unlink_file(path: Path) -> None:
+    try:
+        if path.exists() and path.is_file():
+            path.unlink()
+    except Exception:
+        pass
+
+
+def _delete_act_files(act: Act) -> None:
+    paths: set[Path] = set()
+
+    try:
+        for path in get_act_docx_paths(act):
+            paths.add(path)
+            paths.add(path.with_suffix(".pdf"))
+    except Exception:
+        pass
+
+    registries = list(act.attachments.filter(type=AttachmentType.MATERIALS_REGISTRY))
+    for registry in registries:
+        try:
+            for path in get_registry_p3_docx_paths(act=act, registry=registry):
+                paths.add(path)
+                paths.add(path.with_suffix(".pdf"))
+        except Exception:
+            pass
+
+    for attachment in act.attachments.all():
+        file_field = getattr(attachment, "file", None)
+        if file_field:
+            try:
+                file_field.delete(save=False)
+            except Exception:
+                pass
+
+    for path in paths:
+        _unlink_file(path)
+
+    attachments_dir = Path(settings.MEDIA_ROOT) / "acts" / str(act.uuid)
+    try:
+        if attachments_dir.exists() and attachments_dir.is_dir():
+            shutil.rmtree(attachments_dir)
+    except Exception:
+        pass
+
+
+def _ensure_act_can_be_deleted(act: Act) -> None:
+    collector = Collector(using=router.db_for_write(Act))
+    collector.collect([act])
+
+
+def _detach_act_from_document_batches(act: Act) -> int:
+    try:
+        from documents_app.models import (
+            DocumentBatchAct,
+            DocumentBatchProject,
+            DocumentBatchProjectReviewStatus,
+            GeneratedDocument,
+        )
+    except Exception:
+        return 0
+
+    batch_items = list(
+        DocumentBatchAct.objects
+        .filter(act=act)
+        .values("id", "batch_id", "project_id")
+    )
+    if not batch_items:
+        return 0
+
+    affected_batch_ids = {item["batch_id"] for item in batch_items}
+    affected_pairs = {(item["batch_id"], item["project_id"]) for item in batch_items}
+
+    DocumentBatchAct.objects.filter(id__in=[item["id"] for item in batch_items]).delete()
+
+    for batch_id, project_id in affected_pairs:
+        remaining_items = list(
+            DocumentBatchAct.objects
+            .filter(batch_id=batch_id, project_id=project_id)
+            .order_by("order", "id")
+        )
+        changed_items = []
+        for order, item in enumerate(remaining_items, start=1):
+            if item.order != order:
+                item.order = order
+                changed_items.append(item)
+        if changed_items:
+            DocumentBatchAct.objects.bulk_update(changed_items, ["order"])
+
+    GeneratedDocument.objects.filter(batch_id__in=affected_batch_ids).update(is_actual=False)
+
+    for batch_id, project_id in affected_pairs:
+        DocumentBatchProject.objects.filter(batch_id=batch_id, project_id=project_id).update(
+            review_status=DocumentBatchProjectReviewStatus.PENDING,
+            review_started_at=None,
+            review_started_by=None,
+            reviewed_at=None,
+            reviewed_by=None,
+        )
+
+    return len(affected_batch_ids)
 
 
 def _month_range_filter_q(d_from, d_to):
@@ -688,6 +795,43 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
         ctx["selected_projects"] = selected
         return ctx
+
+
+class ActDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.delete_act"
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+        act_number = act.number
+        affected_batches_count = _detach_act_from_document_batches(act)
+
+        try:
+            _ensure_act_can_be_deleted(act)
+        except ProtectedError:
+            transaction.set_rollback(True)
+            messages.error(
+                request,
+                "Акт нельзя удалить, потому что он уже используется в других разделах, например в комплекте сдачи ИД.",
+            )
+            return redirect("acts_app:act_list")
+
+        _delete_act_files(act)
+        act.delete()
+
+        message = f"Акт №{act_number} удалён."
+        if affected_batches_count:
+            message += f" Убран из комплектов: {affected_batches_count}. Документы комплектов помечены неактуальными."
+        messages.success(request, message)
+
+        next_url = (request.POST.get("next") or "").strip()
+        if next_url and url_has_allowed_host_and_scheme(
+            next_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            return redirect(next_url)
+        return redirect("acts_app:act_list")
 
 
 class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):

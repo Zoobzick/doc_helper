@@ -13,6 +13,7 @@ urlpatterns = [
     # детали / редактирование
     path("<uuid:uuid>/", views.ActDetailView.as_view(), name="act_detail"),
     path("<uuid:uuid>/edit/", views.ActUpdateView.as_view(), name="act_update"),
+    path("<uuid:uuid>/delete/", views.ActDeleteView.as_view(), name="act_delete"),
 
     # загрузки
     path("<uuid:uuid>/docx/", views.ActDocxDownloadView.as_view(), name="act_docx_download"),
