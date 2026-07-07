@@ -10,6 +10,7 @@ from documents_app.views import (
     DocumentBatchAddManualActView,
     DocumentBatchActAddReviewNoteView,
     DocumentBatchCreateDraftView,
+    DocumentBatchDeleteView,
     DocumentBatchDetailView,
     DocumentBatchGenerateView,
     DocumentBatchListView,
@@ -162,6 +163,11 @@ urlpatterns = [
         "id-handover/batches/<int:batch_id>/attachments/<uuid:attachment_uuid>/delete/",
         BatchAttachmentDeleteView.as_view(),
         name="id_handover_batch_attachment_delete",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/delete/",
+        DocumentBatchDeleteView.as_view(),
+        name="id_handover_batch_delete",
     ),
     path(
         "id-handover/batches/<int:batch_id>/",

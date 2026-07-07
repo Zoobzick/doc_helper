@@ -1212,6 +1212,32 @@ class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         return "За весь период"
 
 
+class DocumentBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.delete_documentbatch"
+    raise_exception = True
+
+    def post(self, request, *args, **kwargs):
+        batch = get_object_or_404(DocumentBatch, pk=kwargs["batch_id"])
+        batch_label = batch.title or f"#{batch.id}"
+
+        with transaction.atomic():
+            generated_documents = list(batch.generated_documents.all())
+            attachments = list(batch.attachments.all())
+
+            for document in generated_documents:
+                if document.file:
+                    document.file.delete(save=False)
+
+            for attachment in attachments:
+                if attachment.file:
+                    attachment.file.delete(save=False)
+
+            batch.delete()
+
+        messages.success(request, f"Комплект {batch_label} удалён.")
+        return redirect("documents:id_handover_batch_list")
+
+
 class DocumentBatchCreateDraftView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "documents_app.add_documentbatch"
     raise_exception = True

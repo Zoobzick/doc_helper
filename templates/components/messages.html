@@ -1,10 +1,141 @@
 {% if messages %}
-<div class="container mt-3">
+<div class="doc-toast-zone" aria-live="polite" aria-atomic="true">
   {% for message in messages %}
-  <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-    {{ message }}
-    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-  </div>
+    {% if forloop.counter <= 3 %}
+      {% with tags=message.tags %}
+        <div
+          class="toast doc-toast doc-toast-{% if 'error' in tags %}error{% elif 'warning' in tags %}warning{% elif 'success' in tags %}success{% else %}info{% endif %} {{ tags }}"
+          role="{% if 'error' in tags %}alert{% else %}status{% endif %}"
+          aria-live="{% if 'error' in tags %}assertive{% else %}polite{% endif %}"
+          aria-atomic="true"
+          data-bs-autohide="{% if 'error' in tags %}false{% else %}true{% endif %}"
+          data-bs-delay="{% if 'warning' in tags %}8000{% elif 'error' in tags %}0{% else %}4200{% endif %}"
+        >
+          <div class="doc-toast-marker"></div>
+          <div class="doc-toast-body">
+            <div class="doc-toast-icon">
+              {% if 'error' in tags %}
+                <i class="bi bi-exclamation-triangle-fill"></i>
+              {% elif 'warning' in tags %}
+                <i class="bi bi-exclamation-circle-fill"></i>
+              {% elif 'success' in tags %}
+                <i class="bi bi-check-circle-fill"></i>
+              {% else %}
+                <i class="bi bi-info-circle-fill"></i>
+              {% endif %}
+            </div>
+            <div class="doc-toast-text">{{ message }}</div>
+            <button type="button" class="btn-close doc-toast-close" data-bs-dismiss="toast" aria-label="Закрыть"></button>
+          </div>
+        </div>
+      {% endwith %}
+    {% elif forloop.counter == 4 %}
+      <div class="toast doc-toast doc-toast-info" role="status" aria-live="polite" aria-atomic="true" data-bs-autohide="true" data-bs-delay="7000">
+        <div class="doc-toast-marker"></div>
+        <div class="doc-toast-body">
+          <div class="doc-toast-icon"><i class="bi bi-bell-fill"></i></div>
+          <div class="doc-toast-text">Есть ещё уведомления. Старые сообщения очищены, чтобы не мешать работе.</div>
+          <button type="button" class="btn-close doc-toast-close" data-bs-dismiss="toast" aria-label="Закрыть"></button>
+        </div>
+      </div>
+    {% endif %}
   {% endfor %}
 </div>
+
+<style>
+  .doc-toast-zone {
+    position: fixed;
+    top: 76px;
+    right: 24px;
+    z-index: 1090;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(380px, calc(100vw - 32px));
+    pointer-events: none;
+  }
+
+  .doc-toast {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid rgba(22, 27, 34, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 14px 34px rgba(16, 24, 40, 0.16);
+    color: #1f2937;
+    pointer-events: auto;
+  }
+
+  .doc-toast-marker {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: #0d6efd;
+  }
+
+  .doc-toast-body {
+    display: grid;
+    grid-template-columns: 22px 1fr 18px;
+    gap: 10px;
+    align-items: start;
+    padding: 12px 12px 12px 14px;
+  }
+
+  .doc-toast-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 22px;
+    color: #0d6efd;
+  }
+
+  .doc-toast-text {
+    min-width: 0;
+    font-size: 0.92rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .doc-toast-close {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    margin-top: 2px;
+    opacity: 0.55;
+  }
+
+  .doc-toast-success .doc-toast-marker { background: #198754; }
+  .doc-toast-success .doc-toast-icon { color: #198754; }
+
+  .doc-toast-warning .doc-toast-marker { background: #f0ad00; }
+  .doc-toast-warning .doc-toast-icon { color: #b58100; }
+
+  .doc-toast-error .doc-toast-marker { background: #dc3545; }
+  .doc-toast-error .doc-toast-icon { color: #dc3545; }
+
+  @media (max-width: 767.98px) {
+    .doc-toast-zone {
+      top: 64px;
+      right: 12px;
+      left: 12px;
+      width: auto;
+    }
+  }
+</style>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    if (!window.bootstrap || !bootstrap.Toast) {
+      return;
+    }
+
+    document.querySelectorAll(".doc-toast").forEach(function (toastEl, index) {
+      var toast = bootstrap.Toast.getOrCreateInstance(toastEl);
+      window.setTimeout(function () {
+        toast.show();
+      }, index * 140);
+    });
+  });
+</script>
 {% endif %}
