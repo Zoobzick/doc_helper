@@ -64,6 +64,9 @@ LIBREOFFICE_EXECUTABLE = os.environ.get(
     "DOC_HELPER_LIBREOFFICE_EXECUTABLE",
     default_libreoffice_executable,
 )
+LIBREOFFICE_CONVERSION_TIMEOUT_SECONDS = int(
+    os.environ.get("DOC_HELPER_LIBREOFFICE_TIMEOUT_SECONDS", "180")
+)
 
 raw_base = os.environ.get("DOC_HELPER_BASE_ID_DIR", "").strip()
 

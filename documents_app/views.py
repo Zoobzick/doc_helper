@@ -2288,10 +2288,28 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
                 archive_letter_template_path=self._get_archive_letter_template_path(),
             )
         except BatchGenerationValidationError as exc:
-            messages.error(request, f"Генерация не запущена: {exc}")
+            error_message = f"Генерация не запущена: {exc}"
+            messages.error(request, error_message)
+            if self._is_ajax_request(request):
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "message": error_message,
+                    },
+                    status=400,
+                )
             return self._redirect_after_error(batch=batch)
         except Exception as exc:
-            messages.error(request, f"Ошибка генерации комплекта: {exc}")
+            error_message = f"Ошибка генерации комплекта: {exc}"
+            messages.error(request, error_message)
+            if self._is_ajax_request(request):
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "message": error_message,
+                    },
+                    status=500,
+                )
             return self._redirect_after_error(batch=batch)
 
         success_message = self._build_success_message(result=result)

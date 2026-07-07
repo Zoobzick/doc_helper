@@ -1,3 +1,4 @@
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -5,6 +6,8 @@ from shutil import which
 
 from django.conf import settings
 from PyPDF2 import PdfReader
+
+DEFAULT_CONVERSION_TIMEOUT_SECONDS = 180
 
 
 def _get_libreoffice_executable() -> str:
@@ -28,6 +31,12 @@ def _get_libreoffice_executable() -> str:
     return configured or "libreoffice"
 
 
+def _get_libreoffice_profile_uri() -> str:
+    profile_dir = Path(tempfile.gettempdir()) / f"doc_helper_lo_profile_{os.getpid()}"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    return profile_dir.resolve().as_uri()
+
+
 def _convert_to_pdf(source_path: Path, output_dir: Path, *, source_label: str) -> Path:
     source_path = Path(source_path)
     output_dir = Path(output_dir)
@@ -35,34 +44,46 @@ def _convert_to_pdf(source_path: Path, output_dir: Path, *, source_label: str) -
     output_dir.mkdir(parents=True, exist_ok=True)
 
     executable = _get_libreoffice_executable()
-    with tempfile.TemporaryDirectory(prefix="doc_helper_lo_profile_") as profile_dir:
-        args = [
-            executable,
-            f"-env:UserInstallation={Path(profile_dir).resolve().as_uri()}",
-            "--headless",
-            "--nologo",
-            "--nofirststartwizard",
-            "--convert-to",
-            "pdf",
-            "--outdir",
-            str(output_dir),
-            str(source_path),
-        ]
+    timeout_seconds = int(
+        getattr(
+            settings,
+            "LIBREOFFICE_CONVERSION_TIMEOUT_SECONDS",
+            DEFAULT_CONVERSION_TIMEOUT_SECONDS,
+        )
+    )
+    args = [
+        executable,
+        f"-env:UserInstallation={_get_libreoffice_profile_uri()}",
+        "--headless",
+        "--nologo",
+        "--nofirststartwizard",
+        "--convert-to",
+        "pdf",
+        "--outdir",
+        str(output_dir),
+        str(source_path),
+    ]
 
-        try:
-            proc = subprocess.run(
-                args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            raise RuntimeError(
-                f"LibreOffice not found while converting {source_label} to PDF. "
-                "Install libreoffice-calc and libreoffice-writer on the server, "
-                "or set DOC_HELPER_LIBREOFFICE_EXECUTABLE to the soffice/libreoffice path."
-            ) from exc
+    try:
+        proc = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"LibreOffice not found while converting {source_label} to PDF. "
+            "Install libreoffice-calc and libreoffice-writer on the server, "
+            "or set DOC_HELPER_LIBREOFFICE_EXECUTABLE to the soffice/libreoffice path."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"LibreOffice timed out after {timeout_seconds} seconds while converting "
+            f"{source_label} to PDF. Command: {' '.join(args)}."
+        ) from exc
 
     if proc.returncode != 0:
         raise RuntimeError(

@@ -79,12 +79,52 @@ class RegistryXlsxRenderer:
     }
 
     FONT_FILE_CANDIDATES = {
-        "calibri": ("calibri.ttf", "calibrib.ttf"),
-        "times new roman": ("times.ttf", "timesbd.ttf"),
-        "arial": ("arial.ttf", "arialbd.ttf"),
-        "tahoma": ("tahoma.ttf", "tahomabd.ttf"),
-        "cambria": ("cambria.ttc", "cambriab.ttf"),
+        "calibri": (
+            "calibri.ttf",
+            "calibrib.ttf",
+            "Carlito-Regular.ttf",
+            "Carlito-Bold.ttf",
+            "LiberationSans-Regular.ttf",
+            "LiberationSans-Bold.ttf",
+            "DejaVuSans.ttf",
+            "DejaVuSans-Bold.ttf",
+        ),
+        "times new roman": (
+            "times.ttf",
+            "timesbd.ttf",
+            "LiberationSerif-Regular.ttf",
+            "LiberationSerif-Bold.ttf",
+            "DejaVuSerif.ttf",
+            "DejaVuSerif-Bold.ttf",
+        ),
+        "arial": (
+            "arial.ttf",
+            "arialbd.ttf",
+            "LiberationSans-Regular.ttf",
+            "LiberationSans-Bold.ttf",
+            "DejaVuSans.ttf",
+            "DejaVuSans-Bold.ttf",
+        ),
+        "tahoma": (
+            "tahoma.ttf",
+            "tahomabd.ttf",
+            "DejaVuSans.ttf",
+            "DejaVuSans-Bold.ttf",
+        ),
+        "cambria": (
+            "cambria.ttc",
+            "cambriab.ttf",
+            "Caladea-Regular.ttf",
+            "Caladea-Bold.ttf",
+            "DejaVuSerif.ttf",
+            "DejaVuSerif-Bold.ttf",
+        ),
     }
+    FONT_SEARCH_DIRS = (
+        Path("C:/Windows/Fonts"),
+        Path("/usr/share/fonts"),
+        Path("/usr/local/share/fonts"),
+    )
 
     def render(
         self,
@@ -475,13 +515,21 @@ class RegistryXlsxRenderer:
         if probe_title in workbook.sheetnames:
             workbook.remove(workbook[probe_title])
 
+        usable_width_px = max(
+            36,
+            int(
+                self._calculate_usable_text_width_px(
+                    worksheet=worksheet,
+                    start_col_idx=documents_col_idx,
+                    end_col_idx=sheets_col_idx - 1,
+                )
+                * 0.94
+            ),
+        )
+
         probe_sheet = workbook.create_sheet(title=probe_title)
         probe_sheet.sheet_state = "hidden"
-        probe_sheet.column_dimensions["A"].width = self._calculate_combined_excel_width(
-            worksheet=worksheet,
-            start_col_idx=documents_col_idx,
-            end_col_idx=sheets_col_idx - 1,
-        )
+        probe_sheet.column_dimensions["A"].width = self._pixels_to_excel_width(usable_width_px)
 
         base_height = (
             worksheet.row_dimensions[template_row_idx].height
@@ -500,8 +548,8 @@ class RegistryXlsxRenderer:
                 probe_cell.alignment = copy(source_cell.alignment)
 
                 measured_height = self._measure_probe_row_height(
-                    probe_sheet=probe_sheet,
                     probe_cell=probe_cell,
+                    usable_width_px=usable_width_px,
                     is_act_row=bool(getattr(source_cell.font, "bold", False)),
                 )
                 probe_sheet.row_dimensions[row_offset + 1].height = measured_height
@@ -512,18 +560,10 @@ class RegistryXlsxRenderer:
     def _measure_probe_row_height(
         self,
         *,
-        probe_sheet: Worksheet,
         probe_cell,
+        usable_width_px: int,
         is_act_row: bool,
     ) -> float:
-        usable_width_px = max(
-            36,
-            self._excel_width_to_pixels(
-                probe_sheet.column_dimensions["A"].width
-                or probe_sheet.sheet_format.defaultColWidth
-                or 8.43
-            ) - 10,
-        )
         pil_font = self._get_pil_font(
             font_name=getattr(probe_cell.font, "name", None),
             font_size=getattr(probe_cell.font, "sz", None),
@@ -719,6 +759,11 @@ class RegistryXlsxRenderer:
             return 0
         return int(math.floor(width * 7 + 5))
 
+    def _pixels_to_excel_width(self, pixels: int | float) -> float:
+        if pixels <= 5:
+            return 0.0
+        return max(0.0, (float(pixels) - 5.0) / 7.0)
+
     @lru_cache(maxsize=32)
     def _resolve_font_file_path(self, font_name: str, bold: bool) -> str | None:
         normalized_name = (font_name or "").strip().lower()
@@ -726,14 +771,21 @@ class RegistryXlsxRenderer:
         if not candidates:
             return None
 
-        preferred_file = candidates[1] if bold and len(candidates) > 1 else candidates[0]
-        fallback_files = tuple(file_name for file_name in candidates if file_name != preferred_file)
-        fonts_dir = Path("C:/Windows/Fonts")
+        preferred_files = candidates[1::2] if bold else candidates[0::2]
+        fallback_files = tuple(file_name for file_name in candidates if file_name not in preferred_files)
 
-        for file_name in (preferred_file, *fallback_files):
-            candidate_path = fonts_dir / file_name
-            if candidate_path.exists():
-                return str(candidate_path)
+        for file_name in (*preferred_files, *fallback_files):
+            for fonts_dir in self.FONT_SEARCH_DIRS:
+                direct_path = fonts_dir / file_name
+                if direct_path.exists():
+                    return str(direct_path)
+
+                if not fonts_dir.exists():
+                    continue
+
+                matches = list(fonts_dir.rglob(file_name))
+                if matches:
+                    return str(matches[0])
 
         return None
 

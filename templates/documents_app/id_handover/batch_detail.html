@@ -1211,6 +1211,9 @@
                         const contentType = response.headers.get("content-type") || "";
                         if (contentType.includes("application/json")) {
                             const payload = await response.json();
+                            if (!response.ok || payload.ok === false) {
+                                throw new Error(payload.message || "Генерация завершилась с ошибкой.");
+                            }
                             finishOverlay(payload.message || "Генерация завершена.");
                             window.setTimeout(function () {
                                 window.location.href = payload.redirect_url || window.location.href;
@@ -1226,7 +1229,7 @@
                         overlay.setAttribute("aria-hidden", "true");
                         setButtonsDisabled(false);
                         activeRequest = false;
-                        window.alert("Не удалось получить ответ от сервера во время генерации документов.");
+                        window.alert(error.message || "Не удалось получить ответ от сервера во время генерации документов.");
                     }
                 });
             });
