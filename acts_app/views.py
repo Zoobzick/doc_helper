@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 import subprocess
+from dataclasses import dataclass
 
 from django.conf import settings
 from django.contrib import messages
@@ -34,7 +35,7 @@ from acts_app.models import (
     ActStatus,
     AttachmentType,
     ActParty,
-    ActApprovalItem, ActAttachment,
+    ActApprovalItem, ActAttachment, ActMaterialItem,
 )
 
 from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx, get_registry_p3_docx_paths
@@ -347,6 +348,24 @@ DEFAULT_PARTY_ROLES = [
     ActRole.DESIGN_REP,
     ActRole.CONTRACTOR_REP,
 ]
+
+
+@dataclass(frozen=True)
+class AppendixSearchRow:
+    source: str
+    source_label: str
+    document_title: str
+    material_name: str
+    document_no: str
+    document_date: object
+    document_date_label: str
+    act: Act
+    file_url: str
+    object_url: str
+
+    @property
+    def primary_url(self) -> str:
+        return self.file_url or self.object_url
 
 
 def _get_last_act_for_user_or_global(*, user, exclude_act_id: int | None = None) -> Act | None:
@@ -1175,6 +1194,196 @@ class ProtocolListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
         ctx["project_selected"] = (self.request.GET.get("project") or "").strip()
         ctx["sort"] = (self.request.GET.get("sort") or "doc_no").strip()
         ctx["dir"] = (self.request.GET.get("dir") or "asc").strip()
+        return ctx
+
+
+def _attachment_type_label(value: str) -> str:
+    try:
+        return AttachmentType(value).label
+    except Exception:
+        return value or "Документ акта"
+
+
+def _appendix_search_project_filter(qs, project_id: str, relation_prefix: str):
+    if project_id.isdigit():
+        return qs.filter(**{f"{relation_prefix}projects__id": int(project_id)}).distinct()
+    return qs
+
+
+class AppendixSearchView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    permission_required = "acts_app.view_act"
+    template_name = "acts_app/appendix_search.html"
+    context_object_name = "rows"
+    paginate_by = 50
+
+    SOURCE_ALL = ""
+    SOURCE_MATERIALS = "materials"
+    SOURCE_ATTACHMENTS = "attachments"
+    SOURCE_PROTOCOLS = "protocols"
+
+    def get_queryset(self):
+        q = (self.request.GET.get("q") or "").strip()
+        project_id = (self.request.GET.get("project") or "").strip()
+        source = (self.request.GET.get("source") or "").strip()
+
+        if not q and not project_id and source == self.SOURCE_ALL:
+            return []
+
+        rows: list[AppendixSearchRow] = []
+
+        if source in {self.SOURCE_ALL, self.SOURCE_MATERIALS}:
+            material_qs = (
+                ActMaterialItem.objects
+                .select_related("act", "passport", "passport__material")
+                .prefetch_related("act__projects")
+                .order_by("-act__act_date", "-act__id", "position", "id")
+            )
+            material_qs = _appendix_search_project_filter(material_qs, project_id, "act__")
+
+            if q:
+                cond = (
+                    Q(manual_name__icontains=q)
+                    | Q(manual_doc_name__icontains=q)
+                    | Q(manual_doc_no__icontains=q)
+                    | Q(manual_doc_date_text__icontains=q)
+                    | Q(passport__document_name__icontains=q)
+                    | Q(passport__document_number__icontains=q)
+                    | Q(passport__original_name__icontains=q)
+                    | Q(passport__material__name__icontains=q)
+                    | Q(act__number__icontains=q)
+                    | Q(act__work_name__icontains=q)
+                )
+                if Project is not None:
+                    project_fields = {f.name for f in Project._meta.get_fields() if getattr(f, "concrete", False)}
+                    for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
+                        if fname in project_fields:
+                            cond |= Q(**{f"act__projects__{fname}__icontains": q})
+                parsed = _parse_search_date(q) or _parse_iso_date(q)
+                if parsed:
+                    cond |= Q(manual_doc_date=parsed) | Q(passport__document_date=parsed)
+                material_qs = material_qs.filter(cond).distinct()
+
+            for item in material_qs[:500]:
+                passport = item.passport if item.passport_id else None
+                material_name = (
+                    (getattr(getattr(passport, "material", None), "name", "") or "").strip()
+                    or (item.manual_name or "").strip()
+                )
+                document_title = (
+                    (getattr(passport, "document_name", "") or "").strip()
+                    or (item.manual_doc_name or "").strip()
+                    or "Материал"
+                )
+                document_no = (
+                    (getattr(passport, "document_number", "") or "").strip()
+                    or (item.manual_doc_no or "").strip()
+                )
+                document_date = getattr(passport, "document_date", None) or item.manual_doc_date
+                document_date_label = ""
+                if document_date:
+                    try:
+                        document_date_label = document_date.strftime("%d.%m.%Y")
+                    except Exception:
+                        document_date_label = str(document_date)
+                elif item.manual_doc_date_text:
+                    document_date_label = item.manual_doc_date_text
+                object_url = (
+                    reverse("acts_app:passport_open", kwargs={"pk": passport.pk})
+                    if passport and getattr(passport, "file", None)
+                    else ""
+                )
+                rows.append(
+                    AppendixSearchRow(
+                        source="materials",
+                        source_label="Материал",
+                        document_title=document_title,
+                        material_name=material_name,
+                        document_no=document_no,
+                        document_date=document_date,
+                        document_date_label=document_date_label,
+                        act=item.act,
+                        file_url="",
+                        object_url=object_url,
+                    )
+                )
+
+        if source in {self.SOURCE_ALL, self.SOURCE_ATTACHMENTS, self.SOURCE_PROTOCOLS}:
+            attachment_qs = (
+                ActAttachment.objects
+                .select_related("act")
+                .prefetch_related("act__projects")
+                .order_by("-act__act_date", "-act__id", "created_at", "id")
+            )
+            attachment_qs = _appendix_search_project_filter(attachment_qs, project_id, "act__")
+
+            if source == self.SOURCE_PROTOCOLS:
+                attachment_qs = attachment_qs.filter(type=AttachmentType.TEST_PROTOCOL)
+
+            if q:
+                cond = (
+                    Q(title__icontains=q)
+                    | Q(doc_no__icontains=q)
+                    | Q(file__icontains=q)
+                    | Q(act__number__icontains=q)
+                    | Q(act__work_name__icontains=q)
+                )
+                if Project is not None:
+                    project_fields = {f.name for f in Project._meta.get_fields() if getattr(f, "concrete", False)}
+                    for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
+                        if fname in project_fields:
+                            cond |= Q(**{f"act__projects__{fname}__icontains": q})
+                parsed = _parse_search_date(q) or _parse_iso_date(q)
+                if parsed:
+                    cond |= Q(doc_date=parsed) | Q(doc_date_to=parsed)
+                attachment_qs = attachment_qs.filter(cond).distinct()
+
+            for item in attachment_qs[:500]:
+                file_url = (
+                    reverse("acts_app:act_attachment_open", kwargs={"pk": item.pk})
+                    if getattr(item, "file", None)
+                    else ""
+                )
+                rows.append(
+                    AppendixSearchRow(
+                        source="attachments",
+                        source_label=_attachment_type_label(item.type),
+                        document_title=(item.title or "").strip() or _attachment_type_label(item.type),
+                        material_name="",
+                        document_no=(item.doc_no or "").strip(),
+                        document_date=item.doc_date,
+                        document_date_label=item.doc_date.strftime("%d.%m.%Y") if item.doc_date else "",
+                        act=item.act,
+                        file_url=file_url,
+                        object_url="",
+                    )
+                )
+
+        return sorted(
+            rows,
+            key=lambda row: (
+                row.act.act_date or datetime.min.date(),
+                row.act.id or 0,
+                row.source_label,
+                row.document_title,
+            ),
+            reverse=True,
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["q"] = (self.request.GET.get("q") or "").strip()
+        ctx["project_selected"] = (self.request.GET.get("project") or "").strip()
+        ctx["source_selected"] = (self.request.GET.get("source") or "").strip()
+        ctx["has_filters"] = bool(ctx["q"] or ctx["project_selected"] or ctx["source_selected"])
+        ctx["source_options"] = [
+            (self.SOURCE_ALL, "Все приложения"),
+            (self.SOURCE_MATERIALS, "Материалы"),
+            (self.SOURCE_ATTACHMENTS, "Документы акта"),
+            (self.SOURCE_PROTOCOLS, "Протоколы"),
+        ]
+        ctx["projects_for_filter"] = []
+        if Project is not None:
+            ctx["projects_for_filter"] = list(Project.objects.order_by("full_code").only("id", "full_code"))
         return ctx
 
 

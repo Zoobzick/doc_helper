@@ -91,6 +91,14 @@
                                 </li>
 
                                 <li>
+                                    <a href="{% url 'acts_app:appendix_search' %}"
+                                       class="{% if rn == 'appendix_search' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Поиск приложений</span>
+                                    </a>
+                                </li>
+
+                                <li>
                                     <a href="{% url 'acts_app:act_bulk_export' %}"
                                        class="{% if rn == 'act_bulk_export' %}active{% endif %}">
                                         <i class="bi bi-circle"></i>
