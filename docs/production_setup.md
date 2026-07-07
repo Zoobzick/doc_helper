@@ -21,6 +21,7 @@ sudo apt-get install -y \
   python3 \
   python3-venv \
   python3-pip \
+  libreoffice-calc \
   libreoffice-writer \
   unzip \
   rsync
@@ -92,6 +93,7 @@ DJANGO_SECRET_KEY='replace_me'
 DJANGO_ALLOWED_HOSTS='example.com,127.0.0.1,localhost'
 DOC_HELPER_BASE_ID_DIR='/var/lib/doc_helper/storage'
 DOC_HELPER_BACKUP_DIR='/var/lib/doc_helper/backups'
+DOC_HELPER_LIBREOFFICE_EXECUTABLE='libreoffice'
 DB_NAME='doc_helper'
 DB_USER='doc_helper_user'
 DB_PASSWORD='strong_password_here'

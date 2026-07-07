@@ -56,9 +56,14 @@ DEFAULT_WINDOWS_BASE = Path(r"C:\ид участок №5 (липовая рощ
 DEFAULT_LINUX_BASE = Path("/var/lib/doc_helper/storage")
 
 if platform.system() == "Windows":
-    LIBREOFFICE_EXECUTABLE = r"C:\Program Files\LibreOffice\program\soffice.exe"
+    default_libreoffice_executable = r"C:\Program Files\LibreOffice\program\soffice.exe"
 else:
-    LIBREOFFICE_EXECUTABLE = "libreoffice"
+    default_libreoffice_executable = "libreoffice"
+
+LIBREOFFICE_EXECUTABLE = os.environ.get(
+    "DOC_HELPER_LIBREOFFICE_EXECUTABLE",
+    default_libreoffice_executable,
+)
 
 raw_base = os.environ.get("DOC_HELPER_BASE_ID_DIR", "").strip()
 

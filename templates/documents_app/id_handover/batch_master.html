@@ -465,8 +465,8 @@
                                                             </button>
                                                         {% else %}
                                                             <a href="{% url 'documents:id_handover_batch_project_review' batch.id project.project_id %}"
-                                                               class="btn btn-primary btn-sm js-summary-action">
-                                                                <i class="bi bi-search me-1"></i>
+                                                               class="btn {% if project.review_status == 'reviewed' %}btn-outline-secondary{% else %}btn-primary{% endif %} btn-sm js-summary-action">
+                                                                <i class="bi {% if project.review_status == 'reviewed' %}bi-arrow-repeat{% else %}bi-search{% endif %} me-1"></i>
                                                                 {% if project.review_status == "reviewed" %}
                                                                     Перепроверить
                                                                 {% elif project.review_status == "in_progress" %}

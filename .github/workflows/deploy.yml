@@ -81,7 +81,7 @@ jobs:
           
           # LibreOffice (нужен для DOCX->PDF preview) и pg_dump для бэкапов
           sudo apt-get update -y
-          sudo apt-get install -y libreoffice-writer postgresql-client
+          sudo apt-get install -y libreoffice-calc libreoffice-writer postgresql-client
 
           # Проверка
           libreoffice --version || true
