@@ -11,6 +11,11 @@
 }
 
 /* ошибка после submit */
+.input-duplicate {
+  background-color: #fff3cd !important;
+  border-color: #ffc107 !important;
+}
+
 .input-error {
   background-color: #f8d7da !important;   /* классический bootstrap danger */
   border-color: #dc3545 !important;

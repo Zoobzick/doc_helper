@@ -231,6 +231,20 @@
                                     <i class="bi bi-pencil"></i>
                                 </a>
 
+                                {% if perms.acts_app.add_act %}
+                                    <form method="post"
+                                          action="{% url 'acts_app:act_duplicate' act.uuid %}"
+                                          class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit"
+                                                class="btn btn-sm btn-outline-warning icon-action ms-1"
+                                                title="Дублировать акт"
+                                                aria-label="Дублировать акт">
+                                            <i class="bi bi-files"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+
                                 {% if perms.acts_app.delete_act %}
                                     <form method="post"
                                           action="{% url 'acts_app:act_delete' act.uuid %}"

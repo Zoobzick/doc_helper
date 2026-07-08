@@ -853,6 +853,114 @@ class ActDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return redirect("acts_app:act_list")
 
 
+class ActDuplicateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = ("acts_app.view_act", "acts_app.add_act")
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        source = get_object_or_404(
+            Act.objects.prefetch_related(
+                "projects",
+                "materials__passport",
+                "attachments",
+                "approval_items__approval",
+                "parties__organization",
+            ),
+            uuid=uuid,
+        )
+
+        duplicate = Act.objects.create(
+            created_by=request.user,
+            number=source.number,
+            act_date=source.act_date,
+            work_name=source.work_name,
+            work_start_date=source.work_start_date,
+            work_end_date=source.work_end_date,
+            work_norms_text=source.work_norms_text,
+            allow_next_works_text=source.allow_next_works_text,
+            extra_info_text=source.extra_info_text,
+            copies_count=source.copies_count,
+            status=ActStatus.DRAFT,
+        )
+        duplicate.projects.set(source.projects.all())
+
+        material_items = [
+            ActMaterialItem(
+                act=duplicate,
+                position=item.position,
+                passport=item.passport,
+                manual_name=item.manual_name,
+                manual_doc_name=item.manual_doc_name,
+                manual_doc_no=item.manual_doc_no,
+                manual_doc_date=item.manual_doc_date,
+                manual_doc_date_text=item.manual_doc_date_text,
+                concrete_volume_m3=item.concrete_volume_m3,
+                sheets_count=item.sheets_count,
+            )
+            for item in source.materials.all()
+        ]
+        if material_items:
+            ActMaterialItem.objects.bulk_create(material_items)
+
+        excluded_attachment_types = [
+            AttachmentType.MATERIALS_REGISTRY,
+            AttachmentType.DOCS_REGISTRY,
+            AttachmentType.APPROVALS_REGISTRY,
+        ]
+        attachment_items = [
+            ActAttachment(
+                act=duplicate,
+                type=item.type,
+                title=item.title,
+                doc_no=item.doc_no,
+                doc_date=item.doc_date,
+                doc_date_to=item.doc_date_to,
+                sheets_count=item.sheets_count,
+                original_state=item.original_state,
+            )
+            for item in source.attachments.all()
+            if item.type not in excluded_attachment_types
+        ]
+        if attachment_items:
+            ActAttachment.objects.bulk_create(attachment_items)
+
+        approval_items = [
+            ActApprovalItem(
+                act=duplicate,
+                approval=item.approval,
+                position=item.position,
+                label_override=item.label_override,
+                sheets_count=item.sheets_count,
+            )
+            for item in source.approval_items.all()
+        ]
+        if approval_items:
+            ActApprovalItem.objects.bulk_create(approval_items)
+
+        party_items = [
+            ActParty(
+                act=duplicate,
+                role=item.role,
+                organization=item.organization,
+                is_enabled=item.is_enabled,
+                position=item.position,
+                chosen_authorization=None,
+            )
+            for item in source.parties.all()
+        ]
+        if party_items:
+            ActParty.objects.bulk_create(party_items)
+
+        messages.success(
+            request,
+            "\u0410\u043a\u0442 \u2116{} \u0441\u0434\u0443\u0431\u043b\u0438\u0440\u043e\u0432\u0430\u043d. "
+            "\u041f\u0440\u043e\u0432\u0435\u0440\u044c \u0436\u0451\u043b\u0442\u044b\u0435 \u043f\u043e\u043b\u044f \u0438 "
+            "\u0441\u043e\u0445\u0440\u0430\u043d\u0438 \u043d\u043e\u0432\u044b\u0439 \u0430\u043a\u0442.".format(source.number),
+        )
+        url = reverse("acts_app:act_update", kwargs={"uuid": str(duplicate.uuid)})
+        return redirect(f"{url}?duplicated=1")
+
+
 class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     permission_required = "acts_app.view_act"
     model = Act
@@ -1609,6 +1717,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "material_formset": material_fs,
                 "attachment_formset": attach_fs,
                 "mode": "update",
+                "duplicate_highlight": request.GET.get("duplicated") == "1",
                 "selected_projects": _selected_projects_for_render(selected_ids),
                 "approval_items": approval_items,
                 **_act_parties_context(act),
@@ -1660,6 +1769,7 @@ class ActUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "material_formset": material_fs,
                     "attachment_formset": attach_fs,
                     "mode": "update",
+                    "duplicate_highlight": request.GET.get("duplicated") == "1",
                     "selected_projects": _selected_projects_for_render(posted_ids),
                     "approval_items": _approval_items_from_post(request),
                     **_act_parties_context(act),

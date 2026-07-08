@@ -38,7 +38,8 @@
     </div>
 
     <section class="section">
-        <form method="post" enctype="multipart/form-data" id="act-form" novalidate>
+        <form method="post" enctype="multipart/form-data" id="act-form" novalidate
+              {% if duplicate_highlight %}data-duplicate-highlight="1"{% endif %}>
             {% csrf_token %}
 
             {% if projects_form.non_field_errors %}
@@ -1668,6 +1669,8 @@
     <script>
         (function () {
             let formWasSubmitted = false;
+            const duplicateHighlight = document.getElementById("act-form")?.dataset.duplicateHighlight === "1";
+            const duplicateTouched = new WeakSet();
 
             function isFilled(input) {
                 if (!input) return false;
@@ -1680,12 +1683,16 @@
 
             function clearState(input) {
                 if (!input) return;
-                input.classList.remove("input-required", "input-valid", "input-error");
+                input.classList.remove("input-required", "input-valid", "input-duplicate", "input-error");
             }
 
             function setState(input, state) {
                 if (!input) return;
                 clearState(input);
+                if (state === "input-valid" && duplicateHighlight && !duplicateTouched.has(input)) {
+                    input.classList.add("input-duplicate");
+                    return;
+                }
                 if (state) input.classList.add(state);
             }
 
@@ -1755,12 +1762,12 @@
                     const input = wrap.querySelector('input:not([type="hidden"]), textarea, select');
                     if (!input) return;
 
-                    input.classList.remove("input-required", "input-valid");
+                    input.classList.remove("input-required", "input-valid", "input-duplicate");
                     input.classList.add("input-error");
                 });
 
                 document.querySelectorAll(".is-invalid").forEach(function (input) {
-                    input.classList.remove("input-required", "input-valid");
+                    input.classList.remove("input-required", "input-valid", "input-duplicate");
                     input.classList.add("input-error");
                 });
             }
@@ -1924,6 +1931,7 @@
             document.addEventListener("input", function (e) {
                 const el = e.target;
                 if (!el) return;
+                duplicateTouched.add(el);
 
                 updateMainFields();
 
@@ -1940,6 +1948,7 @@
             document.addEventListener("change", function (e) {
                 const el = e.target;
                 if (!el) return;
+                duplicateTouched.add(el);
 
                 updateMainFields();
 

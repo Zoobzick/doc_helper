@@ -14,6 +14,7 @@ urlpatterns = [
     # детали / редактирование
     path("<uuid:uuid>/", views.ActDetailView.as_view(), name="act_detail"),
     path("<uuid:uuid>/edit/", views.ActUpdateView.as_view(), name="act_update"),
+    path("<uuid:uuid>/duplicate/", views.ActDuplicateView.as_view(), name="act_duplicate"),
     path("<uuid:uuid>/delete/", views.ActDeleteView.as_view(), name="act_delete"),
 
     # загрузки
