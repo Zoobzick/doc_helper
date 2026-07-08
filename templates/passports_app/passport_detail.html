@@ -36,7 +36,7 @@
             {% endfor %}
           </datalist>
 
-          <form method="post" class="mt-3">
+          <form method="post" enctype="multipart/form-data" class="mt-3">
             {% csrf_token %}
 
             <div class="row g-3">
@@ -77,6 +77,14 @@
                 {{ form.document_date }}
                 {% if form.document_date.errors %}
                   <div class="text-danger small mt-1">{{ form.document_date.errors }}</div>
+                {% endif %}
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">{{ form.replacement_file.label }}</label>
+                {{ form.replacement_file }}
+                {% if form.replacement_file.errors %}
+                  <div class="text-danger small mt-1">{{ form.replacement_file.errors }}</div>
                 {% endif %}
               </div>
 

@@ -16,6 +16,9 @@
     <section class="section dashboard">
         <form method="get" class="card mb-3">
             <div class="card-body pt-3">
+                <input type="hidden" name="period_group" value="{{ period_group }}">
+                <input type="hidden" name="created_from" value="{{ created_from|date:'Y-m-d' }}">
+                <input type="hidden" name="created_to" value="{{ created_to|date:'Y-m-d' }}">
                 <div class="row g-2 align-items-end">
                     <div class="col-12 col-md-3 col-xl-2">
                         <label class="form-label">С</label>
@@ -152,6 +155,47 @@
 
         <div class="card mt-3">
             <div class="card-body">
+                <h5 class="card-title">
+                    Кто сколько создал по {% if period_group == "month" %}месяцам{% else %}дням{% endif %}
+                </h5>
+                <form method="get" class="row g-2 align-items-end mb-3">
+                    <input type="hidden" name="date_from" value="{{ date_from|date:'Y-m-d' }}">
+                    <input type="hidden" name="date_to" value="{{ date_to|date:'Y-m-d' }}">
+                    <input type="hidden" name="created_by" value="{{ selected_creator_id|default:'' }}">
+                    <input type="hidden" name="project" value="{{ selected_project_id|default:'' }}">
+                    <input type="hidden" name="q" value="{{ q }}">
+
+                    <div class="col-12 col-md-3 col-xl-2">
+                        <label class="form-label">Создано с</label>
+                        <input type="date" class="form-control" name="created_from" value="{{ created_from|date:'Y-m-d' }}">
+                    </div>
+                    <div class="col-12 col-md-3 col-xl-2">
+                        <label class="form-label">Создано по</label>
+                        <input type="date" class="form-control" name="created_to" value="{{ created_to|date:'Y-m-d' }}">
+                    </div>
+                    <div class="col-12 col-md-3 col-xl-2">
+                        <label class="form-label">Группировка</label>
+                        <select class="form-select" name="period_group">
+                            <option value="day" {% if period_group == "day" %}selected{% endif %}>По дням</option>
+                            <option value="month" {% if period_group == "month" %}selected{% endif %}>По месяцам</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-3 col-xl-2">
+                        <button class="btn btn-primary w-100" type="submit">
+                            <i class="bi bi-bar-chart-line me-1"></i>Показать
+                        </button>
+                    </div>
+                </form>
+                <div class="text-muted small mb-3">
+                    Считается по дате создания записи. Дата самого акта остаётся отдельным фильтром выше.
+                    В выбранном периоде создания: <strong>{{ activity_total }}</strong>
+                </div>
+                <canvas id="actsByPeriodChart" height="120"></canvas>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body">
                 <h5 class="card-title">Последние акты в выборке</h5>
                 <div class="table-responsive">
                     <table class="table table-sm table-striped align-middle">
@@ -188,6 +232,7 @@
     </section>
 
     {{ user_chart|json_script:"acts-by-user-chart-data" }}
+    {{ period_chart|json_script:"acts-by-period-chart-data" }}
 {% endblock %}
 
 {% block extra_js %}
@@ -222,6 +267,47 @@
                     scales: {
                         x: {stacked: false},
                         y: {
+                            beginAtZero: true,
+                            ticks: {precision: 0}
+                        }
+                    }
+                }
+            });
+        })();
+
+        (function () {
+            const dataNode = document.getElementById("acts-by-period-chart-data");
+            const ctx = document.getElementById("actsByPeriodChart");
+            if (!dataNode || !ctx || typeof Chart === "undefined") return;
+
+            const chartData = JSON.parse(dataNode.textContent);
+            new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: chartData.labels,
+                    datasets: chartData.datasets.map(function (dataset) {
+                        return {
+                            label: dataset.label,
+                            data: dataset.data,
+                            backgroundColor: dataset.backgroundColor,
+                            borderColor: dataset.borderColor,
+                            borderWidth: 1,
+                            borderRadius: 4
+                        };
+                    })
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: "bottom",
+                            labels: {boxWidth: 12}
+                        }
+                    },
+                    scales: {
+                        x: {stacked: true},
+                        y: {
+                            stacked: true,
                             beginAtZero: true,
                             ticks: {precision: 0}
                         }

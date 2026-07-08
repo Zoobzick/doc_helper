@@ -65,6 +65,11 @@ class PassportUpdateForm(forms.ModelForm):
         required=False,
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Напр.: Труба 45х3"}),
     )
+    replacement_file = forms.FileField(
+        label="Новый файл паспорта",
+        required=False,
+        widget=forms.ClearableFileInput(attrs={"class": "form-control"}),
+    )
 
     class Meta:
         model = Passport
@@ -89,6 +94,19 @@ class PassportUpdateForm(forms.ModelForm):
         if passport_instance and passport_instance.material_id:
             self.fields["material_name"].initial = passport_instance.material.name
 
+    def clean_replacement_file(self):
+        f = self.cleaned_data.get("replacement_file")
+        if not f:
+            return f
+
+        ext = os.path.splitext(f.name)[1].lower().lstrip(".")
+        if ext not in ALLOWED_FILE_EXTS:
+            raise forms.ValidationError(
+                "Неподдерживаемый формат. Разрешено: "
+                + ", ".join(sorted(ALLOWED_FILE_EXTS))
+            )
+        return f
+
     def save(self, commit: bool = True) -> Passport:
         passport: Passport = super().save(commit=False)
 
@@ -104,6 +122,12 @@ class PassportUpdateForm(forms.ModelForm):
         passport.needs_review = not bool(
             passport.material_id and passport.document_name and passport.document_number and passport.document_date
         )
+
+        replacement_file = self.cleaned_data.get("replacement_file")
+        if replacement_file:
+            passport.file = replacement_file
+            passport.original_name = os.path.basename(replacement_file.name)
+            passport.file_ext = os.path.splitext(replacement_file.name)[1].lower().lstrip(".")[:10]
 
         if commit:
             passport.save()

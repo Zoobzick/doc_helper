@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db.models import Count, IntegerField, Q, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncDate, TruncMonth
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.views import View
 
 from acts_app.models import Act
@@ -73,6 +74,16 @@ def _apply_month_period_filter(qs, d_from: date | None, d_to: date | None):
     return qs
 
 
+def _apply_created_period_filter(qs, d_from: date | None, d_to: date | None):
+    if d_from and d_to:
+        return qs.filter(created_at__date__range=(d_from, d_to))
+    if d_from:
+        return qs.filter(created_at__date__gte=d_from)
+    if d_to:
+        return qs.filter(created_at__date__lte=d_to)
+    return qs
+
+
 def _user_label(row: dict) -> str:
     if not row.get("created_by_id"):
         return "Не указан"
@@ -88,6 +99,32 @@ def _user_label(row: dict) -> str:
     return full_name or row.get("created_by__email") or row.get("created_by__username") or "Пользователь"
 
 
+def _period_label(value: date, period_group: str) -> str:
+    if period_group == "month":
+        return value.strftime("%m.%Y")
+    return value.strftime("%d.%m.%Y")
+
+
+def _period_bucket(value: date, period_group: str) -> date:
+    if period_group == "month":
+        return date(value.year, value.month, 1)
+    return value
+
+
+def _iter_period_values(start: date, end: date, period_group: str):
+    current = _period_bucket(start, period_group)
+    end = _period_bucket(end, period_group)
+    while current <= end:
+        yield current
+        if period_group == "month":
+            if current.month == 12:
+                current = date(current.year + 1, 1, 1)
+            else:
+                current = date(current.year, current.month + 1, 1)
+        else:
+            current = current + timedelta(days=1)
+
+
 class StatisticsDashboardView(LoginRequiredMixin, UserPassesTestMixin, View):
     template_name = "statistics_app/dashboard.html"
 
@@ -100,9 +137,18 @@ class StatisticsDashboardView(LoginRequiredMixin, UserPassesTestMixin, View):
         if date_from is not None and date_to is not None and date_from > date_to:
             date_from, date_to = date_to, date_from
 
+        today = timezone.localdate()
+        created_from = _parse_date(request.GET.get("created_from", "")) or today
+        created_to = _parse_date(request.GET.get("created_to", "")) or today
+        if created_from is not None and created_to is not None and created_from > created_to:
+            created_from, created_to = created_to, created_from
+
         creator_id = (request.GET.get("created_by") or "").strip()
         project_id = (request.GET.get("project") or "").strip()
         q = (request.GET.get("q") or "").strip()
+        period_group = (request.GET.get("period_group") or "day").strip()
+        if period_group not in {"day", "month"}:
+            period_group = "day"
 
         acts = _apply_month_period_filter(Act.objects.all(), date_from, date_to)
         if creator_id.isdigit():
@@ -160,6 +206,63 @@ class StatisticsDashboardView(LoginRequiredMixin, UserPassesTestMixin, View):
             ],
         }
 
+        activity_acts = _apply_created_period_filter(acts, created_from, created_to)
+        period_trunc = TruncMonth("created_at") if period_group == "month" else TruncDate("created_at")
+        period_rows = list(
+            activity_acts.annotate(period=period_trunc)
+            .values(
+                "period",
+                "created_by_id",
+                "created_by__username",
+                "created_by__email",
+                "created_by__first_name",
+                "created_by__last_name",
+            )
+            .annotate(count=Count("id", distinct=True))
+            .order_by("period", "created_by__last_name", "created_by__first_name")
+        )
+
+        period_values = []
+        row_period_values = []
+        creator_by_key = {}
+        counts_by_creator_period = {}
+        for row in period_rows:
+            period = row["period"]
+            if not period:
+                continue
+            if hasattr(period, "date"):
+                period = period.date()
+            period = _period_bucket(period, period_group)
+            if period not in row_period_values:
+                row_period_values.append(period)
+
+            creator_key = row["created_by_id"] or "empty"
+            if creator_key not in creator_by_key:
+                creator_by_key[creator_key] = _user_label(row)
+            counts_by_creator_period[(creator_key, period)] = row["count"]
+
+        if created_from and created_to:
+            period_values = list(_iter_period_values(created_from, created_to, period_group))
+        else:
+            period_values = row_period_values
+
+        period_chart = {
+            "labels": [_period_label(period, period_group) for period in period_values],
+            "datasets": [
+                {
+                    "label": item["label"],
+                    "data": [
+                        counts_by_creator_period.get((item["id"], period), 0)
+                        for period in period_values
+                    ],
+                    "backgroundColor": item["color"],
+                    "borderColor": item["color"],
+                }
+                for item in creator_stats
+                if item["id"] in creator_by_key
+            ],
+        }
+
         recent_acts = (
             acts.select_related("created_by")
             .prefetch_related("projects")
@@ -181,14 +284,19 @@ class StatisticsDashboardView(LoginRequiredMixin, UserPassesTestMixin, View):
         context = {
             "date_from": date_from,
             "date_to": date_to,
+            "created_from": created_from,
+            "created_to": created_to,
             "selected_creator_id": int(creator_id) if creator_id.isdigit() else None,
             "selected_project_id": int(project_id) if project_id.isdigit() else None,
+            "period_group": period_group,
             "q": q,
             "creators": creators,
             "projects": projects,
             "totals": totals,
             "total_all_time": Act.objects.count(),
             "user_chart": user_chart,
+            "period_chart": period_chart,
+            "activity_total": activity_acts.count(),
             "creator_stats": creator_stats,
             "recent_acts": recent_acts,
         }

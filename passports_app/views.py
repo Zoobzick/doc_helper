@@ -164,7 +164,14 @@ class PassportDetailView(PermissionRequiredMixin, View):
             return HttpResponseForbidden("Нет прав на редактирование паспорта.")
 
         passport = get_object_or_404(Passport.objects.select_related("material", "uploaded_by"), pk=pk)
-        form = PassportUpdateForm(request.POST, instance=passport)
+        old_file_path = None
+        try:
+            if passport.file:
+                old_file_path = Path(passport.file.path)
+        except Exception:
+            old_file_path = None
+
+        form = PassportUpdateForm(request.POST, request.FILES, instance=passport)
         materials = list(Material.objects.order_by("name").values_list("name", flat=True))
 
         ext = (passport.file_ext or "").lower()
@@ -179,8 +186,25 @@ class PassportDetailView(PermissionRequiredMixin, View):
                 {"passport": passport, "form": form, "materials": materials, "is_pdf": is_pdf},
             )
 
-        form.save()
-        messages.success(request, "Данные паспорта сохранены.")
+        saved_passport = form.save()
+
+        new_file_path = None
+        try:
+            if saved_passport.file:
+                new_file_path = Path(saved_passport.file.path)
+        except Exception:
+            new_file_path = None
+
+        if old_file_path and new_file_path and old_file_path != new_file_path and old_file_path.exists():
+            try:
+                old_file_path.unlink()
+            except Exception:
+                pass
+
+        if form.cleaned_data.get("replacement_file"):
+            messages.success(request, "Данные паспорта и файл сохранены.")
+        else:
+            messages.success(request, "Данные паспорта сохранены.")
         return redirect(reverse("passports:passport_detail", kwargs={"pk": passport.pk}))
 
 @method_decorator(xframe_options_sameorigin, name="dispatch")
