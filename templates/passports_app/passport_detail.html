@@ -80,6 +80,14 @@
                 {% endif %}
               </div>
 
+              <div class="col-12 col-md-6">
+                <label class="form-label">{{ form.sheets_count.label }}</label>
+                {{ form.sheets_count }}
+                {% if form.sheets_count.errors %}
+                  <div class="text-danger small mt-1">{{ form.sheets_count.errors }}</div>
+                {% endif %}
+              </div>
+
               <div class="col-12">
                 <label class="form-label">{{ form.replacement_file.label }}</label>
                 {{ form.replacement_file }}

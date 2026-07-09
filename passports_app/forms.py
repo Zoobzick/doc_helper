@@ -4,6 +4,7 @@ import os
 from django import forms
 
 from .models import Passport, Material
+from .services import get_physical_sheets_for_uploaded_file
 
 
 ALLOWED_FILE_EXTS = {"pdf", "psd", "xlsx", "docx"}
@@ -73,10 +74,11 @@ class PassportUpdateForm(forms.ModelForm):
 
     class Meta:
         model = Passport
-        fields = ("document_name", "document_number", "document_date")
+        fields = ("document_name", "document_number", "document_date", "sheets_count")
         widgets = {
             "document_name": forms.TextInput(attrs={"class": "form-control"}),
             "document_number": forms.TextInput(attrs={"class": "form-control"}),
+            "sheets_count": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
 
             # ✅ FIX: нужен format для <input type="date">
             "document_date": forms.DateInput(
@@ -93,6 +95,7 @@ class PassportUpdateForm(forms.ModelForm):
         passport_instance: Passport | None = kwargs.get("instance")
         if passport_instance and passport_instance.material_id:
             self.fields["material_name"].initial = passport_instance.material.name
+        self.fields["sheets_count"].label = "Листов (2-ронняя печать)"
 
     def clean_replacement_file(self):
         f = self.cleaned_data.get("replacement_file")
@@ -128,6 +131,8 @@ class PassportUpdateForm(forms.ModelForm):
             passport.file = replacement_file
             passport.original_name = os.path.basename(replacement_file.name)
             passport.file_ext = os.path.splitext(replacement_file.name)[1].lower().lstrip(".")[:10]
+            if "sheets_count" not in self.changed_data:
+                passport.sheets_count = get_physical_sheets_for_uploaded_file(replacement_file, passport.file_ext)
 
         if commit:
             passport.save()

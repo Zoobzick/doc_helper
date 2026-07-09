@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+from math import ceil
+from pathlib import Path
 
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
+from PyPDF2 import PdfReader
 
 from .models import Material, Passport
 from .parsers import parse_passport_filename
@@ -19,6 +22,40 @@ def _get_ext(filename: str) -> str:
 
 def _clean(s: str) -> str:
     return " ".join((s or "").strip().split())
+
+
+def _physical_sheets_from_pages(pages_count: int | None) -> int:
+    if not pages_count:
+        return 1
+    return max(ceil(pages_count / 2), 1)
+
+
+def _count_pdf_pages(uploaded_file: UploadedFile) -> int | None:
+    try:
+        uploaded_file.seek(0)
+        reader = PdfReader(uploaded_file)
+        return len(reader.pages)
+    except Exception:
+        return None
+    finally:
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+
+
+def get_physical_sheets_for_uploaded_file(uploaded_file: UploadedFile, ext: str | None = None) -> int:
+    ext = (ext or _get_ext(uploaded_file.name)).lower()
+    if ext != "pdf":
+        return 1
+
+    pages_count = _count_pdf_pages(uploaded_file)
+    return _physical_sheets_from_pages(pages_count)
+
+
+def get_physical_sheets_for_pdf_path(pdf_path: Path) -> int:
+    reader = PdfReader(str(pdf_path))
+    return _physical_sheets_from_pages(len(reader.pages))
 
 
 @transaction.atomic
@@ -46,6 +83,7 @@ def import_single_passport_file(
     if ext not in ALLOWED_EXTS:
         raise ValueError(f"Неподдерживаемый формат: .{ext}")
 
+    sheets_count = get_physical_sheets_for_uploaded_file(uploaded_file, ext)
     parsed = parse_passport_filename(original_filename)
 
     # Подготовим значения с приоритетом формы
@@ -100,6 +138,7 @@ def import_single_passport_file(
         document_name=document_name,
         document_number=document_number,
         document_date=document_date,
+        sheets_count=sheets_count,
         needs_review=needs_review,
         parsed_meta=meta,
     )

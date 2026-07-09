@@ -199,7 +199,7 @@ class ActMaterialItemForm(forms.ModelForm):
         # sheets_count
         sheets = cleaned.get("sheets_count")
         if sheets in (None, ""):
-            cleaned["sheets_count"] = 1
+            cleaned["sheets_count"] = int(getattr(passport, "sheets_count", 1) or 1) if passport else 1
         else:
             try:
                 sheets_int = int(sheets)
@@ -274,7 +274,7 @@ class BaseActMaterialFormSet(BaseInlineFormSet):
             pos += 1
 
             if obj.sheets_count in (None, ""):
-                obj.sheets_count = 1
+                obj.sheets_count = int(getattr(obj.passport, "sheets_count", 1) or 1) if obj.passport_id else 1
 
             if commit:
                 obj.save()

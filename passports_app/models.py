@@ -4,6 +4,7 @@ import os
 import re
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils.text import slugify
 
@@ -89,6 +90,7 @@ class Passport(models.Model):
     )
     original_name = models.CharField("Исходное имя файла", max_length=255, blank=True, default="")
     file_ext = models.CharField("Расширение", max_length=10, blank=True, default="", db_index=True)
+    sheets_count = models.PositiveIntegerField("Листов", default=1, validators=[MinValueValidator(1)])
 
     # --- Статус ---
     needs_review = models.BooleanField("Требует проверки", default=False, db_index=True)

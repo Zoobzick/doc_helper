@@ -1517,6 +1517,7 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             "document_name",
             "document_number",
             "document_date",
+            "sheets_count",
             "material__name",
         )
 
@@ -1549,6 +1550,7 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "doc_no": doc_no,
                     "doc_date": doc_date,
                     "doc_date_iso": p.document_date.isoformat() if p.document_date else "",
+                    "sheets_count": int(p.sheets_count or 1),
                     "label": label,
                     "preview_url": reverse("acts_app:passport_open", kwargs={"pk": p.id}),
                 }

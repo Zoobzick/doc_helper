@@ -633,6 +633,7 @@
                                 <th>Документ</th>
                                 <th>№</th>
                                 <th>Дата</th>
+                                <th style="width: 70px;">Л.</th>
                                 <th style="width: 90px;">PDF</th>
                             </tr>
                             </thead>
@@ -1245,7 +1246,7 @@
 
             // ✅ сохраняем выбор между поиском/пагинацией
             const selectedPassportIds = new Set();         // (selectedPassportIds) ids выбранных паспортов
-            const selectedPassportPayload = new Map();     // (selectedPassportPayload) id -> {id, material, doc_name, doc_no, doc_date, doc_date_iso}
+            const selectedPassportPayload = new Map();     // (selectedPassportPayload) id -> {id, material, doc_name, doc_no, doc_date, doc_date_iso, sheets_count}
 
             function getHiddenInputById(hiddenId) {
                 return document.getElementById(hiddenId);
@@ -1285,6 +1286,7 @@
                 const inpDocName = row.querySelector('input[name$="-manual_doc_name"]');
                 const inpDocNo = row.querySelector('input[name$="-manual_doc_no"]');
                 const inpDocDate = row.querySelector('input[name$="-manual_doc_date"]');
+                const inpSheets = row.querySelector('input[name$="-sheets_count"]');
 
                 if (inpMaterial) inpMaterial.value = payload.material || "";
                 if (inpDocName) inpDocName.value = payload.doc_name || "";
@@ -1295,6 +1297,7 @@
                 if (inpDocDateText) inpDocDateText.value = "";
                 if (!iso && payload.doc_date) iso = ddmmyyyyToIso(payload.doc_date);
                 if (inpDocDate) inpDocDate.value = iso || "";
+                if (inpSheets) inpSheets.value = Math.max(parseInt(payload.sheets_count || "1", 10) || 1, 1);
             }
 
             function _togglePassportSelected(payload, checked) {
@@ -1321,6 +1324,7 @@
                     doc_no: tr.dataset.docNo || "",
                     doc_date: tr.dataset.docDate || "",
                     doc_date_iso: tr.dataset.docDateIso || "",
+                    sheets_count: tr.dataset.sheetsCount || "1",
                 };
             }
 
@@ -1362,6 +1366,7 @@
                         {data: "doc_name"},
                         {data: "doc_no"},
                         {data: "doc_date"},
+                        {data: "sheets_count"},
                         {
                             data: "preview_url",
                             orderable: false,
@@ -1379,6 +1384,7 @@
                         row.dataset.docNo = data.doc_no || "";
                         row.dataset.docDate = data.doc_date || "";
                         row.dataset.docDateIso = data.doc_date_iso || "";
+                        row.dataset.sheetsCount = data.sheets_count || "1";
                     }
                 });
 
