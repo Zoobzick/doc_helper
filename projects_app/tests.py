@@ -2,6 +2,7 @@ import io
 import shutil
 import tempfile
 import zipfile
+from datetime import date
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -9,6 +10,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from acts_app.models import Act
 from projects_app.models import Project, ProjectRevision, TempUpload
 from projects_app.services import (
     assign_full_code_to_draft,
@@ -264,6 +266,45 @@ class ProjectsAppTests(TestCase):
 
         revision.refresh_from_db()
         self.assertFalse(revision.in_production)
+
+    def test_project_detail_includes_acts_summary(self):
+        project = Project.objects.create(full_code="ACTS-SUMMARY", construction="Test", needs_review=False)
+
+        first_act = Act.objects.create(
+            number="1",
+            act_date=date(2026, 1, 20),
+            work_name="First work",
+            work_start_date=date(2026, 1, 10),
+            work_end_date=date(2026, 1, 15),
+        )
+        second_act = Act.objects.create(
+            number="2",
+            act_date=date(2026, 1, 25),
+            work_name="Second work",
+            work_start_date=date(2026, 1, 25),
+            work_end_date=date(2026, 2, 20),
+        )
+        third_act = Act.objects.create(
+            number="3",
+            act_date=date(2026, 2, 28),
+            work_name="Third work",
+            work_start_date=date(2026, 2, 21),
+            work_end_date=date(2026, 3, 3),
+        )
+        project.acts.add(first_act, second_act, third_act)
+
+        response = self.client.get(reverse("projects:project_detail", kwargs={"pk": project.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Сводка по актам")
+        summary = response.context["acts_summary"]
+        self.assertEqual(summary["total"], 3)
+        self.assertEqual(summary["first_work_start"], date(2026, 1, 10))
+        self.assertEqual(summary["last_work_end"], date(2026, 3, 3))
+        self.assertEqual(
+            [(item["month"], item["total"]) for item in summary["months"]],
+            [(date(2026, 1, 1), 1), (date(2026, 2, 1), 1), (date(2026, 3, 1), 1)],
+        )
 
     def test_delete_project_revision_removes_file_and_promotes_latest(self):
         project = Project.objects.create(full_code="DELETE-WITH-REMAINDER", construction="Test", needs_review=True)

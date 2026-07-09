@@ -4,6 +4,7 @@ import hashlib
 import shutil
 import tempfile
 import zipfile
+from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 
@@ -11,6 +12,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.db import IntegrityError, transaction
+from django.db.models import Count, Max, Min
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -105,6 +107,7 @@ class ProjectDetailView(PermissionRequiredMixin, DetailView):
         # ✅ Тихо гарантируем, что титульники актуальны (если не is_locked)
         from documents_app.services.title_sheets import ensure_all_title_sheets_for_project
         # ensure_all_title_sheets_for_project(project)
+        from acts_app.models import Act
 
         ctx["revisions"] = ProjectRevision.objects.filter(project=self.object).order_by("-created_at")
         ctx["latest_revision"] = (
@@ -114,6 +117,28 @@ class ProjectDetailView(PermissionRequiredMixin, DetailView):
             .first()
         )
         ctx["title"] = f"Данные проекта — {project.full_code}"
+
+        project_acts = Act.objects.filter(projects=project)
+        act_months = [
+            {
+                "month": date(item["act_year"], item["act_month"], 1),
+                "total": item["total"],
+            }
+            for item in (
+                project_acts
+                .values("act_year", "act_month")
+                .annotate(total=Count("id"))
+                .order_by("act_year", "act_month")
+            )
+        ]
+        ctx["acts_summary"] = {
+            **project_acts.aggregate(
+                total=Count("id"),
+                first_work_start=Min("work_start_date"),
+                last_work_end=Max("work_end_date"),
+            ),
+            "months": act_months,
+        }
 
         return ctx
 
