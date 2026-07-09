@@ -42,3 +42,5 @@ class Command(BaseCommand):
                 f"Backup {run_label} created: {result.path} ({result.size_bytes} bytes)"
             )
         )
+        if result.s3_key:
+            self.stdout.write(self.style.SUCCESS(f"S3 copy uploaded: {result.s3_key}"))

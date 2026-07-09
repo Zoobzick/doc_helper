@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import json
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,7 +17,7 @@ from django.views import View
 from django.views.generic import ListView
 
 from backup_app.models import BackupRun
-from backup_app.services import create_backup_for_run_in_background, get_backup_root
+from backup_app.services import create_backup_for_run_in_background, get_backup_root, get_s3_marker_path
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class BackupListItem:
     size_bytes: int
     error: str
     filename: str
+    s3_key: str = ""
     db_id: int | None = None
     file_exists: bool = False
     source_label: str = "БД"
@@ -88,6 +90,18 @@ def _backup_file_trigger_label(path: Path) -> str:
     return "Файл на диске"
 
 
+def _backup_file_s3_key(path: Path) -> str:
+    marker_path = get_s3_marker_path(path)
+    if not marker_path.is_file():
+        return ""
+
+    try:
+        payload = json.loads(marker_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    return str(payload.get("key") or "").strip()
+
+
 def _iter_backup_files() -> list[Path]:
     backup_root = get_backup_root()
     if not backup_root.exists():
@@ -135,6 +149,7 @@ class BackupListView(StaffRequiredMixin, ListView):
                     size_bytes=backup.size_bytes if backup.size_bytes else (path.stat().st_size if file_exists else 0),
                     error=backup.error,
                     filename=path.name if path else "",
+                    s3_key=backup.s3_key,
                     file_exists=file_exists,
                     source_label="БД",
                 )
@@ -154,6 +169,7 @@ class BackupListView(StaffRequiredMixin, ListView):
                     size_bytes=path.stat().st_size,
                     error="",
                     filename=path.name,
+                    s3_key=_backup_file_s3_key(path),
                     file_exists=True,
                     source_label="Файл",
                 )
@@ -210,6 +226,9 @@ class BackupDeleteView(StaffRequiredMixin, View):
         path = Path(backup.file_path) if backup.file_path else None
         if path and path.exists() and path.is_file():
             path.unlink()
+            marker_path = get_s3_marker_path(path)
+            if marker_path.exists():
+                marker_path.unlink()
         backup.delete()
         messages.success(request, "Запись бэкапа удалена.")
         return redirect(reverse("backup_app:backup_list"))
@@ -219,5 +238,8 @@ class BackupFileDeleteView(StaffRequiredMixin, View):
     def post(self, request: HttpRequest, filename: str) -> HttpResponse:
         path = _safe_backup_file_path(filename)
         path.unlink()
+        marker_path = get_s3_marker_path(path)
+        if marker_path.exists():
+            marker_path.unlink()
         messages.success(request, "Файл бэкапа удалён.")
         return redirect(reverse("backup_app:backup_list"))

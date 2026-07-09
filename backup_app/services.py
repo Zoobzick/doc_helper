@@ -22,11 +22,97 @@ class BackupResult:
     run: BackupRun | None
     path: Path
     size_bytes: int
+    s3_key: str = ""
 
 
 def get_backup_root() -> Path:
     root = getattr(settings, "BACKUP_ROOT", None)
     return Path(root) if root else Path(settings.BASE_DIR) / "backups"
+
+
+def is_s3_backup_enabled() -> bool:
+    return bool(getattr(settings, "S3_BACKUP_ENABLED", False))
+
+
+def _build_s3_key(archive_path: Path) -> str:
+    prefix = (getattr(settings, "S3_BACKUP_PREFIX", "") or "").strip().strip("/")
+    if prefix:
+        return f"{prefix}/{archive_path.name}"
+    return archive_path.name
+
+
+def get_s3_marker_path(archive_path: Path) -> Path:
+    return archive_path.with_name(f"{archive_path.name}.s3.json")
+
+
+def write_s3_marker(archive_path: Path, s3_key: str) -> None:
+    if not s3_key:
+        return
+    marker_path = get_s3_marker_path(archive_path)
+    payload = {
+        "bucket": (getattr(settings, "S3_BACKUP_BUCKET", "") or "").strip(),
+        "key": s3_key,
+        "uploaded_at": timezone.now().isoformat(),
+    }
+    marker_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _get_s3_backup_client():
+    try:
+        import boto3
+    except ImportError as exc:
+        raise RuntimeError("S3 backup is enabled, but boto3 is not installed.") from exc
+
+    bucket = (getattr(settings, "S3_BACKUP_BUCKET", "") or "").strip()
+    if not bucket:
+        raise RuntimeError("S3_BACKUP_BUCKET is required when S3 backup is enabled.")
+
+    endpoint_url = (getattr(settings, "S3_BACKUP_ENDPOINT_URL", "") or "").strip() or None
+    region_name = (getattr(settings, "S3_BACKUP_REGION", "") or "").strip() or None
+    access_key_id = (getattr(settings, "S3_BACKUP_ACCESS_KEY_ID", "") or "").strip() or None
+    secret_access_key = (getattr(settings, "S3_BACKUP_SECRET_ACCESS_KEY", "") or "").strip() or None
+    if not access_key_id or not secret_access_key:
+        raise RuntimeError("S3 backup credentials are required when S3 backup is enabled.")
+
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        region_name=region_name,
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+    )
+
+
+def upload_backup_to_s3(archive_path: Path) -> str:
+    if not is_s3_backup_enabled():
+        return ""
+
+    bucket = (getattr(settings, "S3_BACKUP_BUCKET", "") or "").strip()
+    if not bucket:
+        raise RuntimeError("S3_BACKUP_BUCKET is required when S3 backup is enabled.")
+
+    key = _build_s3_key(archive_path)
+    client = _get_s3_backup_client()
+    client.upload_file(str(archive_path), bucket, key)
+    return key
+
+
+def delete_backup_from_s3(key: str) -> None:
+    if not is_s3_backup_enabled() or not key:
+        return
+
+    bucket = (getattr(settings, "S3_BACKUP_BUCKET", "") or "").strip()
+    if not bucket:
+        raise RuntimeError("S3_BACKUP_BUCKET is required when S3 backup is enabled.")
+
+    client = _get_s3_backup_client()
+    client.delete_object(Bucket=bucket, Key=key)
+
+
+def _finish_backup_result(*, run: BackupRun | None, path: Path, size_bytes: int) -> BackupResult:
+    s3_key = upload_backup_to_s3(path)
+    write_s3_marker(path, s3_key)
+    return BackupResult(run=run, path=path, size_bytes=size_bytes, s3_key=s3_key)
 
 
 def _timestamp() -> str:
@@ -196,13 +282,13 @@ def create_filesystem_backup(
                 archive_path=tmp_path,
             )
             archive_path.replace(final_path)
-            return BackupResult(run=None, path=final_path, size_bytes=final_path.stat().st_size)
+            return _finish_backup_result(run=None, path=final_path, size_bytes=final_path.stat().st_size)
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
 
     archive_path, size_bytes = _create_backup_archive(trigger=trigger, reason=reason)
-    return BackupResult(run=None, path=archive_path, size_bytes=size_bytes)
+    return _finish_backup_result(run=None, path=archive_path, size_bytes=size_bytes)
 
 
 def create_backup(
@@ -221,12 +307,15 @@ def create_backup(
 
 def create_backup_for_run(run: BackupRun) -> BackupResult:
     archive_path = None
+    archive_created = False
     try:
         archive_path, size_bytes = _create_backup_archive(trigger=run.trigger, reason=run.reason, run_id=run.pk)
-        run.mark_success(file_path=str(archive_path), size_bytes=size_bytes)
-        return BackupResult(run=run, path=archive_path, size_bytes=size_bytes)
+        archive_created = True
+        result = _finish_backup_result(run=run, path=archive_path, size_bytes=size_bytes)
+        run.mark_success(file_path=str(archive_path), size_bytes=size_bytes, s3_key=result.s3_key)
+        return result
     except Exception as exc:
-        if archive_path and archive_path.exists():
+        if archive_path and archive_path.exists() and not archive_created:
             archive_path.unlink()
         run.mark_failed(str(exc))
         raise

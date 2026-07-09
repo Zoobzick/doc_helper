@@ -37,6 +37,13 @@ jobs:
           DB_PORT: ${{ secrets.DB_PORT }}
 
           DOC_HELPER_BASE_ID_DIR: ${{ secrets.DOC_HELPER_BASE_ID_DIR }}
+          S3_BACKUP_ENABLED: ${{ secrets.S3_BACKUP_ENABLED }}
+          S3_BACKUP_ENDPOINT_URL: ${{ secrets.S3_BACKUP_ENDPOINT_URL }}
+          S3_BACKUP_REGION: ${{ secrets.S3_BACKUP_REGION }}
+          S3_BACKUP_BUCKET: ${{ secrets.S3_BACKUP_BUCKET }}
+          S3_BACKUP_ACCESS_KEY_ID: ${{ secrets.S3_BACKUP_ACCESS_KEY_ID }}
+          S3_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.S3_BACKUP_SECRET_ACCESS_KEY }}
+          S3_BACKUP_PREFIX: ${{ secrets.S3_BACKUP_PREFIX }}
         run: |
           set -e
 
@@ -49,6 +56,13 @@ jobs:
           DJANGO_ALLOWED_HOSTS='$(escape "$DJANGO_ALLOWED_HOSTS")'
           DOC_HELPER_BASE_ID_DIR='$(escape "$DOC_HELPER_BASE_ID_DIR")'
           DOC_HELPER_BACKUP_DIR='/var/lib/doc_helper/backups'
+          S3_BACKUP_ENABLED='$(escape "$S3_BACKUP_ENABLED")'
+          S3_BACKUP_ENDPOINT_URL='$(escape "$S3_BACKUP_ENDPOINT_URL")'
+          S3_BACKUP_REGION='$(escape "$S3_BACKUP_REGION")'
+          S3_BACKUP_BUCKET='$(escape "$S3_BACKUP_BUCKET")'
+          S3_BACKUP_ACCESS_KEY_ID='$(escape "$S3_BACKUP_ACCESS_KEY_ID")'
+          S3_BACKUP_SECRET_ACCESS_KEY='$(escape "$S3_BACKUP_SECRET_ACCESS_KEY")'
+          S3_BACKUP_PREFIX='$(escape "$S3_BACKUP_PREFIX")'
           DB_NAME='$(escape "$DB_NAME")'
           DB_USER='$(escape "$DB_USER")'
           DB_PASSWORD='$(escape "$DB_PASSWORD")'

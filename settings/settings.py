@@ -83,6 +83,13 @@ PROJECTS_JSON = PROJECTS_DIR / "projects.json"
 ACTS_DIR = BASE_ID_DIR / "Акты"
 DOCUMENTS_DIR = BASE_ID_DIR / "Документы"
 BACKUP_ROOT = Path(os.environ.get("DOC_HELPER_BACKUP_DIR", BASE_DIR / "backups"))
+S3_BACKUP_ENABLED = os.environ.get("S3_BACKUP_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+S3_BACKUP_ENDPOINT_URL = os.environ.get("S3_BACKUP_ENDPOINT_URL", "").strip()
+S3_BACKUP_REGION = os.environ.get("S3_BACKUP_REGION", "").strip()
+S3_BACKUP_BUCKET = os.environ.get("S3_BACKUP_BUCKET", "").strip()
+S3_BACKUP_ACCESS_KEY_ID = os.environ.get("S3_BACKUP_ACCESS_KEY_ID", "").strip()
+S3_BACKUP_SECRET_ACCESS_KEY = os.environ.get("S3_BACKUP_SECRET_ACCESS_KEY", "").strip()
+S3_BACKUP_PREFIX = os.environ.get("S3_BACKUP_PREFIX", "backups").strip().strip("/")
 
 # Templates Документов
 DOCUMENT_TEMPLATES_DIR = BASE_DIR / "document_templates"

@@ -44,6 +44,7 @@
                             <th>Тип</th>
                             <th>Источник</th>
                             <th>Файл</th>
+                            <th>S3</th>
                             <th>Создан</th>
                             <th>Размер</th>
                             <th>Ошибка</th>
@@ -67,6 +68,14 @@
                                 <td>{{ backup.source_label }}</td>
                                 <td class="small" style="max-width: 280px; word-break: break-word;">
                                     {% if backup.filename %}{{ backup.filename }}{% else %}—{% endif %}
+                                </td>
+                                <td class="small" style="max-width: 240px; word-break: break-word;">
+                                    {% if backup.s3_key %}
+                                        <span class="badge bg-info text-dark">S3</span>
+                                        <div class="text-muted mt-1">{{ backup.s3_key }}</div>
+                                    {% else %}
+                                        —
+                                    {% endif %}
                                 </td>
                                 <td>{{ backup.created_at|date:"d.m.Y H:i" }}</td>
                                 <td>
@@ -101,7 +110,7 @@
                             </tr>
                         {% empty %}
                             <tr>
-                                <td colspan="9" class="text-center text-muted py-4">
+                                <td colspan="10" class="text-center text-muted py-4">
                                     Бэкапов пока нет.
                                 </td>
                             </tr>

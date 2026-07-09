@@ -189,3 +189,40 @@ sudo systemctl status nginx --no-pager
 - `db.dump` и `media/` должны восстанавливаться вместе: БД хранит ссылки на файлы.
 - Если нужно откатить только код, БД можно не восстанавливать: достаточно переключить git на нужный SHA и перезапустить сервис.
 - Если нужно откатить миграции данных, сначала оцените `python manage.py migrate app_name migration_name`; для серьёзных сбоев надёжнее полный restore из бэкапа.
+
+## S3 backup copy
+
+Local zip backups remain in `DOC_HELPER_BACKUP_DIR`. When S3 backup is enabled, each successfully created local zip is also uploaded to a private S3 bucket.
+
+Manual backups saved in BackupRun show their S3 key on the /backups/ page after upload. Filesystem backups created with --no-db-record also show S3 status through a local .s3.json marker next to the zip file.
+
+Production env example for `/etc/doc_helper/doc_helper.env`:
+
+```env
+S3_BACKUP_ENABLED=true
+S3_BACKUP_ENDPOINT_URL=https://s3.twcstorage.ru
+S3_BACKUP_REGION=ru-1
+S3_BACKUP_BUCKET=doc-helper-backups
+S3_BACKUP_ACCESS_KEY_ID=...
+S3_BACKUP_SECRET_ACCESS_KEY=...
+S3_BACKUP_PREFIX=backups
+```
+
+Check S3 credentials without creating a real backup:
+
+```bash
+cd /var/www/doc_helper
+source ./venv/bin/activate
+set -a
+source /etc/doc_helper/doc_helper.env
+set +a
+python manage.py check_s3_backup
+```
+
+Create a backup and upload its S3 copy:
+
+```bash
+python manage.py create_backup --trigger manual --reason "manual S3 backup test"
+```
+
+For deploy backups, the same `create_backup --trigger deploy --no-db-record` command uploads `doc_helper_deploy_latest.zip` to S3 after the local archive is created. If S3 upload fails while S3 backup is enabled, the command fails loudly; the local zip remains in the backup directory when it was already created.
