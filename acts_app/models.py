@@ -335,6 +335,10 @@ def act_attachment_upload_to(instance: "ActAttachment", filename: str) -> str:
     return f"acts/{instance.act.uuid}/attachments/{instance.uuid}/{filename}"
 
 
+def aook_file_upload_to(instance: "Aook", filename: str) -> str:
+    return f"aook/{instance.uuid}/{filename}"
+
+
 class ActAttachment(models.Model):
     uuid = models.UUIDField("UUID", default=uuid.uuid4, editable=False, unique=True, db_index=True)
 
@@ -478,3 +482,112 @@ class ActApprovalItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.act} → {self.approval}"
+
+
+class Aook(models.Model):
+    uuid = models.UUIDField("UUID", default=uuid.uuid4, editable=False, unique=True, db_index=True)
+
+    project = models.ForeignKey(
+        "projects_app.Project",
+        on_delete=models.PROTECT,
+        related_name="aooks",
+        verbose_name="Шифр проекта",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_aooks",
+        verbose_name="Кто делал",
+    )
+
+    number = models.CharField("№ АООК", max_length=64)
+    act_date = models.DateField("Дата АООК")
+    work_name = models.CharField("Наименование работ", max_length=512)
+    work_start_date = models.DateField("Дата начала работ", null=True, blank=True)
+    work_end_date = models.DateField("Дата окончания работ", null=True, blank=True)
+    work_norms_text = models.TextField("Работы выполнены в соответствии с", blank=True, default="")
+    copies_count = models.PositiveSmallIntegerField(
+        "Акт составлен в (экземплярах)",
+        default=3,
+        validators=[MinValueValidator(1)],
+    )
+
+    aosr_registry_number = models.CharField("№ реестра АОСР", max_length=64, blank=True, default="")
+    protocols_registry_number = models.CharField("№ реестра протоколов", max_length=64, blank=True, default="")
+
+    xlsx_file = models.FileField("XLSX", upload_to=aook_file_upload_to, blank=True, null=True)
+    pdf_file = models.FileField("PDF", upload_to=aook_file_upload_to, blank=True, null=True)
+
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлён", auto_now=True)
+
+    class Meta:
+        verbose_name = "АООК"
+        verbose_name_plural = "АООК"
+        ordering = ("-act_date", "number")
+        indexes = [
+            models.Index(fields=["project", "act_date"], name="aook_project_date_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.aosr_registry_number:
+            self.aosr_registry_number = f"П-3.{self.number}".strip()
+        if not self.protocols_registry_number:
+            self.protocols_registry_number = f"П-6.{self.number}".strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"АООК №{self.number} от {self.act_date:%d.%m.%Y}"
+
+
+class AookSourceAct(models.Model):
+    aook = models.ForeignKey("acts_app.Aook", on_delete=models.CASCADE, related_name="source_act_items")
+    act = models.ForeignKey("acts_app.Act", on_delete=models.PROTECT, related_name="aook_source_items")
+    position = models.PositiveIntegerField("Позиция", validators=[MinValueValidator(1)], default=1)
+
+    class Meta:
+        verbose_name = "АОСР в АООК"
+        verbose_name_plural = "АОСР в АООК"
+        ordering = ("position", "id")
+        constraints = [
+            models.UniqueConstraint(fields=["aook", "act"], name="uniq_aook_source_act"),
+            models.UniqueConstraint(fields=["aook", "position"], name="uniq_aook_source_pos"),
+        ]
+        indexes = [
+            models.Index(fields=["aook", "position"], name="aooksrc_aook_pos_idx"),
+            models.Index(fields=["act"], name="aooksrc_act_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.position}. {self.act}"
+
+
+class AookProtocolItem(models.Model):
+    aook = models.ForeignKey("acts_app.Aook", on_delete=models.CASCADE, related_name="protocol_items")
+    position = models.PositiveIntegerField("Позиция", validators=[MinValueValidator(1)], default=1)
+    document_name = models.CharField("Наименование документа", max_length=512)
+    document_number = models.CharField("№", max_length=255, blank=True, default="")
+    document_date = models.DateField("Дата", null=True, blank=True)
+    organization_name = models.CharField("Организация", max_length=255, blank=True, default="")
+    sheets_count = models.PositiveIntegerField("Листов", validators=[MinValueValidator(1)], default=1)
+
+    class Meta:
+        verbose_name = "Протокол АООК"
+        verbose_name_plural = "Протоколы АООК"
+        ordering = ("position", "id")
+        constraints = [
+            models.UniqueConstraint(fields=["aook", "position"], name="uniq_aook_protocol_pos"),
+        ]
+        indexes = [
+            models.Index(fields=["aook", "position"], name="aookprot_aook_pos_idx"),
+        ]
+
+    def __str__(self) -> str:
+        parts = [self.document_name]
+        if self.document_number:
+            parts.append(f"№{self.document_number}")
+        if self.document_date:
+            parts.append(f"от {self.document_date:%d.%m.%Y}")
+        return " ".join(parts)

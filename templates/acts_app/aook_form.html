@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "create" %}Создать АООК{% else %}Редактировать АООК{% endif %}{% endblock %}
+
+{% block content %}
+    <style>
+        .aook-work-clip {
+            display: block;
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+
+    <div class="pagetitle">
+        <h1>{% if mode == "create" %}Создать АООК{% else %}Редактировать АООК{% endif %}</h1>
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
+                <li class="breadcrumb-item active">АООК</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section">
+        {% if mode == "create" %}
+            <div class="card mb-3">
+                <div class="card-body pt-3">
+                    <h5 class="card-title mb-3">Выбор проекта</h5>
+                    <form method="get" class="row g-2 align-items-end">
+                        <div class="col-12 col-lg-8">
+                            <label class="form-label">Шифр проекта</label>
+                            <select name="project" class="form-select" required>
+                                <option value="">Выбери проект</option>
+                                {% for project in project_choices %}
+                                    <option value="{{ project.id }}" {% if selected_project and selected_project.id == project.id %}selected{% endif %}>
+                                        {{ project }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12 col-lg-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-search me-1"></i>Продолжить
+                            </button>
+                            <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}">Назад</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        {% endif %}
+
+        {% if selected_project %}
+            <form method="post" id="aook-form" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="project" value="{{ selected_project.id }}">
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                {% endif %}
+                {% if protocol_formset.non_form_errors %}
+                    <div class="alert alert-danger">{{ protocol_formset.non_form_errors }}</div>
+                {% endif %}
+
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div>
+                                <h5 class="card-title mb-1">Основное</h5>
+                                <div class="text-muted small">{{ selected_project }}</div>
+                            </div>
+                            {% if aook %}
+                                <a class="btn btn-outline-secondary btn-sm" href="{% url 'acts_app:aook_detail' aook.uuid %}">
+                                    <i class="bi bi-eye me-1"></i>Открыть
+                                </a>
+                            {% endif %}
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-6 col-lg-2">
+                                <label class="form-label">{{ form.number.label }}</label>
+                                {{ form.number }}
+                                {% if form.number.errors %}<div class="invalid-feedback d-block">{{ form.number.errors }}</div>{% endif %}
+                            </div>
+                            <div class="col-6 col-lg-2">
+                                <label class="form-label">{{ form.act_date.label }}</label>
+                                {{ form.act_date }}
+                                {% if form.act_date.errors %}<div class="invalid-feedback d-block">{{ form.act_date.errors }}</div>{% endif %}
+                            </div>
+                            <div class="col-12 col-lg-8">
+                                <label class="form-label">{{ form.work_name.label }}</label>
+                                {{ form.work_name }}
+                                {% if form.work_name.errors %}<div class="invalid-feedback d-block">{{ form.work_name.errors }}</div>{% endif %}
+                            </div>
+                            <div class="col-6 col-lg-2">
+                                <label class="form-label">{{ form.work_start_date.label }}</label>
+                                {{ form.work_start_date }}
+                            </div>
+                            <div class="col-6 col-lg-2">
+                                <label class="form-label">{{ form.work_end_date.label }}</label>
+                                {{ form.work_end_date }}
+                            </div>
+                            <div class="col-6 col-lg-2">
+                                <label class="form-label">{{ form.copies_count.label }}</label>
+                                {{ form.copies_count }}
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">{{ form.work_norms_text.label }}</label>
+                                {{ form.work_norms_text }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                            <div>
+                                <h5 class="card-title mb-0">Реестр АОСР</h5>
+                                <div class="text-muted small">Армирование, бетонирование, металлоизоляция по выбранному проекту</div>
+                            </div>
+                            <span class="badge bg-light text-dark border">{{ source_acts|length }}</span>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                <tr>
+                                    <th style="width: 42px;"></th>
+                                    <th style="width: 160px;">№ акта</th>
+                                    <th style="width: 120px;">Дата</th>
+                                    <th>Наименование работ</th>
+                                    <th style="width: 220px;">Период</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for act in source_acts %}
+                                    <tr>
+                                        <td class="text-center">
+                                            <input class="form-check-input" type="checkbox" name="source_acts" value="{{ act.id }}"
+                                                   {% if mode == "create" or act.id in selected_source_ids %}checked{% endif %}>
+                                        </td>
+                                        <td><a href="{% url 'acts_app:act_detail' act.uuid %}" target="_blank">№{{ act.number }}</a></td>
+                                        <td class="text-nowrap">{{ act.act_date|date:"d.m.Y" }}</td>
+                                        <td>
+                                            <span class="aook-work-clip" title="{{ act.work_name }}">{{ act.work_name }}</span>
+                                        </td>
+                                        <td class="text-nowrap">
+                                            {{ act.work_start_date|date:"d.m.Y"|default:"—" }} - {{ act.work_end_date|date:"d.m.Y"|default:"—" }}
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-muted">По проекту не найдены подходящие АОСР.</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-body pt-3">
+                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                            <h5 class="card-title mb-0">Реестр протоколов</h5>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="add-protocol-row">
+                                <i class="bi bi-plus-lg me-1"></i>Добавить строку
+                            </button>
+                        </div>
+
+                        {{ protocol_formset.management_form }}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle" id="protocol-table">
+                                <thead>
+                                <tr>
+                                    <th>Наименование документа</th>
+                                    <th style="width: 180px;">№</th>
+                                    <th style="width: 160px;">Дата</th>
+                                    <th style="width: 220px;">Организация</th>
+                                    <th style="width: 100px;">Листов</th>
+                                    <th style="width: 64px;"></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for f in protocol_formset.forms %}
+                                    <tr class="protocol-row">
+                                        {{ f.id }}
+                                        <td>
+                                            {{ f.document_name }}
+                                            {% if f.document_name.errors %}<div class="invalid-feedback d-block">{{ f.document_name.errors }}</div>{% endif %}
+                                        </td>
+                                        <td>{{ f.document_number }}</td>
+                                        <td>{{ f.document_date }}</td>
+                                        <td>{{ f.organization_name }}</td>
+                                        <td>{{ f.sheets_count }}</td>
+                                        <td class="text-center">
+                                            <span class="d-none">{{ f.DELETE }}</span>
+                                            <button type="button" class="btn btn-outline-danger btn-sm js-remove-protocol" title="Удалить">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <template id="protocol-empty-template">
+                            <tr class="protocol-row">
+                                {{ protocol_formset.empty_form.id }}
+                                <td>{{ protocol_formset.empty_form.document_name }}</td>
+                                <td>{{ protocol_formset.empty_form.document_number }}</td>
+                                <td>{{ protocol_formset.empty_form.document_date }}</td>
+                                <td>{{ protocol_formset.empty_form.organization_name }}</td>
+                                <td>{{ protocol_formset.empty_form.sheets_count }}</td>
+                                <td class="text-center">
+                                    <span class="d-none">{{ protocol_formset.empty_form.DELETE }}</span>
+                                    <button type="button" class="btn btn-outline-danger btn-sm js-remove-protocol" title="Удалить">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <a class="btn btn-outline-secondary" href="{% if aook %}{% url 'acts_app:aook_detail' aook.uuid %}{% else %}{% url 'acts_app:act_list' %}{% endif %}">
+                        Отмена
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-save me-1"></i>Сохранить и собрать файлы
+                    </button>
+                </div>
+            </form>
+        {% endif %}
+    </section>
+{% endblock %}
+
+{% block extra_js %}
+    <script>
+        (function () {
+            const addBtn = document.getElementById('add-protocol-row');
+            const table = document.getElementById('protocol-table');
+            const template = document.getElementById('protocol-empty-template');
+            const totalInput = document.querySelector('input[name="protocols-TOTAL_FORMS"]');
+
+            function wireRemove(button) {
+                button.addEventListener('click', function () {
+                    const row = button.closest('tr');
+                    const del = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+                    if (del) {
+                        del.checked = true;
+                        row.style.display = 'none';
+                    } else {
+                        row.remove();
+                    }
+                });
+            }
+
+            document.querySelectorAll('.js-remove-protocol').forEach(wireRemove);
+
+            if (addBtn && table && template && totalInput) {
+                addBtn.addEventListener('click', function () {
+                    const index = parseInt(totalInput.value || '0', 10);
+                    const html = template.innerHTML.replace(/__prefix__/g, String(index));
+                    table.querySelector('tbody').insertAdjacentHTML('beforeend', html);
+                    totalInput.value = String(index + 1);
+                    const row = table.querySelector('tbody tr:last-child');
+                    row.querySelectorAll('.js-remove-protocol').forEach(wireRemove);
+                });
+            }
+        })();
+    </script>
+{% endblock %}

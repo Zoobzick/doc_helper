@@ -6,6 +6,9 @@ from django.utils.html import format_html
 
 from acts_app.models import (
     Act,
+    Aook,
+    AookProtocolItem,
+    AookSourceAct,
     ActParty,
     ActSignatorySnapshot,
     ActMaterialItem,
@@ -50,6 +53,44 @@ class ActAdmin(admin.ModelAdmin):
             options = {**options, "fields": ("created_by", *fields)}
             fieldsets[-1] = (label, options)
         return tuple(fieldsets)
+
+
+class AookSourceActInline(admin.TabularInline):
+    model = AookSourceAct
+    extra = 0
+    autocomplete_fields = ("act",)
+
+
+class AookProtocolItemInline(admin.TabularInline):
+    model = AookProtocolItem
+    extra = 0
+
+
+@admin.register(Aook)
+class AookAdmin(admin.ModelAdmin):
+    list_display = ("number", "act_date", "project", "created_by", "created_at")
+    list_filter = ("project", "created_by", "act_date")
+    search_fields = ("number", "work_name", "project__full_code")
+    ordering = ("-act_date", "-id")
+    autocomplete_fields = ("project",)
+    readonly_fields = ("uuid", "created_at", "updated_at")
+    inlines = (AookSourceActInline, AookProtocolItemInline)
+
+
+@admin.register(AookSourceAct)
+class AookSourceActAdmin(admin.ModelAdmin):
+    list_display = ("id", "aook", "position", "act")
+    search_fields = ("aook__number", "act__number", "act__work_name")
+    ordering = ("aook", "position", "id")
+    autocomplete_fields = ("aook", "act")
+
+
+@admin.register(AookProtocolItem)
+class AookProtocolItemAdmin(admin.ModelAdmin):
+    list_display = ("id", "aook", "position", "document_name", "document_number", "document_date")
+    search_fields = ("aook__number", "document_name", "document_number", "organization_name")
+    ordering = ("aook", "position", "id")
+    autocomplete_fields = ("aook",)
 
 
 @admin.register(ActAttachment)

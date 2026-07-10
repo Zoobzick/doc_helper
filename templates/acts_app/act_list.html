@@ -88,7 +88,10 @@
                 </style>
 
                 <!-- ✅ Кнопка внутри section/card -->
-                <div class="d-flex justify-content-end mb-2">
+                <div class="d-flex justify-content-end gap-2 mb-2">
+                    <a class="btn btn-outline-success" href="{% url 'acts_app:aook_create' %}">
+                        <i class="bi bi-building-check me-1"></i>Создать АООК
+                    </a>
                     <a class="btn btn-success" href="{% url 'acts_app:act_create' %}">
                         <i class="bi bi-plus-circle me-1"></i>Создать акт
                     </a>

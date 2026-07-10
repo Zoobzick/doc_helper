@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}АООК №{{ aook.number }}{% endblock %}
+
+{% block content %}
+    <div class="pagetitle">
+        <h1>АООК №{{ aook.number }}</h1>
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
+                <li class="breadcrumb-item active">АООК №{{ aook.number }}</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section">
+        <div class="card mb-3">
+            <div class="card-body pt-3">
+                <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
+                    <div>
+                        <h5 class="card-title mb-1">Основное</h5>
+                        <div class="text-muted">{{ aook.project }}</div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a class="btn btn-outline-secondary btn-sm" href="{% url 'acts_app:aook_update' aook.uuid %}">
+                            <i class="bi bi-pencil me-1"></i>Редактировать
+                        </a>
+                        <form method="post" action="{% url 'acts_app:aook_rebuild' aook.uuid %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Пересобрать
+                            </button>
+                        </form>
+                        <a class="btn btn-success btn-sm" href="{% url 'acts_app:aook_xlsx_download' aook.uuid %}">
+                            <i class="bi bi-file-earmark-spreadsheet me-1"></i>XLSX
+                        </a>
+                        <a class="btn btn-danger btn-sm" href="{% url 'acts_app:aook_pdf_preview' aook.uuid %}" target="_blank">
+                            <i class="bi bi-filetype-pdf me-1"></i>PDF
+                        </a>
+                        <a class="btn btn-outline-success btn-sm" href="{% url 'acts_app:aook_zip_download' aook.uuid %}">
+                            <i class="bi bi-download me-1"></i>С актами
+                        </a>
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-2">
+                    <div class="col-6 col-lg-2">
+                        <div class="text-muted small">Дата</div>
+                        <div class="fw-semibold">{{ aook.act_date|date:"d.m.Y" }}</div>
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <div class="text-muted small">Период</div>
+                        <div class="fw-semibold">
+                            {{ aook.work_start_date|date:"d.m.Y"|default:"—" }} - {{ aook.work_end_date|date:"d.m.Y"|default:"—" }}
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-8">
+                        <div class="text-muted small">Наименование работ</div>
+                        <div class="fw-semibold">{{ aook.work_name }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="text-muted small">Нормативные документы</div>
+                        <div>{{ aook.work_norms_text|default:"—" }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body pt-3">
+                <h5 class="card-title mb-2">Приложения</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                        <tr>
+                            <th style="width: 64px;">№</th>
+                            <th>Документ</th>
+                            <th style="width: 120px;">Листов</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr class="table-light">
+                            <td>1</td>
+                            <td>
+                                <strong>реестр АОСР №{{ aook.aosr_registry_number }} от {{ aook.act_date|date:"d.m.Y" }}</strong>
+                            </td>
+                            <td>1</td>
+                        </tr>
+                        {% for item in aook.source_act_items.all %}
+                            <tr>
+                                <td></td>
+                                <td class="ps-4">
+                                    <a href="{% url 'acts_app:act_detail' item.act.uuid %}">АОСР №{{ item.act.number }} от {{ item.act.act_date|date:"d.m.Y" }}</a>
+                                    <div class="text-muted small">{{ item.act.work_name }}</div>
+                                </td>
+                                <td>{{ item.act.sheets_total|default:"—" }}</td>
+                            </tr>
+                        {% endfor %}
+
+                        <tr class="table-light">
+                            <td>2</td>
+                            <td>
+                                <strong>реестр протоколов №{{ aook.protocols_registry_number }} от {{ aook.act_date|date:"d.m.Y" }}</strong>
+                            </td>
+                            <td>1</td>
+                        </tr>
+                        {% for item in aook.protocol_items.all %}
+                            <tr>
+                                <td></td>
+                                <td class="ps-4">
+                                    {{ item.document_name }}
+                                    {% if item.document_number %} №{{ item.document_number }}{% endif %}
+                                    {% if item.document_date %} от {{ item.document_date|date:"d.m.Y" }}{% endif %}
+                                    {% if item.organization_name %}<div class="text-muted small">{{ item.organization_name }}</div>{% endif %}
+                                </td>
+                                <td>{{ item.sheets_count }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td></td>
+                                <td class="ps-4 text-muted">Протоколы не добавлены</td>
+                                <td>—</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}

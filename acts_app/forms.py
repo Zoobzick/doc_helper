@@ -7,7 +7,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
-from acts_app.models import Act, ActAttachment, ActMaterialItem, AttachmentType
+from acts_app.models import Act, ActAttachment, ActMaterialItem, Aook, AookProtocolItem, AttachmentType
 
 ISO_DATE_FORMAT = "%Y-%m-%d"
 
@@ -131,6 +131,123 @@ class ActForm(forms.ModelForm):
         if start and end and end < start:
             raise ValidationError("Дата окончания работ не может быть раньше даты начала.")
         return cleaned
+
+
+class AookForm(forms.ModelForm):
+    class Meta:
+        model = Aook
+        fields = (
+            "number",
+            "act_date",
+            "work_name",
+            "work_start_date",
+            "work_end_date",
+            "work_norms_text",
+            "copies_count",
+        )
+        widgets = {
+            "act_date": iso_date_widget(),
+            "work_start_date": iso_date_widget(),
+            "work_end_date": iso_date_widget(),
+            "work_name": forms.Textarea(attrs={"rows": 3}),
+            "work_norms_text": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        for name in ("act_date", "work_start_date", "work_end_date"):
+            if name in self.fields:
+                force_iso_date_field(self.fields[name])
+
+        if "copies_count" in self.fields:
+            self.fields["copies_count"].widget = forms.NumberInput(
+                attrs={"min": "1", "max": "9", "style": "max-width: 4.2rem;", "inputmode": "numeric"}
+            )
+
+        if not self.instance.pk:
+            self.fields["work_norms_text"].initial = (
+                "СП 122.13330.2012, "
+                "СП 70.13330.2012, "
+                "СП 120.13330.2012, "
+                "СП 48.13330.2019"
+            )
+
+        _bootstrapify(self)
+
+    def clean(self):
+        cleaned = super().clean()
+        start = cleaned.get("work_start_date")
+        end = cleaned.get("work_end_date")
+        if start and end and end < start:
+            raise ValidationError("Дата окончания работ не может быть раньше даты начала.")
+        return cleaned
+
+
+class AookProtocolItemForm(forms.ModelForm):
+    class Meta:
+        model = AookProtocolItem
+        fields = ("document_name", "document_number", "document_date", "organization_name", "sheets_count")
+        widgets = {
+            "document_date": iso_date_widget(),
+            "sheets_count": forms.NumberInput(attrs={"min": "1", "inputmode": "numeric"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "document_date" in self.fields:
+            force_iso_date_field(self.fields["document_date"])
+        self.fields["sheets_count"].required = False
+        _bootstrapify(self)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        if not (cleaned.get("document_name") or "").strip():
+            raise ValidationError("Укажи наименование протокола.")
+        if not cleaned.get("sheets_count"):
+            cleaned["sheets_count"] = 1
+        return cleaned
+
+
+class BaseAookProtocolFormSet(BaseInlineFormSet):
+    def save(self, commit=True):
+        objs = []
+        pos = 1
+
+        if commit:
+            for form in self.deleted_forms:
+                if form.instance and form.instance.pk:
+                    form.instance.delete()
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
+                continue
+            if not (form.cleaned_data.get("document_name") or "").strip():
+                continue
+
+            obj: AookProtocolItem = form.save(commit=False)
+            obj.aook = self.instance
+            obj.position = pos
+            pos += 1
+            if obj.sheets_count in (None, ""):
+                obj.sheets_count = 1
+            if commit:
+                obj.save()
+            objs.append(obj)
+
+        return objs
+
+
+AookProtocolFormSet = inlineformset_factory(
+    parent_model=Aook,
+    model=AookProtocolItem,
+    form=AookProtocolItemForm,
+    formset=BaseAookProtocolFormSet,
+    extra=1,
+    can_delete=True,
+)
 
 
 class ActMaterialItemForm(forms.ModelForm):

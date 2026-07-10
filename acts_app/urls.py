@@ -8,6 +8,13 @@ urlpatterns = [
     # список / создание
     path("", views.ActListView.as_view(), name="act_list"),
     path("create/", views.ActCreateView.as_view(), name="act_create"),
+    path("aook/create/", views.AookCreateView.as_view(), name="aook_create"),
+    path("aook/<uuid:uuid>/", views.AookDetailView.as_view(), name="aook_detail"),
+    path("aook/<uuid:uuid>/edit/", views.AookUpdateView.as_view(), name="aook_update"),
+    path("aook/<uuid:uuid>/rebuild/", views.AookRebuildFilesView.as_view(), name="aook_rebuild"),
+    path("aook/<uuid:uuid>/xlsx/", views.AookXlsxDownloadView.as_view(), name="aook_xlsx_download"),
+    path("aook/<uuid:uuid>/pdf/", views.AookPdfPreviewView.as_view(), name="aook_pdf_preview"),
+    path("aook/<uuid:uuid>/zip/", views.AookZipDownloadView.as_view(), name="aook_zip_download"),
     path("export/", views.ActBulkExportView.as_view(), name="act_bulk_export"),
     path("appendix-search/", views.AppendixSearchView.as_view(), name="appendix_search"),
 

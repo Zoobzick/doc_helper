@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+import io
 from pathlib import Path
 import shutil
 import subprocess
+import zipfile
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -27,11 +29,15 @@ from acts_app.forms import (
     ActAttachmentFormSet,
     ActAttachmentCreateFormSet,
     ActForm,
+    AookForm,
+    AookProtocolFormSet,
     ActMaterialFormSet,
     ActProjectsForm,
 )
 from acts_app.models import (
     Act,
+    Aook,
+    AookSourceAct,
     ActStatus,
     AttachmentType,
     ActParty,
@@ -40,6 +46,7 @@ from acts_app.models import (
 
 from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx, get_registry_p3_docx_paths
 from acts_app.services.bulk_export import build_acts_bulk_export_zip
+from acts_app.services.aook_xlsx_generator import generate_and_save_aook_files
 
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError, get_act_docx_paths
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
@@ -348,6 +355,31 @@ DEFAULT_PARTY_ROLES = [
     ActRole.DESIGN_REP,
     ActRole.CONTRACTOR_REP,
 ]
+
+AOOK_SOURCE_KEYWORDS = ("армирование", "бетонирование", "металлоизоляция")
+
+
+def _aook_candidate_acts_qs(project_id: int):
+    keyword_q = Q()
+    for keyword in AOOK_SOURCE_KEYWORDS:
+        keyword_q |= Q(work_name__icontains=keyword)
+    return (
+        Act.objects.filter(projects__id=project_id)
+        .filter(keyword_q)
+        .distinct()
+        .prefetch_related("projects")
+        .order_by("work_start_date", "work_end_date", "act_date", "number", "id")
+    )
+
+
+def _aook_period_from_acts(acts: list[Act]):
+    starts = [act.work_start_date for act in acts if act.work_start_date]
+    ends = [act.work_end_date for act in acts if act.work_end_date]
+    return (min(starts) if starts else None, max(ends) if ends else None)
+
+
+def _parse_aook_source_ids(request: HttpRequest) -> list[int]:
+    return _parse_int_list(request.POST.getlist("source_acts"))
 
 
 @dataclass(frozen=True)
@@ -814,6 +846,265 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
         ctx["selected_projects"] = selected
         return ctx
+
+
+def _project_choices_for_aook():
+    if Project is None:
+        return []
+    return Project.objects.all().order_by("full_code", "id")
+
+
+def _save_aook_source_items(*, aook: Aook, source_ids: list[int]) -> None:
+    AookSourceAct.objects.filter(aook=aook).delete()
+    acts_map = {
+        act.id: act
+        for act in Act.objects.filter(id__in=source_ids)
+    }
+    items = []
+    for position, act_id in enumerate(source_ids, start=1):
+        if act_id not in acts_map:
+            continue
+        items.append(AookSourceAct(aook=aook, act_id=act_id, position=position))
+    if items:
+        AookSourceAct.objects.bulk_create(items)
+
+
+class AookCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.add_act"
+    template_name = "acts_app/aook_form.html"
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        project_id = request.GET.get("project")
+        selected_project = None
+        source_acts = []
+        initial = {}
+
+        if project_id and str(project_id).isdigit() and Project is not None:
+            selected_project = Project.objects.filter(id=int(project_id)).first()
+            source_acts = list(_aook_candidate_acts_qs(int(project_id)))
+            start, end = _aook_period_from_acts(source_acts)
+            initial = {"work_start_date": start, "work_end_date": end}
+
+        return render(
+            request,
+            self.template_name,
+            {
+                "mode": "create",
+                "project_choices": _project_choices_for_aook(),
+                "selected_project": selected_project,
+                "source_acts": source_acts,
+                "form": AookForm(initial=initial),
+                "protocol_formset": AookProtocolFormSet(prefix="protocols"),
+            },
+        )
+
+    @transaction.atomic
+    def post(self, request: HttpRequest) -> HttpResponse:
+        project_id = request.POST.get("project")
+        selected_project = None
+        source_ids = _parse_aook_source_ids(request)
+        source_acts = list(Act.objects.filter(id__in=source_ids).order_by("work_start_date", "work_end_date", "act_date", "number", "id"))
+        if project_id and str(project_id).isdigit() and Project is not None:
+            selected_project = Project.objects.filter(id=int(project_id)).first()
+
+        form = AookForm(request.POST)
+        aook = Aook(project=selected_project, created_by=request.user) if selected_project else Aook(created_by=request.user)
+        protocol_formset = AookProtocolFormSet(request.POST, instance=aook, prefix="protocols")
+
+        if not selected_project:
+            messages.error(request, "Выбери проект для АООК.")
+        elif not source_ids:
+            messages.error(request, "Выбери хотя бы один исходный АОСР.")
+        elif form.is_valid() and protocol_formset.is_valid():
+            aook = form.save(commit=False)
+            aook.project = selected_project
+            aook.created_by = request.user
+            start, end = _aook_period_from_acts(source_acts)
+            aook.work_start_date = start or aook.work_start_date
+            aook.work_end_date = end or aook.work_end_date
+            aook.aosr_registry_number = f"П-3.{aook.number}"
+            aook.protocols_registry_number = f"П-6.{aook.number}"
+            aook.save()
+
+            _save_aook_source_items(aook=aook, source_ids=source_ids)
+            protocol_formset.instance = aook
+            protocol_formset.save()
+
+            try:
+                generate_and_save_aook_files(aook)
+            except Exception as exc:
+                messages.warning(request, f"АООК сохранён, но файлы не сгенерированы: {exc}")
+            else:
+                messages.success(request, f"АООК №{aook.number} создан.")
+            return redirect("acts_app:aook_detail", uuid=str(aook.uuid))
+
+        if selected_project and not source_acts:
+            source_acts = list(_aook_candidate_acts_qs(selected_project.id))
+
+        return render(
+            request,
+            self.template_name,
+            {
+                "mode": "create",
+                "project_choices": _project_choices_for_aook(),
+                "selected_project": selected_project,
+                "source_acts": source_acts,
+                "selected_source_ids": set(source_ids),
+                "form": form,
+                "protocol_formset": protocol_formset,
+            },
+        )
+
+
+class AookUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+    template_name = "acts_app/aook_form.html"
+
+    def get_object(self, uuid: str) -> Aook:
+        return get_object_or_404(Aook.objects.select_related("project"), uuid=uuid)
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        aook = self.get_object(uuid)
+        source_acts = list(_aook_candidate_acts_qs(aook.project_id))
+        selected_source_ids = set(aook.source_act_items.values_list("act_id", flat=True))
+        return render(
+            request,
+            self.template_name,
+            {
+                "mode": "update",
+                "aook": aook,
+                "project_choices": _project_choices_for_aook(),
+                "selected_project": aook.project,
+                "source_acts": source_acts,
+                "selected_source_ids": selected_source_ids,
+                "form": AookForm(instance=aook),
+                "protocol_formset": AookProtocolFormSet(instance=aook, prefix="protocols"),
+            },
+        )
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        aook = self.get_object(uuid)
+        source_ids = _parse_aook_source_ids(request)
+        source_acts = list(Act.objects.filter(id__in=source_ids).order_by("work_start_date", "work_end_date", "act_date", "number", "id"))
+        form = AookForm(request.POST, instance=aook)
+        protocol_formset = AookProtocolFormSet(request.POST, instance=aook, prefix="protocols")
+
+        if not source_ids:
+            messages.error(request, "Выбери хотя бы один исходный АОСР.")
+        elif form.is_valid() and protocol_formset.is_valid():
+            aook = form.save(commit=False)
+            start, end = _aook_period_from_acts(source_acts)
+            aook.work_start_date = start or aook.work_start_date
+            aook.work_end_date = end or aook.work_end_date
+            aook.aosr_registry_number = f"П-3.{aook.number}"
+            aook.protocols_registry_number = f"П-6.{aook.number}"
+            aook.save()
+            _save_aook_source_items(aook=aook, source_ids=source_ids)
+            protocol_formset.save()
+
+            try:
+                generate_and_save_aook_files(aook)
+            except Exception as exc:
+                messages.warning(request, f"АООК сохранён, но файлы не сгенерированы: {exc}")
+            else:
+                messages.success(request, f"АООК №{aook.number} обновлён.")
+            return redirect("acts_app:aook_detail", uuid=str(aook.uuid))
+
+        source_acts = list(_aook_candidate_acts_qs(aook.project_id))
+        return render(
+            request,
+            self.template_name,
+            {
+                "mode": "update",
+                "aook": aook,
+                "project_choices": _project_choices_for_aook(),
+                "selected_project": aook.project,
+                "source_acts": source_acts,
+                "selected_source_ids": set(source_ids),
+                "form": form,
+                "protocol_formset": protocol_formset,
+            },
+        )
+
+
+class AookDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    permission_required = "acts_app.view_act"
+    model = Aook
+    template_name = "acts_app/aook_detail.html"
+    context_object_name = "aook"
+    slug_field = "uuid"
+    slug_url_kwarg = "uuid"
+
+    def get_queryset(self):
+        return (
+            Aook.objects.select_related("project")
+            .prefetch_related("source_act_items__act", "protocol_items")
+        )
+
+
+class AookRebuildFilesView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        aook = get_object_or_404(Aook, uuid=uuid)
+        try:
+            generate_and_save_aook_files(aook)
+        except Exception as exc:
+            messages.error(request, f"Не удалось пересобрать файлы АООК: {exc}")
+        else:
+            messages.success(request, "Файлы АООК пересобраны.")
+        return redirect("acts_app:aook_detail", uuid=str(aook.uuid))
+
+
+class AookXlsxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        aook = get_object_or_404(Aook, uuid=uuid)
+        if not aook.xlsx_file:
+            generate_and_save_aook_files(aook)
+        return FileResponse(aook.xlsx_file.open("rb"), as_attachment=True, filename=Path(aook.xlsx_file.name).name)
+
+
+class AookPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        aook = get_object_or_404(Aook, uuid=uuid)
+        if not aook.pdf_file:
+            generate_and_save_aook_files(aook)
+        return FileResponse(aook.pdf_file.open("rb"), content_type="application/pdf")
+
+
+class AookZipDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        aook = get_object_or_404(Aook.objects.prefetch_related("source_act_items__act"), uuid=uuid)
+        if not aook.xlsx_file or not aook.pdf_file:
+            generate_and_save_aook_files(aook)
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            if aook.xlsx_file:
+                archive.write(aook.xlsx_file.path, f"АООК/{Path(aook.xlsx_file.name).name}")
+            if aook.pdf_file:
+                archive.write(aook.pdf_file.path, f"АООК/{Path(aook.pdf_file.name).name}")
+
+            acts = [item.act for item in aook.source_act_items.all()]
+            acts_zip = build_acts_bulk_export_zip(acts)
+            with zipfile.ZipFile(io.BytesIO(acts_zip.content), mode="r") as source_archive:
+                for name in source_archive.namelist():
+                    archive.writestr(f"Исходные АОСР/{name}", source_archive.read(name))
+
+        buffer.seek(0)
+        filename = f"aook_{aook.number}_{aook.act_date:%Y-%m-%d}.zip"
+        return HttpResponse(
+            buffer.getvalue(),
+            content_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
 
 class ActDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
