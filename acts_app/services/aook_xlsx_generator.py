@@ -4,29 +4,49 @@ import re
 import shutil
 import subprocess
 import tempfile
-from copy import copy
+from copy import copy, deepcopy
 from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from acts_app.models import Aook, AookProtocolItem, AookSourceAct
+from acts_app.services.act_docx_generator import (
+    _build_token_regex,
+    _replace_tokens_in_paragraph_runs,
+    replace_tokens,
+)
 from acts_app.services.act_docx_context import build_act_docx_context
 from acts_app.services.date_format import fmt_date_g
-from documents_app.utils.pdf_utils import _get_libreoffice_executable, _get_libreoffice_profile_uri, convert_xlsx_to_pdf
+from documents_app.utils.pdf_utils import (
+    _get_libreoffice_executable,
+    _get_libreoffice_profile_uri,
+    convert_docx_to_pdf,
+)
 
 
 class AookXlsxRenderError(RuntimeError):
     pass
 
 
+class AookRenderError(RuntimeError):
+    pass
+
+
 _TOKEN_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
+_ATTACHMENT_TOKEN_RE = re.compile(r"\{\{\s*attachment\s*\}\}")
+_ATTACHMENT_NUMBER_RE = re.compile(r"^\s*\d+\.\s*")
+_STRAIGHT_QUOTED_TEXT_RE = re.compile(r'"([^"\r\n]+)"')
+_THIN_BOTTOM_SIDE = Side(style="thin", color="000000")
 _MONTHS_RU_GENITIVE = {
     1: "января",
     2: "февраля",
@@ -60,8 +80,18 @@ def _date_parts(prefix: str, value) -> dict[str, str]:
     return {
         f"{prefix}_day": f"{value.day:02d}",
         f"{prefix}_month": _MONTHS_RU_GENITIVE.get(int(value.month), ""),
-        f"{prefix}_year": str(value.year),
+        f"{prefix}_year": f"{value.year % 100:02d}",
     }
+
+
+def _typograph_quotes(value: Any) -> Any:
+    if not isinstance(value, str) or '"' not in value:
+        return value
+    return _STRAIGHT_QUOTED_TEXT_RE.sub(r"«\1»", value)
+
+
+def _typograph_mapping_quotes(mapping: dict[str, Any]) -> dict[str, Any]:
+    return {key: _typograph_quotes(value) for key, value in mapping.items()}
 
 
 def _format_act_registry_date(act) -> str:
@@ -84,6 +114,37 @@ def _build_attachment_lines(aook: Aook) -> list[str]:
         f"2. реестр актов №{aook.aosr_registry_number or f'П-3.{aook.number}'} от {fmt_date_g(aook.act_date)}",
         f"3. реестр протоколов №{aook.protocols_registry_number or f'П-6.{aook.number}'} от {fmt_date_g(aook.act_date)}",
     ]
+
+
+def _attachment_line_text(line: str) -> str:
+    return _ATTACHMENT_NUMBER_RE.sub("", line or "").strip()
+
+
+def _with_bottom_border(border: Border | None) -> Border:
+    border = copy(border) if border else Border()
+    return Border(
+        left=copy(border.left),
+        right=copy(border.right),
+        top=copy(border.top),
+        bottom=_THIN_BOTTOM_SIDE,
+        diagonal=copy(border.diagonal),
+        diagonal_direction=border.diagonal_direction,
+        diagonalUp=border.diagonalUp,
+        diagonalDown=border.diagonalDown,
+        outline=border.outline,
+        vertical=copy(border.vertical),
+        horizontal=copy(border.horizontal),
+        start=copy(border.start),
+        end=copy(border.end),
+    )
+
+
+def _apply_excel_row_bottom_border(worksheet: Worksheet, row_idx: int) -> None:
+    for col_idx in range(1, worksheet.max_column + 1):
+        cell = worksheet.cell(row=row_idx, column=col_idx)
+        if isinstance(cell, MergedCell):
+            continue
+        cell.border = _with_bottom_border(cell.border)
 
 
 def _replace_attachment_placeholder(workbook: Workbook, aook: Aook) -> dict[str, dict[int, set[int]]]:
@@ -120,9 +181,10 @@ def _replace_attachment_placeholder(workbook: Workbook, aook: Aook) -> dict[str,
                         number_cell = worksheet.cell(row=start_row + offset, column=number_column)
                         if not isinstance(number_cell, MergedCell):
                             number_cell.value = f"{offset + 1}."
-                        target.value = re.sub(r"^\s*\d+\.\s*", "", line)
+                        target.value = _attachment_line_text(line)
                     else:
                         target.value = line
+                    _apply_excel_row_bottom_border(worksheet, start_row + offset)
                     for attachment_cell in (target, worksheet.cell(row=start_row + offset, column=number_column) if number_column else None):
                         if attachment_cell is None or isinstance(attachment_cell, MergedCell):
                             continue
@@ -131,8 +193,152 @@ def _replace_attachment_placeholder(workbook: Workbook, aook: Aook) -> dict[str,
                         alignment.vertical = alignment.vertical or "center"
                         attachment_cell.alignment = alignment
                     worksheet.row_dimensions[start_row + offset].height = _default_row_height(worksheet)
+                    touched.setdefault(worksheet.title, {}).setdefault(start_row + offset, set()).add(column)
+                    if number_column:
+                        touched[worksheet.title][start_row + offset].add(number_column)
                 return touched
     return touched
+
+
+def _docx_cell_text(cell) -> str:
+    return "\n".join(paragraph.text for paragraph in cell.paragraphs).strip()
+
+
+def _docx_cell_has_attachment_token(cell) -> bool:
+    return any(_ATTACHMENT_TOKEN_RE.search(paragraph.text or "") for paragraph in cell.paragraphs)
+
+
+def _set_docx_cell_text(cell, text: str) -> None:
+    if not cell.paragraphs:
+        cell.add_paragraph()
+
+    first_paragraph = cell.paragraphs[0]
+    if first_paragraph.runs:
+        first_paragraph.runs[0].text = text
+        for run in first_paragraph.runs[1:]:
+            run.text = ""
+    else:
+        first_paragraph.add_run(text)
+
+    for paragraph in cell.paragraphs[1:]:
+        for run in paragraph.runs:
+            run.text = ""
+
+
+def _set_docx_cell_bottom_border(cell) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    borders = tc_pr.find(qn("w:tcBorders"))
+    if borders is None:
+        borders = OxmlElement("w:tcBorders")
+        tc_pr.append(borders)
+
+    bottom = borders.find(qn("w:bottom"))
+    if bottom is None:
+        bottom = OxmlElement("w:bottom")
+        borders.append(bottom)
+
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), "4")
+    bottom.set(qn("w:space"), "0")
+    bottom.set(qn("w:color"), "000000")
+
+
+def _set_docx_row_bottom_border(row) -> None:
+    for cell in row.cells:
+        _set_docx_cell_bottom_border(cell)
+
+
+def _iter_docx_tables(document_or_cell):
+    for table in document_or_cell.tables:
+        yield table
+        for row in table.rows:
+            for cell in row.cells:
+                yield from _iter_docx_tables(cell)
+
+
+def _insert_docx_row_after(table, row_idx: int):
+    new_tr = deepcopy(table.rows[row_idx]._tr)
+    table.rows[row_idx]._tr.addnext(new_tr)
+    return table.rows[row_idx + 1]
+
+
+def _replace_docx_attachment_placeholder(document: Document, aook: Aook) -> None:
+    lines = _build_attachment_lines(aook)
+    for table in _iter_docx_tables(document):
+        for row_idx, row in enumerate(table.rows):
+            placeholder_cell_idx = None
+            for cell_idx, cell in enumerate(row.cells):
+                if _docx_cell_has_attachment_token(cell):
+                    placeholder_cell_idx = cell_idx
+                    break
+            if placeholder_cell_idx is None:
+                continue
+
+            for offset in range(1, len(lines)):
+                _insert_docx_row_after(table, row_idx + offset - 1)
+
+            for offset, line in enumerate(lines):
+                target_row = table.rows[row_idx + offset]
+                target_cell = target_row.cells[placeholder_cell_idx]
+                previous_cell = target_row.cells[placeholder_cell_idx - 1] if placeholder_cell_idx > 0 else None
+                previous_text = _docx_cell_text(previous_cell) if previous_cell is not None else ""
+                has_number_cell = previous_cell is not None and previous_text in {"", "1", "1."}
+
+                if has_number_cell:
+                    _set_docx_cell_text(previous_cell, f"{offset + 1}.")
+                    _set_docx_cell_text(target_cell, _attachment_line_text(line))
+                else:
+                    _set_docx_cell_text(target_cell, f"{offset + 1}. {_attachment_line_text(line)}")
+                    if offset and previous_cell is not None:
+                        _set_docx_cell_text(previous_cell, "")
+
+                _set_docx_row_bottom_border(target_row)
+            return
+
+
+def _replace_tokens_in_docx_row(row, mapping: dict[str, str]) -> None:
+    if not mapping:
+        return
+    token_re = _build_token_regex(list(mapping.keys()))
+    for cell in row.cells:
+        for paragraph in cell.paragraphs:
+            _replace_tokens_in_paragraph_runs(paragraph, mapping, token_re)
+        for table in cell.tables:
+            for nested_row in table.rows:
+                _replace_tokens_in_docx_row(nested_row, mapping)
+
+
+def _remove_docx_row(row) -> None:
+    row._tr.getparent().remove(row._tr)
+
+
+def _row_contains_any_key(row, keys: set[str]) -> bool:
+    row_text = "\n".join(_docx_cell_text(cell) for cell in row.cells)
+    return any(match.group(1).strip() in keys for match in _TOKEN_RE.finditer(row_text))
+
+
+def _fill_docx_registry_rows(document: Document, rows: list[dict[str, Any]], row_keys: set[str]) -> None:
+    for table in _iter_docx_tables(document):
+        for row_idx, row in enumerate(table.rows):
+            if not _row_contains_any_key(row, row_keys):
+                continue
+
+            if not rows:
+                _remove_docx_row(row)
+                return
+
+            for offset in range(1, len(rows)):
+                _insert_docx_row_after(table, row_idx + offset - 1)
+
+            for offset, row_mapping in enumerate(rows):
+                target_row = table.rows[row_idx + offset]
+                _replace_tokens_in_docx_row(
+                    target_row,
+                    {key: str(_typograph_quotes(value) or "") for key, value in row_mapping.items()},
+                )
+            return
+
+    raise AookRenderError(f"В DOCX-шаблоне реестра АООК не найдена строка с плейсхолдерами: {', '.join(sorted(row_keys))}")
 
 
 def _copy_row_style(worksheet: Worksheet, *, source_row: int, target_row: int, copy_values: bool = True) -> None:
@@ -478,10 +684,12 @@ def _source_act_rows(aook: Aook) -> list[dict[str, Any]]:
         aook.source_act_items.select_related("act")
         .order_by("position", "id")
     )
-    for item in items:
+    for position, item in enumerate(items, start=1):
         act = item.act
         rows.append(
             {
+                "p_n": position,
+                "aosr": "Акт освидетельствования скрытых работ",
                 "registry_act_job_name": "Акт освидетельствования скрытых работ",
                 "registry_act_number": act.number,
                 "registry_act_date": _format_act_registry_date(act),
@@ -493,9 +701,10 @@ def _source_act_rows(aook: Aook) -> list[dict[str, Any]]:
 
 def _protocol_rows(aook: Aook) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for item in aook.protocol_items.order_by("position", "id"):
+    for position, item in enumerate(aook.protocol_items.order_by("position", "id"), start=1):
         rows.append(
             {
+                "p_n": position,
                 "registry_protocol_document_name": item.document_name,
                 "registry_protocol_number": item.document_number,
                 "registry_protocol_date": _format_protocol_date(item),
@@ -544,7 +753,14 @@ def build_aook_xlsx_context(aook: Aook) -> dict[str, Any]:
     mapping.update(_date_parts("aook", aook.act_date))
     mapping.update(_date_parts("aook_job_start", aook.work_start_date))
     mapping.update(_date_parts("aook_job_end", aook.work_end_date))
-    return mapping
+    mapping.update(
+        {
+            "registry_contractor_org_full": mapping.get("contractor_rep_org_full", ""),
+            "registry_signer_position": mapping.get("contractor_rep_position", ""),
+            "registry_signer_fio": mapping.get("contractor_rep_fio", ""),
+        }
+    )
+    return _typograph_mapping_quotes(mapping)
 
 
 def render_aook_xlsx(*, aook: Aook, output_path: Path, template_path: Path | None = None) -> Path:
@@ -621,21 +837,110 @@ def render_aook_xlsx(*, aook: Aook, output_path: Path, template_path: Path | Non
     return output_path
 
 
-def generate_and_save_aook_files(aook: Aook) -> tuple[Path, Path]:
+def render_aook_docx(*, aook: Aook, output_path: Path, template_path: Path | None = None) -> Path:
+    template_path = template_path or (Path(settings.DOCX_TEMPLATES_DIR) / "aook_docx_template.docx")
+    if not template_path.exists():
+        raise AookXlsxRenderError(f"DOCX-шаблон АООК не найден: {template_path}")
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    document = Document(str(template_path))
+    mapping = build_aook_xlsx_context(aook)
+    _replace_docx_attachment_placeholder(document, aook)
+    replace_tokens(document, {key: str(value or "") for key, value in mapping.items()})
+    document.save(str(output_path))
+    return output_path
+
+
+def render_aook_registry_docx(
+    *,
+    aook: Aook,
+    output_path: Path,
+    registry_type: str,
+    template_path: Path | None = None,
+) -> Path:
+    if registry_type == "acts":
+        template_name = "aook_acts_registry.docx"
+        rows = _source_act_rows(aook)
+        row_keys = {"p_n", "aosr", "registry_act_job_name", "registry_act_number", "registry_act_date", "contractor_rep_org_short"}
+    elif registry_type == "protocols":
+        template_name = "aook_protocols_registry.docx"
+        rows = _protocol_rows(aook)
+        row_keys = {"p_n", "registry_protocol_document_name", "registry_protocol_number", "registry_protocol_date", "registry_protocol_org_name"}
+    else:
+        raise AookRenderError(f"Неизвестный тип реестра АООК: {registry_type}")
+
+    template_path = template_path or (Path(settings.DOCX_TEMPLATES_DIR) / template_name)
+    if not template_path.exists():
+        raise AookRenderError(f"DOCX-шаблон реестра АООК не найден: {template_path}")
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    document = Document(str(template_path))
+    mapping = build_aook_xlsx_context(aook)
+    common_mapping = {key: value for key, value in mapping.items() if key not in row_keys}
+    replace_tokens(document, {key: str(value or "") for key, value in common_mapping.items()})
+    _fill_docx_registry_rows(document, rows, row_keys)
+    document.save(str(output_path))
+    return output_path
+
+
+def get_aook_generated_paths(aook: Aook) -> dict[str, Path]:
     file_stem = _safe_filename(f"АООК №{aook.number} от {aook.act_date:%d.%m.%Y}")
     output_dir = Path(settings.MEDIA_ROOT) / "aook" / str(aook.uuid)
+    acts_registry_stem = _safe_filename(f"Реестр актов к АООК №{aook.number} от {aook.act_date:%d.%m.%Y}")
+    protocols_registry_stem = _safe_filename(f"Реестр протоколов к АООК №{aook.number} от {aook.act_date:%d.%m.%Y}")
+    return {
+        "output_dir": output_dir,
+        "main_docx": output_dir / f"{file_stem}.docx",
+        "main_pdf": output_dir / f"{file_stem}.pdf",
+        "acts_registry_docx": output_dir / f"{acts_registry_stem}.docx",
+        "acts_registry_pdf": output_dir / f"{acts_registry_stem}.pdf",
+        "protocols_registry_docx": output_dir / f"{protocols_registry_stem}.docx",
+        "protocols_registry_pdf": output_dir / f"{protocols_registry_stem}.pdf",
+    }
+
+
+def get_aook_registry_pdf_path(aook: Aook, registry_type: str) -> Path:
+    paths = get_aook_generated_paths(aook)
+    if registry_type == "acts":
+        return paths["acts_registry_pdf"]
+    if registry_type == "protocols":
+        return paths["protocols_registry_pdf"]
+    raise AookRenderError(f"Неизвестный тип реестра АООК: {registry_type}")
+
+
+def generate_and_save_aook_files(aook: Aook) -> tuple[Path, Path]:
+    paths = get_aook_generated_paths(aook)
+    output_dir = paths["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    xlsx_path = output_dir / f"{file_stem}.xlsx"
-    pdf_path = output_dir / f"{file_stem}.pdf"
+    docx_path = paths["main_docx"]
+    pdf_path = paths["main_pdf"]
+    acts_registry_docx_path = paths["acts_registry_docx"]
+    acts_registry_pdf_path = paths["acts_registry_pdf"]
+    protocols_registry_docx_path = paths["protocols_registry_docx"]
+    protocols_registry_pdf_path = paths["protocols_registry_pdf"]
 
-    render_aook_xlsx(aook=aook, output_path=xlsx_path)
-    converted_pdf = convert_xlsx_to_pdf(xlsx_path, output_dir)
+    render_aook_docx(aook=aook, output_path=docx_path)
+    converted_pdf = convert_docx_to_pdf(docx_path, output_dir)
     if converted_pdf != pdf_path:
         shutil.move(str(converted_pdf), str(pdf_path))
 
+    render_aook_registry_docx(aook=aook, output_path=acts_registry_docx_path, registry_type="acts")
+    converted_acts_registry_pdf = convert_docx_to_pdf(acts_registry_docx_path, output_dir)
+    if converted_acts_registry_pdf != acts_registry_pdf_path:
+        shutil.move(str(converted_acts_registry_pdf), str(acts_registry_pdf_path))
+
+    render_aook_registry_docx(aook=aook, output_path=protocols_registry_docx_path, registry_type="protocols")
+    converted_protocols_registry_pdf = convert_docx_to_pdf(protocols_registry_docx_path, output_dir)
+    if converted_protocols_registry_pdf != protocols_registry_pdf_path:
+        shutil.move(str(converted_protocols_registry_pdf), str(protocols_registry_pdf_path))
+
     media_root = Path(settings.MEDIA_ROOT).resolve()
-    aook.xlsx_file.name = xlsx_path.resolve().relative_to(media_root).as_posix()
+    aook.xlsx_file.name = ""
     aook.pdf_file.name = pdf_path.resolve().relative_to(media_root).as_posix()
     aook.save(update_fields=["xlsx_file", "pdf_file", "updated_at"])
-    return xlsx_path, pdf_path
+    return docx_path, pdf_path

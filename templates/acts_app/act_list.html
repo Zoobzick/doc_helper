@@ -43,6 +43,12 @@
                     .acts-col-works { width: 32%; }
                     .acts-col-project { width: 28%; }
                     .acts-col-actions { width: 12%; }
+                    .aook-col-num { width: 18%; }
+                    .aook-col-date { width: 10%; }
+                    .aook-col-project { width: 20%; }
+                    .aook-col-works { width: 28%; }
+                    .aook-col-period { width: 12%; }
+                    .aook-col-actions { width: 12%; }
 
                     .act-number-full {
                         display: block;
@@ -88,18 +94,36 @@
                 </style>
 
                 <!-- ✅ Кнопка внутри section/card -->
-                <div class="d-flex justify-content-end gap-2 mb-2">
-                    <a class="btn btn-outline-success" href="{% url 'acts_app:aook_create' %}">
-                        <i class="bi bi-building-check me-1"></i>Создать АООК
-                    </a>
-                    <a class="btn btn-success" href="{% url 'acts_app:act_create' %}">
-                        <i class="bi bi-plus-circle me-1"></i>Создать акт
-                    </a>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    {% with q=request.GET.q project=request.GET.project date_from=request.GET.date_from date_to=request.GET.date_to status=request.GET.status %}
+                        <div class="btn-group" role="group" aria-label="Тип актов">
+                            <a class="btn {% if active_tab == 'aosr' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                               href="?tab=aosr{% if q %}&q={{ q }}{% endif %}{% if project %}&project={{ project }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if status %}&status={{ status }}{% endif %}">
+                                АОСР
+                            </a>
+                            <a class="btn {% if active_tab == 'aook' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                               href="?tab=aook{% if q %}&q={{ q }}{% endif %}{% if project %}&project={{ project }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
+                                АООК
+                            </a>
+                        </div>
+                    {% endwith %}
+                    <div class="d-flex gap-2">
+                        {% if active_tab == 'aook' %}
+                            <a class="btn btn-success" href="{% url 'acts_app:aook_create' %}">
+                                <i class="bi bi-building-check me-1"></i>Создать АООК
+                            </a>
+                        {% else %}
+                            <a class="btn btn-success" href="{% url 'acts_app:act_create' %}">
+                                <i class="bi bi-plus-circle me-1"></i>Создать акт
+                            </a>
+                        {% endif %}
+                    </div>
                 </div>
 
                 <!-- ✅ Sticky search bar -->
                 <div class="acts-filter-sticky mb-3">
                     <form id="actsFilterForm" method="get" class="acts-filter-card">
+                        <input type="hidden" name="tab" value="{{ active_tab }}">
                         <div class="row g-2 align-items-center">
 
                             <!-- q -->
@@ -165,6 +189,127 @@
                     </form>
                 </div>
 
+                {% if active_tab == 'aook' %}
+                    <table class="table table-striped table-bordered align-middle acts-table">
+                        <colgroup>
+                            <col class="aook-col-num">
+                            <col class="aook-col-date">
+                            <col class="aook-col-project">
+                            <col class="aook-col-works">
+                            <col class="aook-col-period">
+                            <col class="aook-col-actions">
+                        </colgroup>
+
+                        <thead>
+                        <tr>
+                            <th class="text-center text-nowrap">№ АООК</th>
+                            <th class="text-center text-nowrap">Дата</th>
+                            <th class="text-center text-nowrap">Шифр проекта</th>
+                            <th class="text-center">Работы</th>
+                            <th class="text-center text-nowrap">Период</th>
+                            <th class="text-center text-nowrap">Действия</th>
+                        </tr>
+                        </thead>
+
+                        <tbody>
+                        {% for aook in aooks %}
+                            <tr>
+                                <td>
+                                    <span class="fw-semibold act-number-full">{{ aook.number }}</span>
+                                    <div class="text-muted small">
+                                        АОСР: {{ aook.source_act_items.all|length }} · прот.: {{ aook.protocol_items.all|length }}
+                                    </div>
+                                </td>
+                                <td class="text-nowrap">{{ aook.act_date|date:"d.m.Y" }}</td>
+                                <td>
+                                    <div class="projects-stack">
+                                        <div class="project-item" title="{{ aook.project }}">{{ aook.project }}</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="works-clip js-work-name" title="{{ aook.work_name }}" data-full="{{ aook.work_name }}">
+                                        {{ aook.work_name }}
+                                    </span>
+                                </td>
+                                <td class="text-nowrap">
+                                    {{ aook.work_start_date|date:"d.m.Y"|default:"—" }} - {{ aook.work_end_date|date:"d.m.Y"|default:"—" }}
+                                </td>
+                                <td class="text-center text-nowrap">
+                                    <a class="btn btn-sm btn-outline-primary icon-action"
+                                       href="{% url 'acts_app:aook_detail' aook.uuid %}"
+                                       title="Открыть"
+                                       aria-label="Открыть">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a class="btn btn-sm btn-outline-secondary icon-action ms-1"
+                                       href="{% url 'acts_app:aook_update' aook.uuid %}"
+                                       title="Редактировать"
+                                       aria-label="Редактировать">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    {% if aook.pdf_file %}
+                                        <a class="btn btn-sm btn-outline-danger icon-action ms-1"
+                                           href="{% url 'acts_app:aook_pdf_preview' aook.uuid %}"
+                                           target="_blank"
+                                           title="PDF"
+                                           aria-label="PDF">
+                                            <i class="bi bi-filetype-pdf"></i>
+                                        </a>
+                                    {% endif %}
+                                    <a class="btn btn-sm btn-outline-dark icon-action ms-1"
+                                       href="{% url 'acts_app:aook_zip_download' aook.uuid %}"
+                                       title="Скачать с актами"
+                                       aria-label="Скачать с актами">
+                                        <i class="bi bi-download"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    АООК не найдены.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+
+                    {% if aook_is_paginated %}
+                        {% with q=request.GET.q project=request.GET.project date_from=request.GET.date_from date_to=request.GET.date_to %}
+                            <nav class="mt-3">
+                                <ul class="pagination justify-content-center">
+                                    {% if aook_page_obj.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link"
+                                               href="?tab=aook&aook_page={{ aook_page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}{% if project %}&project={{ project }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
+                                                Назад
+                                            </a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item disabled"><span class="page-link">Назад</span></li>
+                                    {% endif %}
+
+                                    <li class="page-item disabled">
+                                        <span class="page-link">
+                                            Стр. {{ aook_page_obj.number }} из {{ aook_page_obj.paginator.num_pages }}
+                                        </span>
+                                    </li>
+
+                                    {% if aook_page_obj.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link"
+                                               href="?tab=aook&aook_page={{ aook_page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}{% if project %}&project={{ project }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
+                                                Вперёд
+                                            </a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item disabled"><span class="page-link">Вперёд</span></li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        {% endwith %}
+                    {% endif %}
+                {% else %}
                 <table class="table table-striped table-bordered align-middle acts-table">
                     <colgroup>
                         <col class="acts-col-num">
@@ -309,6 +454,7 @@
                             </ul>
                         </nav>
                     {% endwith %}
+                {% endif %}
                 {% endif %}
 
                 <script>

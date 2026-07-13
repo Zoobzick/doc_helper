@@ -1,130 +1,391 @@
 {% extends "base.html" %}
 
-{% block title %}АООК №{{ aook.number }}{% endblock %}
+{% block title %}АООК №{{ aook.number }} от {{ aook.act_date|date:"d.m.Y" }}{% endblock %}
 
 {% block content %}
     <div class="pagetitle">
-        <h1>АООК №{{ aook.number }}</h1>
+        <h1>АООК №{{ aook.number }} от {{ aook.act_date|date:"d.m.Y" }}</h1>
         <nav>
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'authapp:home' %}">Главная</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}">Акты</a></li>
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'acts_app:act_list' %}?tab=aook">Акты</a></li>
                 <li class="breadcrumb-item active">АООК №{{ aook.number }}</li>
             </ol>
         </nav>
     </div>
 
     <section class="section">
-        <div class="card mb-3">
-            <div class="card-body pt-3">
-                <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
-                    <div>
-                        <h5 class="card-title mb-1">Основное</h5>
-                        <div class="text-muted">{{ aook.project }}</div>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2">
-                        <a class="btn btn-outline-secondary btn-sm" href="{% url 'acts_app:aook_update' aook.uuid %}">
-                            <i class="bi bi-pencil me-1"></i>Редактировать
-                        </a>
-                        <form method="post" action="{% url 'acts_app:aook_rebuild' aook.uuid %}" class="d-inline">
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-outline-primary btn-sm">
-                                <i class="bi bi-arrow-clockwise me-1"></i>Пересобрать
-                            </button>
-                        </form>
-                        <a class="btn btn-success btn-sm" href="{% url 'acts_app:aook_xlsx_download' aook.uuid %}">
-                            <i class="bi bi-file-earmark-spreadsheet me-1"></i>XLSX
-                        </a>
-                        <a class="btn btn-danger btn-sm" href="{% url 'acts_app:aook_pdf_preview' aook.uuid %}" target="_blank">
-                            <i class="bi bi-filetype-pdf me-1"></i>PDF
-                        </a>
-                        <a class="btn btn-outline-success btn-sm" href="{% url 'acts_app:aook_zip_download' aook.uuid %}">
-                            <i class="bi bi-download me-1"></i>С актами
-                        </a>
-                    </div>
-                </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <span class="text-muted">Дата: {{ aook.act_date|date:"d.m.Y" }}</span>
+                <span class="text-muted">Проект: {{ aook.project }}</span>
+            </div>
 
-                <div class="row g-3 mt-2">
-                    <div class="col-6 col-lg-2">
-                        <div class="text-muted small">Дата</div>
-                        <div class="fw-semibold">{{ aook.act_date|date:"d.m.Y" }}</div>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-secondary" href="{% url 'acts_app:act_list' %}?tab=aook">
+                    <i class="bi bi-arrow-left me-1"></i>К списку
+                </a>
+
+                <a class="btn btn-primary" href="{% url 'acts_app:aook_update' aook.uuid %}">
+                    <i class="bi bi-pencil me-1"></i>Редактировать
+                </a>
+
+                <button class="btn btn-outline-danger js-pdf-preview-btn" type="button"
+                        data-preview-url="{% url 'acts_app:aook_pdf_preview' aook.uuid %}"
+                        data-preview-title="АООК №{{ aook.number }} от {{ aook.act_date|date:'d.m.Y' }}"
+                        aria-controls="pdfPreview">
+                    <i class="bi bi-filetype-pdf me-1"></i>Акт
+                </button>
+
+                <button class="btn btn-outline-danger js-pdf-preview-btn" type="button"
+                        data-preview-url="{% url 'acts_app:aook_acts_registry_pdf_preview' aook.uuid %}"
+                        data-preview-title="Реестр актов"
+                        aria-controls="pdfPreview">
+                    <i class="bi bi-filetype-pdf me-1"></i>Реестр актов
+                </button>
+
+                <button class="btn btn-outline-danger js-pdf-preview-btn" type="button"
+                        data-preview-url="{% url 'acts_app:aook_protocols_registry_pdf_preview' aook.uuid %}"
+                        data-preview-title="Реестр протоколов"
+                        aria-controls="pdfPreview">
+                    <i class="bi bi-filetype-pdf me-1"></i>Реестр протоколов
+                </button>
+
+                <a class="btn btn-outline-success" href="{% url 'acts_app:aook_zip_download' aook.uuid %}">
+                    <i class="bi bi-download me-1"></i>С актами
+                </a>
+
+                <form method="post" action="{% url 'acts_app:aook_rebuild' aook.uuid %}">
+                    {% csrf_token %}
+                    <button class="btn btn-outline-primary" type="submit">
+                        <i class="bi bi-arrow-repeat me-1"></i>Пересобрать
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="collapse mb-3" id="pdfPreview">
+            <div class="card">
+                <div class="card-body pt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0" id="pdfPreviewTitle">Акт</h5>
                     </div>
-                    <div class="col-6 col-lg-2">
-                        <div class="text-muted small">Период</div>
-                        <div class="fw-semibold">
-                            {{ aook.work_start_date|date:"d.m.Y"|default:"—" }} - {{ aook.work_end_date|date:"d.m.Y"|default:"—" }}
-                        </div>
-                    </div>
-                    <div class="col-12 col-lg-8">
-                        <div class="text-muted small">Наименование работ</div>
-                        <div class="fw-semibold">{{ aook.work_name }}</div>
-                    </div>
-                    <div class="col-12">
-                        <div class="text-muted small">Нормативные документы</div>
-                        <div>{{ aook.work_norms_text|default:"—" }}</div>
+                    <div class="ratio ratio-16x9">
+                        <iframe id="pdfPreviewFrame" src="" title="PDF preview" style="border:0;"></iframe>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="card mb-3">
-            <div class="card-body pt-3">
-                <h5 class="card-title mb-2">Приложения</h5>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle">
-                        <thead>
-                        <tr>
-                            <th style="width: 64px;">№</th>
-                            <th>Документ</th>
-                            <th style="width: 120px;">Листов</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <tr class="table-light">
-                            <td>1</td>
-                            <td>
-                                <strong>реестр АОСР №{{ aook.aosr_registry_number }} от {{ aook.act_date|date:"d.m.Y" }}</strong>
-                            </td>
-                            <td>1</td>
-                        </tr>
-                        {% for item in aook.source_act_items.all %}
-                            <tr>
-                                <td></td>
-                                <td class="ps-4">
-                                    <a href="{% url 'acts_app:act_detail' item.act.uuid %}">АОСР №{{ item.act.number }} от {{ item.act.act_date|date:"d.m.Y" }}</a>
-                                    <div class="text-muted small">{{ item.act.work_name }}</div>
-                                </td>
-                                <td>{{ item.act.sheets_total|default:"—" }}</td>
-                            </tr>
-                        {% endfor %}
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                const previewEl = document.getElementById("pdfPreview");
+                const frame = document.getElementById("pdfPreviewFrame");
+                const title = document.getElementById("pdfPreviewTitle");
+                const buttons = Array.from(document.querySelectorAll(".js-pdf-preview-btn"));
 
-                        <tr class="table-light">
-                            <td>2</td>
-                            <td>
-                                <strong>реестр протоколов №{{ aook.protocols_registry_number }} от {{ aook.act_date|date:"d.m.Y" }}</strong>
-                            </td>
-                            <td>1</td>
-                        </tr>
-                        {% for item in aook.protocol_items.all %}
-                            <tr>
-                                <td></td>
-                                <td class="ps-4">
-                                    {{ item.document_name }}
-                                    {% if item.document_number %} №{{ item.document_number }}{% endif %}
-                                    {% if item.document_date %} от {{ item.document_date|date:"d.m.Y" }}{% endif %}
-                                    {% if item.organization_name %}<div class="text-muted small">{{ item.organization_name }}</div>{% endif %}
-                                </td>
-                                <td>{{ item.sheets_count }}</td>
-                            </tr>
-                        {% empty %}
-                            <tr>
-                                <td></td>
-                                <td class="ps-4 text-muted">Протоколы не добавлены</td>
-                                <td>—</td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
+                if (!previewEl || !frame || !title || !window.bootstrap) return;
+
+                const collapse = bootstrap.Collapse.getOrCreateInstance(previewEl, {toggle: false});
+
+                buttons.forEach(button => {
+                    button.addEventListener("click", function () {
+                        const url = button.getAttribute("data-preview-url") || "";
+                        const previewTitle = button.getAttribute("data-preview-title") || "PDF";
+                        if (!url) return;
+
+                        const isOpen = previewEl.classList.contains("show");
+                        const isSamePdf = frame.getAttribute("src") === url;
+                        if (isOpen && isSamePdf) {
+                            collapse.hide();
+                            button.classList.remove("active");
+                            return;
+                        }
+
+                        buttons.forEach(btn => btn.classList.remove("active"));
+                        button.classList.add("active");
+
+                        title.textContent = previewTitle;
+                        if (frame.getAttribute("src") !== url) {
+                            frame.setAttribute("src", url);
+                        }
+                        collapse.show();
+                    });
+                });
+
+                previewEl.addEventListener("hidden.bs.collapse", function () {
+                    buttons.forEach(btn => btn.classList.remove("active"));
+                    frame.setAttribute("src", "");
+                });
+            });
+        </script>
+
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body pt-3">
+                        <h5 class="card-title">Основное</h5>
+
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3 text-muted">Шифр проекта</dt>
+                            <dd class="col-sm-9">{{ aook.project }}</dd>
+
+                            <dt class="col-sm-3 text-muted">Работы</dt>
+                            <dd class="col-sm-9">{{ aook.work_name }}</dd>
+
+                            <dt class="col-sm-3 text-muted">Начало</dt>
+                            <dd class="col-sm-9">
+                                {% if aook.work_start_date %}{{ aook.work_start_date|date:"d.m.Y" }}{% else %}
+                                    <span class="text-muted">—</span>{% endif %}
+                            </dd>
+
+                            <dt class="col-sm-3 text-muted">Окончание</dt>
+                            <dd class="col-sm-9">
+                                {% if aook.work_end_date %}{{ aook.work_end_date|date:"d.m.Y" }}{% else %}
+                                    <span class="text-muted">—</span>{% endif %}
+                            </dd>
+
+                            <dt class="col-sm-3 text-muted">Нормативные документы</dt>
+                            <dd class="col-sm-9">
+                                {% if aook.work_norms_text %}{{ aook.work_norms_text|linebreaksbr }}{% else %}
+                                    <span class="text-muted">—</span>{% endif %}
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body pt-3">
+                        <h5 class="card-title">Приложения</h5>
+
+                        <style>
+                            .appendix-table {
+                                table-layout: fixed;
+                                width: 100%;
+                            }
+
+                            .appendix-col-pos {
+                                width: 4.2rem;
+                            }
+
+                            .appendix-col-sheets {
+                                width: 5.2rem;
+                            }
+
+                            .appendix-label {
+                                white-space: nowrap;
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                display: block;
+                                width: 100%;
+                            }
+
+                            .registry-row {
+                                cursor: pointer;
+                            }
+
+                            .registry-chevron {
+                                transition: transform .15s ease;
+                            }
+
+                            .registry-row.is-open .registry-chevron {
+                                transform: rotate(180deg);
+                            }
+
+                            .registry-child-row td {
+                                padding-top: .35rem;
+                                padding-bottom: .35rem;
+                            }
+
+                            .registry-child-row td:first-child {
+                                color: #6c757d;
+                            }
+
+                            .registry-child-row .appendix-label {
+                                padding-left: .75rem;
+                            }
+
+                            a.link-plain,
+                            a.link-plain:hover,
+                            a.link-plain:focus,
+                            a.link-plain:active {
+                                color: inherit !important;
+                                text-decoration: none !important;
+                            }
+                        </style>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle appendix-table">
+                                <colgroup>
+                                    <col class="appendix-col-pos">
+                                    <col>
+                                    <col class="appendix-col-sheets">
+                                </colgroup>
+                                <thead>
+                                <tr>
+                                    <th>№</th>
+                                    <th>Наименование</th>
+                                    <th class="text-end">Листов</th>
+                                </tr>
+                                </thead>
+                                <tbody id="aook-appendix-accordion">
+                                <tr>
+                                    <td class="text-muted">1</td>
+                                    <td>
+                                        <span class="appendix-label">
+                                            исполнительная схема №{{ aook.number }} от {{ aook.act_date|date:"d.m.Y" }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end">1</td>
+                                </tr>
+
+                                <tr class="registry-row js-registry-row"
+                                    data-registry-pos="2"
+                                    aria-expanded="false"
+                                    role="button"
+                                    tabindex="0">
+                                    <td class="text-muted">2</td>
+                                    <td>
+                                        <span class="appendix-label">
+                                            реестр актов №{{ aook.aosr_registry_number }} от {{ aook.act_date|date:"d.m.Y" }}
+                                            <i class="bi bi-chevron-down ms-1 text-muted small registry-chevron"></i>
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <span class="js-registry-sheets" data-registry-pos="2">1</span>
+                                    </td>
+                                </tr>
+                                {% for item in aook.source_act_items.all %}
+                                    <tr class="table-light registry-child-row js-registry-child d-none"
+                                        data-registry-pos="2">
+                                        <td class="text-muted">2.{{ forloop.counter }}</td>
+                                        <td>
+                                            <span class="appendix-label">
+                                                <a href="{% url 'acts_app:act_detail' item.act.uuid %}"
+                                                   class="text-reset text-decoration-none link-plain js-child-link">
+                                                    АОСР №{{ item.act.number }} от {{ item.act.act_date|date:"d.m.Y" }} - {{ item.act.work_name }}
+                                                </a>
+                                            </span>
+                                        </td>
+                                        <td class="text-end">{{ item.act.sheets_total|default:"—" }}</td>
+                                    </tr>
+                                {% endfor %}
+
+                                <tr class="registry-row js-registry-row"
+                                    data-registry-pos="3"
+                                    aria-expanded="false"
+                                    role="button"
+                                    tabindex="0">
+                                    <td class="text-muted">3</td>
+                                    <td>
+                                        <span class="appendix-label">
+                                            реестр протоколов №{{ aook.protocols_registry_number }} от {{ aook.act_date|date:"d.m.Y" }}
+                                            <i class="bi bi-chevron-down ms-1 text-muted small registry-chevron"></i>
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <span class="js-registry-sheets" data-registry-pos="3">1</span>
+                                    </td>
+                                </tr>
+                                {% for item in aook.protocol_items.all %}
+                                    <tr class="table-light registry-child-row js-registry-child d-none"
+                                        data-registry-pos="3">
+                                        <td class="text-muted">3.{{ forloop.counter }}</td>
+                                        <td>
+                                            <span class="appendix-label">
+                                                {{ item.document_name }}
+                                                {% if item.document_number %} №{{ item.document_number }}{% endif %}
+                                                {% if item.document_date %} от {{ item.document_date|date:"d.m.Y" }}{% endif %}
+                                                {% if item.organization_name %} - {{ item.organization_name }}{% endif %}
+                                            </span>
+                                        </td>
+                                        <td class="text-end">{{ item.sheets_count }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr class="table-light registry-child-row js-registry-child d-none"
+                                        data-registry-pos="3">
+                                        <td class="text-muted">3.1</td>
+                                        <td><span class="appendix-label text-muted">Протоколы не добавлены</span></td>
+                                        <td class="text-end">—</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <script>
+                            document.addEventListener("DOMContentLoaded", function () {
+                                const rows = Array.from(document.querySelectorAll(".js-registry-row"));
+
+                                function closeRegistry(pos) {
+                                    const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
+                                    if (!row) return;
+
+                                    row.classList.remove("is-open");
+                                    row.setAttribute("aria-expanded", "false");
+
+                                    document
+                                        .querySelectorAll('.js-registry-child[data-registry-pos="' + pos + '"]')
+                                        .forEach(tr => tr.classList.add("d-none"));
+
+                                    const sheets = document.querySelector('.js-registry-sheets[data-registry-pos="' + pos + '"]');
+                                    if (sheets) sheets.classList.remove("d-none");
+                                }
+
+                                function openRegistry(pos) {
+                                    const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
+                                    if (!row) return;
+
+                                    rows.forEach(r => {
+                                        const p = r.getAttribute("data-registry-pos");
+                                        if (p !== pos) closeRegistry(p);
+                                    });
+
+                                    row.classList.add("is-open");
+                                    row.setAttribute("aria-expanded", "true");
+
+                                    document
+                                        .querySelectorAll('.js-registry-child[data-registry-pos="' + pos + '"]')
+                                        .forEach(tr => tr.classList.remove("d-none"));
+
+                                    const sheets = document.querySelector('.js-registry-sheets[data-registry-pos="' + pos + '"]');
+                                    if (sheets) sheets.classList.add("d-none");
+                                }
+
+                                function toggleRegistry(pos) {
+                                    const row = document.querySelector('.js-registry-row[data-registry-pos="' + pos + '"]');
+                                    if (!row) return;
+
+                                    const isOpen = row.classList.contains("is-open");
+                                    if (isOpen) closeRegistry(pos);
+                                    else openRegistry(pos);
+                                }
+
+                                rows.forEach(row => {
+                                    row.addEventListener("click", function () {
+                                        const pos = row.getAttribute("data-registry-pos");
+                                        toggleRegistry(pos);
+                                    });
+
+                                    row.addEventListener("keydown", function (e) {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            const pos = row.getAttribute("data-registry-pos");
+                                            toggleRegistry(pos);
+                                        }
+                                    });
+                                });
+
+                                document.querySelectorAll(".js-child-link").forEach(a => {
+                                    a.addEventListener("click", function (e) {
+                                        e.stopPropagation();
+                                    });
+                                });
+                            });
+                        </script>
+                    </div>
                 </div>
             </div>
         </div>

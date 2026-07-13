@@ -12,6 +12,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.core.paginator import Paginator
 from django.db import router, transaction
 from django.db.models import Q, Max
 from django.db.models.deletion import Collector, ProtectedError
@@ -46,7 +47,7 @@ from acts_app.models import (
 
 from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx, get_registry_p3_docx_paths
 from acts_app.services.bulk_export import build_acts_bulk_export_zip
-from acts_app.services.aook_xlsx_generator import generate_and_save_aook_files
+from acts_app.services.aook_xlsx_generator import generate_and_save_aook_files, get_aook_registry_pdf_path
 
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError, get_act_docx_paths
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
@@ -370,6 +371,15 @@ def _aook_candidate_acts_qs(project_id: int):
         .prefetch_related("projects")
         .order_by("work_start_date", "work_end_date", "act_date", "number", "id")
     )
+
+
+def _aook_selected_acts(*, project_id: int, source_ids: list[int]) -> list[Act]:
+    if not source_ids:
+        return []
+    ordering = {act_id: position for position, act_id in enumerate(source_ids)}
+    acts = list(_aook_candidate_acts_qs(project_id).filter(id__in=source_ids))
+    acts.sort(key=lambda act: ordering.get(act.id, len(ordering)))
+    return acts
 
 
 def _aook_period_from_acts(acts: list[Act]):
@@ -845,6 +855,48 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
                 selected = [{"id": p.id, "label": _project_label(p)}]
 
         ctx["selected_projects"] = selected
+        ctx["active_tab"] = "aook" if (self.request.GET.get("tab") or "").strip() == "aook" else "aosr"
+
+        aook_qs = (
+            Aook.objects.select_related("project")
+            .prefetch_related("source_act_items", "protocol_items")
+            .order_by("-act_date", "-id")
+        )
+        if project_id.isdigit():
+            aook_qs = aook_qs.filter(project_id=int(project_id))
+
+        date_from_raw = (self.request.GET.get("date_from") or "").strip()
+        date_to_raw = (self.request.GET.get("date_to") or "").strip()
+        d_from = self._parse_any_date(date_from_raw) if date_from_raw else None
+        d_to = self._parse_any_date(date_to_raw) if date_to_raw else None
+        if d_from and d_to and d_from > d_to:
+            d_from, d_to = d_to, d_from
+        if d_from:
+            aook_qs = aook_qs.filter(act_date__gte=d_from)
+        if d_to:
+            aook_qs = aook_qs.filter(act_date__lte=d_to)
+
+        q = (self.request.GET.get("q") or "").strip()
+        if q:
+            aook_filters = Q(number__icontains=q) | Q(work_name__icontains=q)
+            parsed_date = _parse_search_date(q)
+            if parsed_date:
+                aook_filters |= Q(act_date=parsed_date)
+            if Project is not None:
+                project_fields = {f.name for f in Project._meta.get_fields() if getattr(f, "concrete", False)}
+                project_q = Q()
+                for fname in ("full_code", "code", "cipher", "number", "name", "title", "short_name"):
+                    if fname in project_fields:
+                        project_q |= Q(**{f"project__{fname}__icontains": q})
+                if project_q:
+                    aook_filters |= project_q
+            aook_qs = aook_qs.filter(aook_filters).distinct()
+
+        aook_paginator = Paginator(aook_qs, self.paginate_by)
+        aook_page_obj = aook_paginator.get_page(self.request.GET.get("aook_page") or 1)
+        ctx["aooks"] = aook_page_obj.object_list
+        ctx["aook_page_obj"] = aook_page_obj
+        ctx["aook_is_paginated"] = aook_page_obj.has_other_pages()
         return ctx
 
 
@@ -858,7 +910,7 @@ def _save_aook_source_items(*, aook: Aook, source_ids: list[int]) -> None:
     AookSourceAct.objects.filter(aook=aook).delete()
     acts_map = {
         act.id: act
-        for act in Act.objects.filter(id__in=source_ids)
+        for act in _aook_selected_acts(project_id=aook.project_id, source_ids=source_ids)
     }
     items = []
     for position, act_id in enumerate(source_ids, start=1):
@@ -903,9 +955,11 @@ class AookCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         project_id = request.POST.get("project")
         selected_project = None
         source_ids = _parse_aook_source_ids(request)
-        source_acts = list(Act.objects.filter(id__in=source_ids).order_by("work_start_date", "work_end_date", "act_date", "number", "id"))
+        source_acts = []
         if project_id and str(project_id).isdigit() and Project is not None:
             selected_project = Project.objects.filter(id=int(project_id)).first()
+            if selected_project:
+                source_acts = _aook_selected_acts(project_id=selected_project.id, source_ids=source_ids)
 
         form = AookForm(request.POST)
         aook = Aook(project=selected_project, created_by=request.user) if selected_project else Aook(created_by=request.user)
@@ -913,7 +967,7 @@ class AookCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         if not selected_project:
             messages.error(request, "Выбери проект для АООК.")
-        elif not source_ids:
+        elif not source_acts:
             messages.error(request, "Выбери хотя бы один исходный АОСР.")
         elif form.is_valid() and protocol_formset.is_valid():
             aook = form.save(commit=False)
@@ -986,11 +1040,11 @@ class AookUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
         aook = self.get_object(uuid)
         source_ids = _parse_aook_source_ids(request)
-        source_acts = list(Act.objects.filter(id__in=source_ids).order_by("work_start_date", "work_end_date", "act_date", "number", "id"))
+        source_acts = _aook_selected_acts(project_id=aook.project_id, source_ids=source_ids)
         form = AookForm(request.POST, instance=aook)
         protocol_formset = AookProtocolFormSet(request.POST, instance=aook, prefix="protocols")
 
-        if not source_ids:
+        if not source_acts:
             messages.error(request, "Выбери хотя бы один исходный АОСР.")
         elif form.is_valid() and protocol_formset.is_valid():
             aook = form.save(commit=False)
@@ -1057,24 +1111,27 @@ class AookRebuildFilesView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return redirect("acts_app:aook_detail", uuid=str(aook.uuid))
 
 
-class AookXlsxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_required = "acts_app.view_act"
-
-    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
-        aook = get_object_or_404(Aook, uuid=uuid)
-        if not aook.xlsx_file:
-            generate_and_save_aook_files(aook)
-        return FileResponse(aook.xlsx_file.open("rb"), as_attachment=True, filename=Path(aook.xlsx_file.name).name)
-
-
 class AookPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "acts_app.view_act"
 
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         aook = get_object_or_404(Aook, uuid=uuid)
-        if not aook.pdf_file:
+        if not aook.pdf_file or not Path(aook.pdf_file.path).exists():
             generate_and_save_aook_files(aook)
         return FileResponse(aook.pdf_file.open("rb"), content_type="application/pdf")
+
+
+class AookRegistryPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.view_act"
+    registry_type = ""
+
+    def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        aook = get_object_or_404(Aook, uuid=uuid)
+        registry_pdf_path = get_aook_registry_pdf_path(aook, self.registry_type)
+        if not registry_pdf_path.exists():
+            generate_and_save_aook_files(aook)
+        registry_pdf_path = get_aook_registry_pdf_path(aook, self.registry_type)
+        return FileResponse(registry_pdf_path.open("rb"), content_type="application/pdf")
 
 
 class AookZipDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -1082,15 +1139,21 @@ class AookZipDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         aook = get_object_or_404(Aook.objects.prefetch_related("source_act_items__act"), uuid=uuid)
-        if not aook.xlsx_file or not aook.pdf_file:
+        registry_pdf_paths = [get_aook_registry_pdf_path(aook, registry_type) for registry_type in ("acts", "protocols")]
+        if not aook.pdf_file or not Path(aook.pdf_file.path).exists() or any(not path.exists() for path in registry_pdf_paths):
             generate_and_save_aook_files(aook)
+            registry_pdf_paths = [get_aook_registry_pdf_path(aook, registry_type) for registry_type in ("acts", "protocols")]
 
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            if aook.xlsx_file:
-                archive.write(aook.xlsx_file.path, f"АООК/{Path(aook.xlsx_file.name).name}")
             if aook.pdf_file:
                 archive.write(aook.pdf_file.path, f"АООК/{Path(aook.pdf_file.name).name}")
+                docx_path = Path(aook.pdf_file.path).with_suffix(".docx")
+                if docx_path.exists():
+                    archive.write(docx_path, f"АООК/{docx_path.name}")
+            for registry_pdf_path in registry_pdf_paths:
+                if registry_pdf_path.exists():
+                    archive.write(registry_pdf_path, f"АООК/{registry_pdf_path.name}")
 
             acts = [item.act for item in aook.source_act_items.all()]
             acts_zip = build_acts_bulk_export_zip(acts)

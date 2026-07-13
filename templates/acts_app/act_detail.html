@@ -105,6 +105,14 @@
                         const previewTitle = button.getAttribute("data-preview-title") || "PDF";
                         if (!url) return;
 
+                        const isOpen = previewEl.classList.contains("show");
+                        const isSamePdf = frame.getAttribute("src") === url;
+                        if (isOpen && isSamePdf) {
+                            collapse.hide();
+                            button.classList.remove("active");
+                            return;
+                        }
+
                         buttons.forEach(btn => btn.classList.remove("active"));
                         button.classList.add("active");
 
@@ -114,6 +122,11 @@
                         }
                         collapse.show();
                     });
+                });
+
+                previewEl.addEventListener("hidden.bs.collapse", function () {
+                    buttons.forEach(btn => btn.classList.remove("active"));
+                    frame.setAttribute("src", "");
                 });
             });
         </script>
