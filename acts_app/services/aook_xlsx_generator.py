@@ -23,6 +23,8 @@ from acts_app.models import Aook, AookProtocolItem, AookSourceAct
 from acts_app.services.act_docx_generator import (
     _build_token_regex,
     _replace_tokens_in_paragraph_runs,
+    _month_folder_name,
+    _safe_filename as _safe_act_filename,
     replace_tokens,
 )
 from acts_app.services.act_docx_context import build_act_docx_context
@@ -889,7 +891,10 @@ def render_aook_registry_docx(
 
 def get_aook_generated_paths(aook: Aook) -> dict[str, Path]:
     file_stem = _safe_filename(f"АООК №{aook.number} от {aook.act_date:%d.%m.%Y}")
-    output_dir = Path(settings.MEDIA_ROOT) / "aook" / str(aook.uuid)
+    year_dir = Path(settings.ACTS_DIR) / f"{aook.act_date.year}"
+    month_dir = year_dir / _month_folder_name(aook)
+    project_code = (getattr(aook.project, "full_code", "") or str(aook.project or "")).strip() or "Без проекта"
+    output_dir = month_dir / _safe_act_filename(project_code) / file_stem
     acts_registry_stem = _safe_filename(f"Реестр актов к АООК №{aook.number} от {aook.act_date:%d.%m.%Y}")
     protocols_registry_stem = _safe_filename(f"Реестр протоколов к АООК №{aook.number} от {aook.act_date:%d.%m.%Y}")
     return {
@@ -941,6 +946,9 @@ def generate_and_save_aook_files(aook: Aook) -> tuple[Path, Path]:
 
     media_root = Path(settings.MEDIA_ROOT).resolve()
     aook.xlsx_file.name = ""
-    aook.pdf_file.name = pdf_path.resolve().relative_to(media_root).as_posix()
+    try:
+        aook.pdf_file.name = pdf_path.resolve().relative_to(media_root).as_posix()
+    except ValueError:
+        aook.pdf_file.name = ""
     aook.save(update_fields=["xlsx_file", "pdf_file", "updated_at"])
     return docx_path, pdf_path

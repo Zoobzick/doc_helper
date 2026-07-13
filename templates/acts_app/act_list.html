@@ -247,15 +247,13 @@
                                        aria-label="Редактировать">
                                         <i class="bi bi-pencil"></i>
                                     </a>
-                                    {% if aook.pdf_file %}
-                                        <a class="btn btn-sm btn-outline-danger icon-action ms-1"
-                                           href="{% url 'acts_app:aook_pdf_preview' aook.uuid %}"
-                                           target="_blank"
-                                           title="PDF"
-                                           aria-label="PDF">
-                                            <i class="bi bi-filetype-pdf"></i>
-                                        </a>
-                                    {% endif %}
+                                    <a class="btn btn-sm btn-outline-danger icon-action ms-1"
+                                       href="{% url 'acts_app:aook_pdf_preview' aook.uuid %}"
+                                       target="_blank"
+                                       title="PDF"
+                                       aria-label="PDF">
+                                        <i class="bi bi-filetype-pdf"></i>
+                                    </a>
                                     <a class="btn btn-sm btn-outline-dark icon-action ms-1"
                                        href="{% url 'acts_app:aook_zip_download' aook.uuid %}"
                                        title="Скачать с актами"

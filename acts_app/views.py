@@ -47,7 +47,11 @@ from acts_app.models import (
 
 from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx, get_registry_p3_docx_paths
 from acts_app.services.bulk_export import build_acts_bulk_export_zip
-from acts_app.services.aook_xlsx_generator import generate_and_save_aook_files, get_aook_registry_pdf_path
+from acts_app.services.aook_xlsx_generator import (
+    generate_and_save_aook_files,
+    get_aook_generated_paths,
+    get_aook_registry_pdf_path,
+)
 
 from acts_app.services.act_docx_generator import generate_act_docx, DocxRenderError, get_act_docx_paths
 from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderError
@@ -1111,16 +1115,22 @@ class AookRebuildFilesView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return redirect("acts_app:aook_detail", uuid=str(aook.uuid))
 
 
+@method_decorator(xframe_options_sameorigin, name="dispatch")
 class AookPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "acts_app.view_act"
 
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         aook = get_object_or_404(Aook, uuid=uuid)
-        if not aook.pdf_file or not Path(aook.pdf_file.path).exists():
+        pdf_path = get_aook_generated_paths(aook)["main_pdf"]
+        if not pdf_path.exists():
             generate_and_save_aook_files(aook)
-        return FileResponse(aook.pdf_file.open("rb"), content_type="application/pdf")
+            pdf_path = get_aook_generated_paths(aook)["main_pdf"]
+        resp = FileResponse(pdf_path.open("rb"), content_type="application/pdf")
+        resp["Content-Disposition"] = f'inline; filename="{pdf_path.name}"'
+        return resp
 
 
+@method_decorator(xframe_options_sameorigin, name="dispatch")
 class AookRegistryPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "acts_app.view_act"
     registry_type = ""
@@ -1131,7 +1141,9 @@ class AookRegistryPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, Vi
         if not registry_pdf_path.exists():
             generate_and_save_aook_files(aook)
         registry_pdf_path = get_aook_registry_pdf_path(aook, self.registry_type)
-        return FileResponse(registry_pdf_path.open("rb"), content_type="application/pdf")
+        resp = FileResponse(registry_pdf_path.open("rb"), content_type="application/pdf")
+        resp["Content-Disposition"] = f'inline; filename="{registry_pdf_path.name}"'
+        return resp
 
 
 class AookZipDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -1139,16 +1151,18 @@ class AookZipDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         aook = get_object_or_404(Aook.objects.prefetch_related("source_act_items__act"), uuid=uuid)
+        main_pdf_path = get_aook_generated_paths(aook)["main_pdf"]
         registry_pdf_paths = [get_aook_registry_pdf_path(aook, registry_type) for registry_type in ("acts", "protocols")]
-        if not aook.pdf_file or not Path(aook.pdf_file.path).exists() or any(not path.exists() for path in registry_pdf_paths):
+        if not main_pdf_path.exists() or any(not path.exists() for path in registry_pdf_paths):
             generate_and_save_aook_files(aook)
+            main_pdf_path = get_aook_generated_paths(aook)["main_pdf"]
             registry_pdf_paths = [get_aook_registry_pdf_path(aook, registry_type) for registry_type in ("acts", "protocols")]
 
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            if aook.pdf_file:
-                archive.write(aook.pdf_file.path, f"АООК/{Path(aook.pdf_file.name).name}")
-                docx_path = Path(aook.pdf_file.path).with_suffix(".docx")
+            if main_pdf_path.exists():
+                archive.write(main_pdf_path, f"АООК/{main_pdf_path.name}")
+                docx_path = main_pdf_path.with_suffix(".docx")
                 if docx_path.exists():
                     archive.write(docx_path, f"АООК/{docx_path.name}")
             for registry_pdf_path in registry_pdf_paths:
