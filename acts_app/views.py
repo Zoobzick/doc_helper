@@ -31,6 +31,7 @@ from acts_app.forms import (
     ActAttachmentCreateFormSet,
     ActForm,
     AookForm,
+    AookManualSourceActFormSet,
     AookProtocolFormSet,
     ActMaterialFormSet,
     ActProjectsForm,
@@ -38,6 +39,7 @@ from acts_app.forms import (
 from acts_app.models import (
     Act,
     Aook,
+    AookManualSourceAct,
     AookSourceAct,
     ActStatus,
     AttachmentType,
@@ -427,6 +429,17 @@ def _aook_selected_acts(*, project_id: int, source_ids: list[int]) -> list[Act]:
 def _aook_period_from_acts(acts: list[Act]):
     starts = [act.work_start_date for act in acts if act.work_start_date]
     ends = [act.work_end_date for act in acts if act.work_end_date]
+    return (min(starts) if starts else None, max(ends) if ends else None)
+
+
+def _aook_period_from_manual_source_items(items: list[AookManualSourceAct]):
+    dates = [item.act_date for item in items if item.act_date]
+    return (min(dates) if dates else None, max(dates) if dates else None)
+
+
+def _combine_aook_periods(*periods):
+    starts = [start for start, _ in periods if start]
+    ends = [end for _, end in periods if end]
     return (min(starts) if starts else None, max(ends) if ends else None)
 
 
@@ -988,6 +1001,7 @@ class AookCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "selected_project": selected_project,
                 "source_acts": source_acts,
                 "form": AookForm(initial=initial),
+                "manual_source_formset": AookManualSourceActFormSet(prefix="manual_sources"),
                 "protocol_formset": AookProtocolFormSet(prefix="protocols"),
             },
         )
@@ -1005,17 +1019,28 @@ class AookCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         form = AookForm(request.POST)
         aook = Aook(project=selected_project, created_by=request.user) if selected_project else Aook(created_by=request.user)
+        manual_source_formset = AookManualSourceActFormSet(request.POST, instance=aook, prefix="manual_sources")
         protocol_formset = AookProtocolFormSet(request.POST, instance=aook, prefix="protocols")
+        manual_source_items: list[AookManualSourceAct] = []
+        form_is_valid = form.is_valid()
+        manual_source_formset_is_valid = manual_source_formset.is_valid()
+        protocol_formset_is_valid = protocol_formset.is_valid()
+        forms_are_valid = form_is_valid and manual_source_formset_is_valid and protocol_formset_is_valid
+        if forms_are_valid:
+            manual_source_items = manual_source_formset.save(commit=False)
 
         if not selected_project:
             messages.error(request, "Выбери проект для АООК.")
-        elif not source_acts:
-            messages.error(request, "Выбери хотя бы один исходный АОСР.")
-        elif form.is_valid() and protocol_formset.is_valid():
+        elif not source_acts and not manual_source_items:
+            messages.error(request, "Выбери хотя бы один исходный АОСР или добавь ручную строку реестра.")
+        elif forms_are_valid:
             aook = form.save(commit=False)
             aook.project = selected_project
             aook.created_by = request.user
-            start, end = _aook_period_from_acts(source_acts)
+            start, end = _combine_aook_periods(
+                _aook_period_from_acts(source_acts),
+                _aook_period_from_manual_source_items(manual_source_items),
+            )
             aook.work_start_date = start or aook.work_start_date
             aook.work_end_date = end or aook.work_end_date
             aook.aosr_registry_number = f"П-3.{aook.number}"
@@ -1023,6 +1048,8 @@ class AookCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             aook.save()
 
             _save_aook_source_items(aook=aook, source_ids=source_ids)
+            manual_source_formset.instance = aook
+            manual_source_formset.save()
             protocol_formset.instance = aook
             protocol_formset.save()
 
@@ -1034,7 +1061,7 @@ class AookCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 messages.success(request, f"АООК №{aook.number} создан.")
             return redirect("acts_app:aook_detail", uuid=str(aook.uuid))
 
-        if selected_project and not source_acts:
+        if selected_project:
             source_acts = list(_aook_candidate_acts_qs(selected_project.id))
 
         return render(
@@ -1047,6 +1074,7 @@ class AookCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "source_acts": source_acts,
                 "selected_source_ids": set(source_ids),
                 "form": form,
+                "manual_source_formset": manual_source_formset,
                 "protocol_formset": protocol_formset,
             },
         )
@@ -1074,6 +1102,7 @@ class AookUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "source_acts": source_acts,
                 "selected_source_ids": selected_source_ids,
                 "form": AookForm(instance=aook),
+                "manual_source_formset": AookManualSourceActFormSet(instance=aook, prefix="manual_sources"),
                 "protocol_formset": AookProtocolFormSet(instance=aook, prefix="protocols"),
             },
         )
@@ -1084,19 +1113,31 @@ class AookUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         source_ids = _parse_aook_source_ids(request)
         source_acts = _aook_selected_acts(project_id=aook.project_id, source_ids=source_ids)
         form = AookForm(request.POST, instance=aook)
+        manual_source_formset = AookManualSourceActFormSet(request.POST, instance=aook, prefix="manual_sources")
         protocol_formset = AookProtocolFormSet(request.POST, instance=aook, prefix="protocols")
+        manual_source_items: list[AookManualSourceAct] = []
+        form_is_valid = form.is_valid()
+        manual_source_formset_is_valid = manual_source_formset.is_valid()
+        protocol_formset_is_valid = protocol_formset.is_valid()
+        forms_are_valid = form_is_valid and manual_source_formset_is_valid and protocol_formset_is_valid
+        if forms_are_valid:
+            manual_source_items = manual_source_formset.save(commit=False)
 
-        if not source_acts:
-            messages.error(request, "Выбери хотя бы один исходный АОСР.")
-        elif form.is_valid() and protocol_formset.is_valid():
+        if not source_acts and not manual_source_items:
+            messages.error(request, "Выбери хотя бы один исходный АОСР или добавь ручную строку реестра.")
+        elif forms_are_valid:
             aook = form.save(commit=False)
-            start, end = _aook_period_from_acts(source_acts)
+            start, end = _combine_aook_periods(
+                _aook_period_from_acts(source_acts),
+                _aook_period_from_manual_source_items(manual_source_items),
+            )
             aook.work_start_date = start or aook.work_start_date
             aook.work_end_date = end or aook.work_end_date
             aook.aosr_registry_number = f"П-3.{aook.number}"
             aook.protocols_registry_number = f"П-6.{aook.number}"
             aook.save()
             _save_aook_source_items(aook=aook, source_ids=source_ids)
+            manual_source_formset.save()
             protocol_formset.save()
 
             try:
@@ -1119,6 +1160,7 @@ class AookUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "source_acts": source_acts,
                 "selected_source_ids": set(source_ids),
                 "form": form,
+                "manual_source_formset": manual_source_formset,
                 "protocol_formset": protocol_formset,
             },
         )
@@ -1135,7 +1177,7 @@ class AookDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     def get_queryset(self):
         return (
             Aook.objects.select_related("project")
-            .prefetch_related("source_act_items__act", "protocol_items")
+            .prefetch_related("source_act_items__act", "manual_source_act_items", "protocol_items")
         )
 
 

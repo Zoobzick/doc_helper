@@ -272,6 +272,22 @@
                                         <td class="text-end">{{ item.act.sheets_total|default:"—" }}</td>
                                     </tr>
                                 {% endfor %}
+                                {% with source_count=aook.source_act_items.all|length %}
+                                    {% for item in aook.manual_source_act_items.all %}
+                                        <tr class="table-light registry-child-row js-registry-child d-none"
+                                            data-registry-pos="2">
+                                            <td class="text-muted">2.{{ forloop.counter|add:source_count }}</td>
+                                            <td>
+                                                <span class="appendix-label">
+                                                    АОСР №{{ item.act_number }}
+                                                    {% if item.act_date %} от {{ item.act_date|date:"d.m.Y" }}{% endif %}
+                                                    {% if item.work_name %} - {{ item.work_name }}{% endif %}
+                                                </span>
+                                            </td>
+                                            <td class="text-end">{{ item.sheets_count|default:"—" }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                {% endwith %}
 
                                 <tr class="registry-row js-registry-row"
                                     data-registry-pos="3"

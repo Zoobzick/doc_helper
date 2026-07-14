@@ -63,6 +63,9 @@
                 {% if protocol_formset.non_form_errors %}
                     <div class="alert alert-danger">{{ protocol_formset.non_form_errors }}</div>
                 {% endif %}
+                {% if manual_source_formset.non_form_errors %}
+                    <div class="alert alert-danger">{{ manual_source_formset.non_form_errors }}</div>
+                {% endif %}
 
                 <div class="card mb-3">
                     <div class="card-body pt-3">
@@ -159,6 +162,76 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        <div class="d-flex justify-content-between align-items-center gap-2 mt-3 mb-2">
+                            <div>
+                                <div class="fw-semibold">Ручные строки реестра</div>
+                                <div class="text-muted small">Для старых АОСР, которых нет в системе</div>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="add-manual-source-row">
+                                <i class="bi bi-plus-lg me-1"></i>Добавить строку
+                            </button>
+                        </div>
+
+                        {{ manual_source_formset.management_form }}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle" id="manual-source-table">
+                                <thead>
+                                <tr>
+                                    <th style="width: 180px;">№ акта</th>
+                                    <th style="width: 160px;">Дата</th>
+                                    <th>Наименование работ</th>
+                                    <th style="width: 220px;">Организация</th>
+                                    <th style="width: 100px;">Листов</th>
+                                    <th style="width: 96px;"></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for f in manual_source_formset.forms %}
+                                    <tr class="manual-source-row">
+                                        {{ f.id }}
+                                        <td>
+                                            {{ f.act_number }}
+                                            {% if f.act_number.errors %}<div class="invalid-feedback d-block">{{ f.act_number.errors }}</div>{% endif %}
+                                        </td>
+                                        <td>{{ f.act_date }}</td>
+                                        <td>{{ f.work_name }}</td>
+                                        <td>{{ f.organization_name }}</td>
+                                        <td>{{ f.sheets_count }}</td>
+                                        <td class="text-center text-nowrap">
+                                            <span class="d-none">{{ f.DELETE }}</span>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm js-duplicate-manual-source" title="Дублировать">
+                                                <i class="bi bi-files"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-outline-danger btn-sm js-remove-manual-source" title="Удалить">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <template id="manual-source-empty-template">
+                            <tr class="manual-source-row">
+                                {{ manual_source_formset.empty_form.id }}
+                                <td>{{ manual_source_formset.empty_form.act_number }}</td>
+                                <td>{{ manual_source_formset.empty_form.act_date }}</td>
+                                <td>{{ manual_source_formset.empty_form.work_name }}</td>
+                                <td>{{ manual_source_formset.empty_form.organization_name }}</td>
+                                <td>{{ manual_source_formset.empty_form.sheets_count }}</td>
+                                <td class="text-center text-nowrap">
+                                    <span class="d-none">{{ manual_source_formset.empty_form.DELETE }}</span>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm js-duplicate-manual-source" title="Дублировать">
+                                        <i class="bi bi-files"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger btn-sm js-remove-manual-source" title="Удалить">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
                     </div>
                 </div>
 
@@ -181,7 +254,7 @@
                                     <th style="width: 160px;">Дата</th>
                                     <th style="width: 220px;">Организация</th>
                                     <th style="width: 100px;">Листов</th>
-                                    <th style="width: 64px;"></th>
+                                    <th style="width: 96px;"></th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -196,8 +269,11 @@
                                         <td>{{ f.document_date }}</td>
                                         <td>{{ f.organization_name }}</td>
                                         <td>{{ f.sheets_count }}</td>
-                                        <td class="text-center">
+                                        <td class="text-center text-nowrap">
                                             <span class="d-none">{{ f.DELETE }}</span>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm js-duplicate-protocol" title="Дублировать">
+                                                <i class="bi bi-files"></i>
+                                            </button>
                                             <button type="button" class="btn btn-outline-danger btn-sm js-remove-protocol" title="Удалить">
                                                 <i class="bi bi-trash"></i>
                                             </button>
@@ -216,8 +292,11 @@
                                 <td>{{ protocol_formset.empty_form.document_date }}</td>
                                 <td>{{ protocol_formset.empty_form.organization_name }}</td>
                                 <td>{{ protocol_formset.empty_form.sheets_count }}</td>
-                                <td class="text-center">
+                                <td class="text-center text-nowrap">
                                     <span class="d-none">{{ protocol_formset.empty_form.DELETE }}</span>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm js-duplicate-protocol" title="Дублировать">
+                                        <i class="bi bi-files"></i>
+                                    </button>
                                     <button type="button" class="btn btn-outline-danger btn-sm js-remove-protocol" title="Удалить">
                                         <i class="bi bi-trash"></i>
                                     </button>
@@ -243,36 +322,123 @@
 {% block extra_js %}
     <script>
         (function () {
-            const addBtn = document.getElementById('add-protocol-row');
-            const table = document.getElementById('protocol-table');
-            const template = document.getElementById('protocol-empty-template');
-            const totalInput = document.querySelector('input[name="protocols-TOTAL_FORMS"]');
+            function fieldSuffix(name, prefix) {
+                const match = name.match(new RegExp('^' + prefix + '-\\d+-(.+)$'));
+                return match ? match[1] : '';
+            }
 
-            function wireRemove(button) {
-                button.addEventListener('click', function () {
-                    const row = button.closest('tr');
-                    const del = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
-                    if (del) {
-                        del.checked = true;
-                        row.style.display = 'none';
+            function collectRowValues(row, prefix) {
+                const values = {};
+                row.querySelectorAll('input, textarea, select').forEach(function (input) {
+                    const suffix = fieldSuffix(input.name || '', prefix);
+                    if (!suffix || suffix === 'id' || suffix === 'DELETE') {
+                        return;
+                    }
+                    if (input.type === 'checkbox') {
+                        values[suffix] = input.checked;
                     } else {
-                        row.remove();
+                        values[suffix] = input.value;
+                    }
+                });
+                return values;
+            }
+
+            function applyRowValues(row, prefix, values) {
+                row.querySelectorAll('input, textarea, select').forEach(function (input) {
+                    const suffix = fieldSuffix(input.name || '', prefix);
+                    if (!suffix || suffix === 'id' || suffix === 'DELETE' || !(suffix in values)) {
+                        return;
+                    }
+                    if (input.type === 'checkbox') {
+                        input.checked = Boolean(values[suffix]);
+                    } else {
+                        input.value = values[suffix] || '';
                     }
                 });
             }
 
-            document.querySelectorAll('.js-remove-protocol').forEach(wireRemove);
+            function setupFormset(options) {
+                const addBtn = document.getElementById(options.addBtnId);
+                const table = document.getElementById(options.tableId);
+                const template = document.getElementById(options.templateId);
+                const totalInput = document.querySelector(`input[name="${options.prefix}-TOTAL_FORMS"]`);
 
-            if (addBtn && table && template && totalInput) {
-                addBtn.addEventListener('click', function () {
+                function addRow(values) {
+                    if (!table || !template || !totalInput) {
+                        return null;
+                    }
                     const index = parseInt(totalInput.value || '0', 10);
                     const html = template.innerHTML.replace(/__prefix__/g, String(index));
                     table.querySelector('tbody').insertAdjacentHTML('beforeend', html);
                     totalInput.value = String(index + 1);
                     const row = table.querySelector('tbody tr:last-child');
-                    row.querySelectorAll('.js-remove-protocol').forEach(wireRemove);
-                });
+                    if (values) {
+                        applyRowValues(row, options.prefix, values);
+                    }
+                    wireRow(row);
+                    return row;
+                }
+
+                function wireRemove(button) {
+                    if (button.dataset.wired === '1') {
+                        return;
+                    }
+                    button.dataset.wired = '1';
+                    button.addEventListener('click', function () {
+                        const row = button.closest('tr');
+                        const del = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+                        if (del) {
+                            del.checked = true;
+                            row.style.display = 'none';
+                        } else {
+                            row.remove();
+                        }
+                    });
+                }
+
+                function wireDuplicate(button) {
+                    if (button.dataset.wired === '1') {
+                        return;
+                    }
+                    button.dataset.wired = '1';
+                    button.addEventListener('click', function () {
+                        const row = button.closest('tr');
+                        addRow(collectRowValues(row, options.prefix));
+                    });
+                }
+
+                function wireRow(row) {
+                    row.querySelectorAll(options.removeSelector).forEach(wireRemove);
+                    row.querySelectorAll(options.duplicateSelector).forEach(wireDuplicate);
+                }
+
+                if (table) {
+                    table.querySelectorAll('tbody tr').forEach(wireRow);
+                }
+                if (addBtn) {
+                    addBtn.addEventListener('click', function () {
+                        addRow(null);
+                    });
+                }
             }
+
+            setupFormset({
+                prefix: 'manual_sources',
+                addBtnId: 'add-manual-source-row',
+                tableId: 'manual-source-table',
+                templateId: 'manual-source-empty-template',
+                removeSelector: '.js-remove-manual-source',
+                duplicateSelector: '.js-duplicate-manual-source',
+            });
+
+            setupFormset({
+                prefix: 'protocols',
+                addBtnId: 'add-protocol-row',
+                tableId: 'protocol-table',
+                templateId: 'protocol-empty-template',
+                removeSelector: '.js-remove-protocol',
+                duplicateSelector: '.js-duplicate-protocol',
+            });
         })();
     </script>
 {% endblock %}

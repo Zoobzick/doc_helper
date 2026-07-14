@@ -19,7 +19,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from acts_app.models import Aook, AookProtocolItem, AookSourceAct
+from acts_app.models import Aook, AookManualSourceAct, AookProtocolItem, AookSourceAct
 from acts_app.services.act_docx_generator import (
     _build_token_regex,
     _replace_tokens_in_paragraph_runs,
@@ -86,6 +86,28 @@ def _date_parts(prefix: str, value) -> dict[str, str]:
     }
 
 
+def _registry_date_parts(prefix: str, value) -> dict[str, str]:
+    if not value:
+        return {
+            f"{prefix}_day": "",
+            f"{prefix}_month": "",
+            f"{prefix}_year": "",
+        }
+    return {
+        f"{prefix}_day": f"{value.day:02d}",
+        f"{prefix}_month": f"{value.month:02d}",
+        f"{prefix}_year": f"{value.year % 100:02d}",
+    }
+
+
+def _format_date_short(value) -> str:
+    return value.strftime("%d.%m.%y") if value else ""
+
+
+def _format_date_full(value) -> str:
+    return value.strftime("%d.%m.%Y") if value else ""
+
+
 def _typograph_quotes(value: Any) -> Any:
     if not isinstance(value, str) or '"' not in value:
         return value
@@ -97,11 +119,15 @@ def _typograph_mapping_quotes(mapping: dict[str, Any]) -> dict[str, Any]:
 
 
 def _format_act_registry_date(act) -> str:
-    return fmt_date_g(getattr(act, "act_date", None))
+    return _format_date_full(getattr(act, "act_date", None))
+
+
+def _format_manual_source_act_date(item: AookManualSourceAct) -> str:
+    return _format_date_full(item.act_date)
 
 
 def _format_protocol_date(item: AookProtocolItem) -> str:
-    return item.document_date.strftime("%d.%m.%Y") if item.document_date else ""
+    return _format_date_full(item.document_date)
 
 
 def _build_attachments_text(aook: Aook) -> str:
@@ -721,6 +747,21 @@ def _source_act_rows(aook: Aook) -> list[dict[str, Any]]:
                 "contractor_rep_org_short": _contractor_org_short(act),
             }
         )
+    manual_items = (
+        aook.manual_source_act_items
+        .order_by("position", "id")
+    )
+    for position, item in enumerate(manual_items, start=len(rows) + 1):
+        rows.append(
+            {
+                "p_n": position,
+                "aosr": "Акт освидетельствования скрытых работ",
+                "registry_act_job_name": "Акт освидетельствования скрытых работ",
+                "registry_act_number": item.act_number,
+                "registry_act_date": _format_manual_source_act_date(item),
+                "contractor_rep_org_short": item.organization_name,
+            }
+        )
     return rows
 
 
@@ -786,6 +827,20 @@ def build_aook_xlsx_context(aook: Aook) -> dict[str, Any]:
         }
     )
     return _typograph_mapping_quotes(mapping)
+
+
+def _apply_aook_registry_date_context(mapping: dict[str, Any], aook: Aook) -> dict[str, Any]:
+    registry_mapping = dict(mapping)
+    registry_mapping.update(
+        {
+            "aosr_registry_date": _format_date_short(aook.act_date),
+            "protocols_registry_date": _format_date_short(aook.act_date),
+        }
+    )
+    registry_mapping.update(_registry_date_parts("aook", aook.act_date))
+    registry_mapping.update(_registry_date_parts("aook_job_start", aook.work_start_date))
+    registry_mapping.update(_registry_date_parts("aook_job_end", aook.work_end_date))
+    return registry_mapping
 
 
 def render_aook_xlsx(*, aook: Aook, output_path: Path, template_path: Path | None = None) -> Path:
@@ -904,7 +959,7 @@ def render_aook_registry_docx(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     document = Document(str(template_path))
-    mapping = build_aook_xlsx_context(aook)
+    mapping = _apply_aook_registry_date_context(build_aook_xlsx_context(aook), aook)
     common_mapping = {key: value for key, value in mapping.items() if key not in row_keys}
     replace_tokens(document, {key: str(value or "") for key, value in common_mapping.items()})
     _fill_docx_registry_rows(document, rows, row_keys)

@@ -7,7 +7,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
-from acts_app.models import Act, ActAttachment, ActMaterialItem, Aook, AookProtocolItem, AttachmentType
+from acts_app.models import Act, ActAttachment, ActMaterialItem, Aook, AookManualSourceAct, AookProtocolItem, AttachmentType
 
 ISO_DATE_FORMAT = "%Y-%m-%d"
 
@@ -211,6 +211,68 @@ class AookProtocolItemForm(forms.ModelForm):
         return cleaned
 
 
+class AookManualSourceActForm(forms.ModelForm):
+    class Meta:
+        model = AookManualSourceAct
+        fields = ("act_number", "act_date", "work_name", "organization_name", "sheets_count")
+        widgets = {
+            "act_date": iso_date_widget(),
+            "sheets_count": forms.NumberInput(attrs={"min": "1", "inputmode": "numeric"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "act_date" in self.fields:
+            force_iso_date_field(self.fields["act_date"])
+        self.fields["sheets_count"].required = False
+        _bootstrapify(self)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        has_any_value = any(
+            (cleaned.get(name) or "").strip() if isinstance(cleaned.get(name), str) else cleaned.get(name)
+            for name in ("act_number", "act_date", "work_name", "organization_name", "sheets_count")
+        )
+        if not has_any_value:
+            return cleaned
+        if not (cleaned.get("act_number") or "").strip():
+            raise ValidationError("Укажи номер ручного акта.")
+        if not cleaned.get("sheets_count"):
+            cleaned["sheets_count"] = 1
+        return cleaned
+
+
+class BaseAookManualSourceActFormSet(BaseInlineFormSet):
+    def save(self, commit=True):
+        objs = []
+        pos = 1
+
+        if commit:
+            for form in self.deleted_forms:
+                if form.instance and form.instance.pk:
+                    form.instance.delete()
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
+                continue
+            if not (form.cleaned_data.get("act_number") or "").strip():
+                continue
+
+            obj: AookManualSourceAct = form.save(commit=False)
+            obj.aook = self.instance
+            obj.position = pos
+            pos += 1
+            if obj.sheets_count in (None, ""):
+                obj.sheets_count = 1
+            if commit:
+                obj.save()
+            objs.append(obj)
+
+        return objs
+
+
 class BaseAookProtocolFormSet(BaseInlineFormSet):
     def save(self, commit=True):
         objs = []
@@ -245,6 +307,16 @@ AookProtocolFormSet = inlineformset_factory(
     model=AookProtocolItem,
     form=AookProtocolItemForm,
     formset=BaseAookProtocolFormSet,
+    extra=1,
+    can_delete=True,
+)
+
+
+AookManualSourceActFormSet = inlineformset_factory(
+    parent_model=Aook,
+    model=AookManualSourceAct,
+    form=AookManualSourceActForm,
+    formset=BaseAookManualSourceActFormSet,
     extra=1,
     can_delete=True,
 )
