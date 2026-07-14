@@ -176,6 +176,44 @@ def _delete_act_files(act: Act) -> None:
         pass
 
 
+def _safe_remove_tree(path: Path, allowed_roots: list[Path]) -> None:
+    try:
+        resolved_path = path.resolve()
+    except Exception:
+        return
+
+    is_allowed = False
+    for root in allowed_roots:
+        try:
+            resolved_path.relative_to(root.resolve())
+            is_allowed = True
+            break
+        except Exception:
+            continue
+
+    if not is_allowed:
+        return
+
+    try:
+        if resolved_path.exists() and resolved_path.is_dir():
+            shutil.rmtree(resolved_path)
+    except Exception:
+        pass
+
+
+def _delete_aook_files(aook: Aook) -> None:
+    allowed_roots = [Path(settings.ACTS_DIR), Path(settings.MEDIA_ROOT)]
+
+    try:
+        output_dir = get_aook_generated_paths(aook)["output_dir"]
+        _safe_remove_tree(output_dir, allowed_roots)
+    except Exception:
+        pass
+
+    legacy_dir = Path(settings.MEDIA_ROOT) / "aook" / str(aook.uuid)
+    _safe_remove_tree(legacy_dir, allowed_roots)
+
+
 def _ensure_act_can_be_deleted(act: Act) -> None:
     collector = Collector(using=router.db_for_write(Act))
     collector.collect([act])
@@ -1182,6 +1220,28 @@ class AookZipDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
             content_type="application/zip",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+
+class AookDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.delete_act"
+
+    @transaction.atomic
+    def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        aook = get_object_or_404(Aook, uuid=uuid)
+        aook_number = aook.number
+
+        _delete_aook_files(aook)
+        aook.delete()
+        messages.success(request, f"АООК №{aook_number} удалён.")
+
+        next_url = (request.POST.get("next") or "").strip()
+        if next_url and url_has_allowed_host_and_scheme(
+            next_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            return redirect(next_url)
+        return redirect(f"{reverse('acts_app:act_list')}?tab=aook")
 
 
 class ActDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):

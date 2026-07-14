@@ -319,26 +319,49 @@ def _row_contains_any_key(row, keys: set[str]) -> bool:
     return any(match.group(1).strip() in keys for match in _TOKEN_RE.finditer(row_text))
 
 
+def _docx_row_is_empty(row) -> bool:
+    return not "".join(_docx_cell_text(cell) for cell in row.cells).strip()
+
+
 def _fill_docx_registry_rows(document: Document, rows: list[dict[str, Any]], row_keys: set[str]) -> None:
     for table in _iter_docx_tables(document):
-        for row_idx, row in enumerate(table.rows):
-            if not _row_contains_any_key(row, row_keys):
-                continue
+        template_row_indexes = [
+            row_idx
+            for row_idx, row in enumerate(table.rows)
+            if _row_contains_any_key(row, row_keys)
+        ]
+        if not template_row_indexes:
+            continue
 
-            if not rows:
-                _remove_docx_row(row)
-                return
+        blank_row_indexes = []
+        row_idx = template_row_indexes[-1] + 1
+        while row_idx < len(table.rows) and _docx_row_is_empty(table.rows[row_idx]):
+            blank_row_indexes.append(row_idx)
+            row_idx += 1
 
-            for offset in range(1, len(rows)):
-                _insert_docx_row_after(table, row_idx + offset - 1)
+        for row_idx in reversed(blank_row_indexes):
+            _remove_docx_row(table.rows[row_idx])
 
-            for offset, row_mapping in enumerate(rows):
-                target_row = table.rows[row_idx + offset]
-                _replace_tokens_in_docx_row(
-                    target_row,
-                    {key: str(_typograph_quotes(value) or "") for key, value in row_mapping.items()},
-                )
+        if not rows:
+            for row_idx in reversed(template_row_indexes):
+                _remove_docx_row(table.rows[row_idx])
             return
+
+        while len(template_row_indexes) < len(rows):
+            insert_after_idx = template_row_indexes[-1]
+            _insert_docx_row_after(table, insert_after_idx)
+            template_row_indexes.append(insert_after_idx + 1)
+
+        for offset, row_mapping in enumerate(rows):
+            target_row = table.rows[template_row_indexes[offset]]
+            _replace_tokens_in_docx_row(
+                target_row,
+                {key: str(_typograph_quotes(value) or "") for key, value in row_mapping.items()},
+            )
+
+        for row_idx in reversed(template_row_indexes[len(rows):]):
+            _remove_docx_row(table.rows[row_idx])
+        return
 
     raise AookRenderError(f"В DOCX-шаблоне реестра АООК не найдена строка с плейсхолдерами: {', '.join(sorted(row_keys))}")
 

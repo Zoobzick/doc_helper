@@ -45,9 +45,8 @@
                     .acts-col-actions { width: 12%; }
                     .aook-col-num { width: 18%; }
                     .aook-col-date { width: 10%; }
-                    .aook-col-project { width: 20%; }
-                    .aook-col-works { width: 28%; }
-                    .aook-col-period { width: 12%; }
+                    .aook-col-works { width: 32%; }
+                    .aook-col-project { width: 28%; }
                     .aook-col-actions { width: 12%; }
 
                     .act-number-full {
@@ -194,9 +193,8 @@
                         <colgroup>
                             <col class="aook-col-num">
                             <col class="aook-col-date">
-                            <col class="aook-col-project">
                             <col class="aook-col-works">
-                            <col class="aook-col-period">
+                            <col class="aook-col-project">
                             <col class="aook-col-actions">
                         </colgroup>
 
@@ -204,9 +202,8 @@
                         <tr>
                             <th class="text-center text-nowrap">№ АООК</th>
                             <th class="text-center text-nowrap">Дата</th>
-                            <th class="text-center text-nowrap">Шифр проекта</th>
                             <th class="text-center">Работы</th>
-                            <th class="text-center text-nowrap">Период</th>
+                            <th class="text-center text-nowrap">Шифр проекта</th>
                             <th class="text-center text-nowrap">Действия</th>
                         </tr>
                         </thead>
@@ -216,55 +213,51 @@
                             <tr>
                                 <td>
                                     <span class="fw-semibold act-number-full">{{ aook.number }}</span>
-                                    <div class="text-muted small">
-                                        АОСР: {{ aook.source_act_items.all|length }} · прот.: {{ aook.protocol_items.all|length }}
-                                    </div>
                                 </td>
                                 <td class="text-nowrap">{{ aook.act_date|date:"d.m.Y" }}</td>
-                                <td>
-                                    <div class="projects-stack">
-                                        <div class="project-item" title="{{ aook.project }}">{{ aook.project }}</div>
-                                    </div>
-                                </td>
                                 <td>
                                     <span class="works-clip js-work-name" title="{{ aook.work_name }}" data-full="{{ aook.work_name }}">
                                         {{ aook.work_name }}
                                     </span>
                                 </td>
-                                <td class="text-nowrap">
-                                    {{ aook.work_start_date|date:"d.m.Y"|default:"—" }} - {{ aook.work_end_date|date:"d.m.Y"|default:"—" }}
+                                <td>
+                                    <div class="projects-stack">
+                                        <div class="project-item" title="{{ aook.project }}">{{ aook.project }}</div>
+                                    </div>
                                 </td>
                                 <td class="text-center text-nowrap">
-                                    <a class="btn btn-sm btn-outline-primary icon-action"
-                                       href="{% url 'acts_app:aook_detail' aook.uuid %}"
-                                       title="Открыть"
-                                       aria-label="Открыть">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
-                                    <a class="btn btn-sm btn-outline-secondary icon-action ms-1"
+                                    <a class="btn btn-sm btn-outline-secondary icon-action"
                                        href="{% url 'acts_app:aook_update' aook.uuid %}"
                                        title="Редактировать"
                                        aria-label="Редактировать">
                                         <i class="bi bi-pencil"></i>
                                     </a>
-                                    <a class="btn btn-sm btn-outline-danger icon-action ms-1"
-                                       href="{% url 'acts_app:aook_pdf_preview' aook.uuid %}"
-                                       target="_blank"
-                                       title="PDF"
-                                       aria-label="PDF">
-                                        <i class="bi bi-filetype-pdf"></i>
+                                    <a class="btn btn-sm btn-outline-primary icon-action ms-1"
+                                       href="{% url 'acts_app:aook_detail' aook.uuid %}"
+                                       title="Открыть"
+                                       aria-label="Открыть">
+                                        <i class="bi bi-eye"></i>
                                     </a>
-                                    <a class="btn btn-sm btn-outline-dark icon-action ms-1"
-                                       href="{% url 'acts_app:aook_zip_download' aook.uuid %}"
-                                       title="Скачать с актами"
-                                       aria-label="Скачать с актами">
-                                        <i class="bi bi-download"></i>
-                                    </a>
+                                    {% if perms.acts_app.delete_act %}
+                                        <form method="post"
+                                              action="{% url 'acts_app:aook_delete' aook.uuid %}"
+                                              class="d-inline"
+                                              onsubmit="return confirm('Удалить АООК №{{ aook.number|escapejs }}? Это действие нельзя отменить.');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-outline-danger icon-action ms-1"
+                                                    title="Удалить"
+                                                    aria-label="Удалить">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    {% endif %}
                                 </td>
                             </tr>
                         {% empty %}
                             <tr>
-                                <td colspan="6" class="text-center text-muted py-4">
+                                <td colspan="5" class="text-center text-muted py-4">
                                     АООК не найдены.
                                 </td>
                             </tr>

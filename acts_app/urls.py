@@ -11,6 +11,7 @@ urlpatterns = [
     path("aook/create/", views.AookCreateView.as_view(), name="aook_create"),
     path("aook/<uuid:uuid>/", views.AookDetailView.as_view(), name="aook_detail"),
     path("aook/<uuid:uuid>/edit/", views.AookUpdateView.as_view(), name="aook_update"),
+    path("aook/<uuid:uuid>/delete/", views.AookDeleteView.as_view(), name="aook_delete"),
     path("aook/<uuid:uuid>/rebuild/", views.AookRebuildFilesView.as_view(), name="aook_rebuild"),
     path("aook/<uuid:uuid>/pdf/", views.AookPdfPreviewView.as_view(), name="aook_pdf_preview"),
     path("aook/<uuid:uuid>/registry-acts/pdf/", views.AookRegistryPdfPreviewView.as_view(registry_type="acts"), name="aook_acts_registry_pdf_preview"),
