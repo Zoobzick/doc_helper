@@ -3,27 +3,95 @@ from __future__ import annotations
 import mimetypes
 import os
 from pathlib import Path
+from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.db import transaction
-from django.http import FileResponse, Http404, HttpResponseForbidden
+from django.db.models import F
+from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_POST
 
 from .forms import PassportUploadForm, PassportUpdateForm
-from .models import Passport, Material
+from .models import Passport, Material, PassportShareLink
 from .services import import_single_passport_file
 from .services_archive import import_passports_from_zip
 
 
 def _ext(filename: str) -> str:
     return os.path.splitext(filename)[1].lower().lstrip(".")
+
+
+def _safe_download_name_part(value: str, fallback: str) -> str:
+    value = " ".join((value or "").strip().split()) or fallback
+    value = "".join("_" if ch in '<>:"/\\|?*' else ch for ch in value)
+    return value.strip(" .") or fallback
+
+
+def _passport_download_filename(passport: Passport, file_path: Path) -> str:
+    material_name = _safe_download_name_part(
+        getattr(getattr(passport, "material", None), "name", "") or "",
+        "Материал",
+    )
+    document_name = _safe_download_name_part(passport.document_name or "", "Паспорт")
+    document_date = passport.document_date.strftime("%d.%m.%Y") if passport.document_date else "без даты"
+    ext = (passport.file_ext or file_path.suffix.lstrip(".") or _ext(file_path.name)).lower()
+    suffix = f".{ext}" if ext else ""
+    return f"{material_name} ({document_name} от {document_date}){suffix}"
+
+
+def _passport_browser_title(passport: Passport, file_path: Path) -> str:
+    filename = _passport_download_filename(passport, file_path)
+    suffix = file_path.suffix
+    if suffix and filename.lower().endswith(suffix.lower()):
+        return filename[: -len(suffix)]
+    return filename
+
+
+def _passport_file_path(passport: Passport) -> Path:
+    if not passport.file:
+        raise Http404("Файл не привязан")
+
+    file_path = Path(passport.file.path)
+    if not file_path.exists():
+        raise Http404("Файл не найден на диске")
+    return file_path
+
+
+def _passport_file_response(passport: Passport) -> FileResponse:
+    file_path = _passport_file_path(passport)
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    content_type = content_type or "application/octet-stream"
+
+    return FileResponse(
+        open(file_path, "rb"),
+        as_attachment=False,
+        content_type=content_type,
+        filename=_passport_download_filename(passport, file_path),
+    )
+
+
+def _passport_browser_response(request, passport: Passport, raw_url: str):
+    file_path = _passport_file_path(passport)
+    if (passport.file_ext or _ext(file_path.name)).lower() != "pdf":
+        return _passport_file_response(passport)
+
+    return render(
+        request,
+        "passports_app/passport_file_viewer.html",
+        {
+            "title": _passport_browser_title(passport, file_path),
+            "raw_url": raw_url,
+        },
+    )
 
 
 class PassportsListView(PermissionRequiredMixin, View):
@@ -213,22 +281,53 @@ class PassportOpenView(PermissionRequiredMixin, View):
     raise_exception = True
 
     def get(self, request, pk: int):
+        passport = get_object_or_404(Passport.objects.select_related("material"), pk=pk)
+        if request.GET.get("raw") == "1":
+            return _passport_file_response(passport)
+
+        raw_url = f"{reverse('passports:passport_open', kwargs={'pk': passport.pk})}?raw=1"
+        return _passport_browser_response(request, passport, raw_url)
+
+
+class PassportShareLinkCreateView(PermissionRequiredMixin, View):
+    permission_required = "passports_app.view_passport"
+    raise_exception = True
+
+    def post(self, request, pk: int):
         passport = get_object_or_404(Passport, pk=pk)
-
         if not passport.file:
-            raise Http404("Файл не привязан")
+            return JsonResponse({"error": "file_missing"}, status=400)
 
-        file_path = Path(passport.file.path)
-        if not file_path.exists():
-            raise Http404("Файл не найден на диске")
+        ttl_hours = getattr(settings, "PASSPORT_SHARE_LINK_TTL_HOURS", 24)
+        expires_at = timezone.now() + timedelta(hours=float(ttl_hours))
+        link = PassportShareLink.objects.create(
+            passport=passport,
+            created_by=request.user,
+            expires_at=expires_at,
+        )
+        url = request.build_absolute_uri(reverse("passports:passport_shared_open", kwargs={"token": link.token}))
+        return JsonResponse({"url": url, "expires_at": link.expires_at.isoformat()})
 
-        content_type, _ = mimetypes.guess_type(str(file_path))
-        content_type = content_type or "application/octet-stream"
 
-        filename = passport.original_name or file_path.name
-        resp = FileResponse(open(file_path, "rb"), content_type=content_type)
-        resp["Content-Disposition"] = f'inline; filename="{filename}"'
-        return resp
+@method_decorator(xframe_options_sameorigin, name="dispatch")
+class PassportSharedOpenView(View):
+    def get(self, request, token: str):
+        link = get_object_or_404(
+            PassportShareLink.objects.select_related("passport", "passport__material"),
+            token=token,
+            revoked_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+        if request.GET.get("raw") == "1":
+            PassportShareLink.objects.filter(pk=link.pk).update(
+                access_count=F("access_count") + 1,
+                last_accessed_at=timezone.now(),
+            )
+            return _passport_file_response(link.passport)
+
+        raw_url = f"{reverse('passports:passport_shared_open', kwargs={'token': link.token})}?raw=1"
+        return _passport_browser_response(request, link.passport, raw_url)
+
 
 class PassportDeleteView(PermissionRequiredMixin, View):
     """

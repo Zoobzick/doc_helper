@@ -107,6 +107,7 @@ MEDIA_ROOT = BASE_ID_DIR
 
 # Разрешенные типы файлов (опционально в валидаторе формы)
 ALLOWED_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
+PASSPORT_SHARE_LINK_TTL_HOURS = int(os.environ.get("PASSPORT_SHARE_LINK_TTL_HOURS", "24"))
 
 
 # Quick-start development settings - unsuitable for production
