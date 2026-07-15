@@ -178,11 +178,10 @@
                             <table class="table table-sm align-middle" id="manual-source-table">
                                 <thead>
                                 <tr>
-                                    <th style="width: 180px;">№ акта</th>
-                                    <th style="width: 160px;">Дата</th>
-                                    <th>Наименование работ</th>
-                                    <th style="width: 220px;">Организация</th>
-                                    <th style="width: 100px;">Листов</th>
+                                    <th>Наименование документа</th>
+                                    <th style="width: 220px;">№ чертежа, акта, разрешения, журнала работ и др.</th>
+                                    <th style="width: 160px;">Дата документа</th>
+                                    <th style="width: 220px;">Организация, составившая документ</th>
                                     <th style="width: 96px;"></th>
                                 </tr>
                                 </thead>
@@ -191,13 +190,15 @@
                                     <tr class="manual-source-row">
                                         {{ f.id }}
                                         <td>
-                                            {{ f.act_number }}
-                                            {% if f.act_number.errors %}<div class="invalid-feedback d-block">{{ f.act_number.errors }}</div>{% endif %}
+                                            {{ f.document_name }}
+                                            {% if f.document_name.errors %}<div class="invalid-feedback d-block">{{ f.document_name.errors }}</div>{% endif %}
                                         </td>
-                                        <td>{{ f.act_date }}</td>
-                                        <td>{{ f.work_name }}</td>
+                                        <td>
+                                            {{ f.document_number }}
+                                            {% if f.document_number.errors %}<div class="invalid-feedback d-block">{{ f.document_number.errors }}</div>{% endif %}
+                                        </td>
+                                        <td>{{ f.document_date }}</td>
                                         <td>{{ f.organization_name }}</td>
-                                        <td>{{ f.sheets_count }}</td>
                                         <td class="text-center text-nowrap">
                                             <span class="d-none">{{ f.DELETE }}</span>
                                             <button type="button" class="btn btn-outline-secondary btn-sm js-duplicate-manual-source" title="Дублировать">
@@ -216,11 +217,10 @@
                         <template id="manual-source-empty-template">
                             <tr class="manual-source-row">
                                 {{ manual_source_formset.empty_form.id }}
-                                <td>{{ manual_source_formset.empty_form.act_number }}</td>
-                                <td>{{ manual_source_formset.empty_form.act_date }}</td>
-                                <td>{{ manual_source_formset.empty_form.work_name }}</td>
+                                <td>{{ manual_source_formset.empty_form.document_name }}</td>
+                                <td>{{ manual_source_formset.empty_form.document_number }}</td>
+                                <td>{{ manual_source_formset.empty_form.document_date }}</td>
                                 <td>{{ manual_source_formset.empty_form.organization_name }}</td>
-                                <td>{{ manual_source_formset.empty_form.sheets_count }}</td>
                                 <td class="text-center text-nowrap">
                                     <span class="d-none">{{ manual_source_formset.empty_form.DELETE }}</span>
                                     <button type="button" class="btn btn-outline-secondary btn-sm js-duplicate-manual-source" title="Дублировать">

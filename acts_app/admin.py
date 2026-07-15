@@ -7,6 +7,7 @@ from django.utils.html import format_html
 from acts_app.models import (
     Act,
     Aook,
+    AookManualSourceAct,
     AookProtocolItem,
     AookSourceAct,
     ActParty,
@@ -66,6 +67,11 @@ class AookProtocolItemInline(admin.TabularInline):
     extra = 0
 
 
+class AookManualSourceActInline(admin.TabularInline):
+    model = AookManualSourceAct
+    extra = 0
+
+
 @admin.register(Aook)
 class AookAdmin(admin.ModelAdmin):
     list_display = ("number", "act_date", "project", "created_by", "created_at")
@@ -74,7 +80,7 @@ class AookAdmin(admin.ModelAdmin):
     ordering = ("-act_date", "-id")
     autocomplete_fields = ("project",)
     readonly_fields = ("uuid", "created_at", "updated_at")
-    inlines = (AookSourceActInline, AookProtocolItemInline)
+    inlines = (AookSourceActInline, AookManualSourceActInline, AookProtocolItemInline)
 
 
 @admin.register(AookSourceAct)
@@ -87,6 +93,14 @@ class AookSourceActAdmin(admin.ModelAdmin):
 
 @admin.register(AookProtocolItem)
 class AookProtocolItemAdmin(admin.ModelAdmin):
+    list_display = ("id", "aook", "position", "document_name", "document_number", "document_date")
+    search_fields = ("aook__number", "document_name", "document_number", "organization_name")
+    ordering = ("aook", "position", "id")
+    autocomplete_fields = ("aook",)
+
+
+@admin.register(AookManualSourceAct)
+class AookManualSourceActAdmin(admin.ModelAdmin):
     list_display = ("id", "aook", "position", "document_name", "document_number", "document_date")
     search_fields = ("aook__number", "document_name", "document_number", "organization_name")
     ordering = ("aook", "position", "id")

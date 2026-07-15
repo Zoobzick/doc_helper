@@ -567,11 +567,14 @@ class AookSourceAct(models.Model):
 class AookManualSourceAct(models.Model):
     aook = models.ForeignKey("acts_app.Aook", on_delete=models.CASCADE, related_name="manual_source_act_items")
     position = models.PositiveIntegerField("Позиция", validators=[MinValueValidator(1)], default=1)
-    act_number = models.CharField("№ акта", max_length=255)
-    act_date = models.DateField("Дата акта", null=True, blank=True)
-    work_name = models.CharField("Наименование работ", max_length=512, blank=True, default="")
-    organization_name = models.CharField("Организация", max_length=255, blank=True, default="")
-    sheets_count = models.PositiveIntegerField("Листов", validators=[MinValueValidator(1)], default=1)
+    document_name = models.CharField(
+        "Наименование документа",
+        max_length=512,
+        default="Акт освидетельствования скрытых работ",
+    )
+    document_number = models.CharField("№ чертежа, акта, разрешения, журнала работ и др.", max_length=255)
+    document_date = models.DateField("Дата документа", null=True, blank=True)
+    organization_name = models.CharField("Организация, составившая документ", max_length=255, blank=True, default="")
 
     class Meta:
         verbose_name = "Ручная строка АОСР в АООК"
@@ -585,11 +588,11 @@ class AookManualSourceAct(models.Model):
         ]
 
     def __str__(self) -> str:
-        parts = [f"{self.position}. АОСР"]
-        if self.act_number:
-            parts.append(f"№{self.act_number}")
-        if self.act_date:
-            parts.append(f"от {self.act_date:%d.%m.%Y}")
+        parts = [f"{self.position}. {self.document_name}"]
+        if self.document_number:
+            parts.append(f"№{self.document_number}")
+        if self.document_date:
+            parts.append(f"от {self.document_date:%d.%m.%Y}")
         return " ".join(parts)
 
 

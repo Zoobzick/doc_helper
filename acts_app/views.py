@@ -433,7 +433,7 @@ def _aook_period_from_acts(acts: list[Act]):
 
 
 def _aook_period_from_manual_source_items(items: list[AookManualSourceAct]):
-    dates = [item.act_date for item in items if item.act_date]
+    dates = [item.document_date for item in items if item.document_date]
     return (min(dates) if dates else None, max(dates) if dates else None)
 
 

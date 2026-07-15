@@ -17,11 +17,10 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("position", models.PositiveIntegerField(default=1, validators=[django.core.validators.MinValueValidator(1)], verbose_name="Позиция")),
-                ("act_number", models.CharField(max_length=255, verbose_name="№ акта")),
-                ("act_date", models.DateField(blank=True, null=True, verbose_name="Дата акта")),
-                ("work_name", models.CharField(blank=True, default="", max_length=512, verbose_name="Наименование работ")),
-                ("organization_name", models.CharField(blank=True, default="", max_length=255, verbose_name="Организация")),
-                ("sheets_count", models.PositiveIntegerField(default=1, validators=[django.core.validators.MinValueValidator(1)], verbose_name="Листов")),
+                ("document_name", models.CharField(default="Акт освидетельствования скрытых работ", max_length=512, verbose_name="Наименование документа")),
+                ("document_number", models.CharField(max_length=255, verbose_name="№ чертежа, акта, разрешения, журнала работ и др.")),
+                ("document_date", models.DateField(blank=True, null=True, verbose_name="Дата документа")),
+                ("organization_name", models.CharField(blank=True, default="", max_length=255, verbose_name="Организация, составившая документ")),
                 ("aook", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="manual_source_act_items", to="acts_app.aook")),
             ],
             options={

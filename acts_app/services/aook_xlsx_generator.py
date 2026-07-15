@@ -123,7 +123,7 @@ def _format_act_registry_date(act) -> str:
 
 
 def _format_manual_source_act_date(item: AookManualSourceAct) -> str:
-    return _format_date_full(item.act_date)
+    return _format_date_full(item.document_date)
 
 
 def _format_protocol_date(item: AookProtocolItem) -> str:
@@ -755,9 +755,9 @@ def _source_act_rows(aook: Aook) -> list[dict[str, Any]]:
         rows.append(
             {
                 "p_n": position,
-                "aosr": "Акт освидетельствования скрытых работ",
-                "registry_act_job_name": "Акт освидетельствования скрытых работ",
-                "registry_act_number": item.act_number,
+                "aosr": item.document_name or "Акт освидетельствования скрытых работ",
+                "registry_act_job_name": item.document_name or "Акт освидетельствования скрытых работ",
+                "registry_act_number": item.document_number,
                 "registry_act_date": _format_manual_source_act_date(item),
                 "contractor_rep_org_short": item.organization_name,
             }

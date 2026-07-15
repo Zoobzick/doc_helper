@@ -279,12 +279,12 @@
                                             <td class="text-muted">2.{{ forloop.counter|add:source_count }}</td>
                                             <td>
                                                 <span class="appendix-label">
-                                                    АОСР №{{ item.act_number }}
-                                                    {% if item.act_date %} от {{ item.act_date|date:"d.m.Y" }}{% endif %}
-                                                    {% if item.work_name %} - {{ item.work_name }}{% endif %}
+                                                    {{ item.document_name }}
+                                                    {% if item.document_number %} №{{ item.document_number }}{% endif %}
+                                                    {% if item.document_date %} от {{ item.document_date|date:"d.m.Y" }}{% endif %}
                                                 </span>
                                             </td>
-                                            <td class="text-end">{{ item.sheets_count|default:"—" }}</td>
+                                            <td class="text-end">—</td>
                                         </tr>
                                     {% endfor %}
                                 {% endwith %}

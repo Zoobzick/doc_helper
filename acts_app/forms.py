@@ -214,33 +214,36 @@ class AookProtocolItemForm(forms.ModelForm):
 class AookManualSourceActForm(forms.ModelForm):
     class Meta:
         model = AookManualSourceAct
-        fields = ("act_number", "act_date", "work_name", "organization_name", "sheets_count")
+        fields = ("document_name", "document_number", "document_date", "organization_name")
         widgets = {
-            "act_date": iso_date_widget(),
-            "sheets_count": forms.NumberInput(attrs={"min": "1", "inputmode": "numeric"}),
+            "document_date": iso_date_widget(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if "act_date" in self.fields:
-            force_iso_date_field(self.fields["act_date"])
-        self.fields["sheets_count"].required = False
+        if "document_date" in self.fields:
+            force_iso_date_field(self.fields["document_date"])
+        self.fields["document_name"].required = False
+        if not self.instance.pk:
+            self.fields["document_name"].initial = self.fields["document_name"].initial or "Акт освидетельствования скрытых работ"
         _bootstrapify(self)
 
     def clean(self):
         cleaned = super().clean()
         if cleaned.get("DELETE"):
             return cleaned
+        if not self.has_changed():
+            return cleaned
         has_any_value = any(
             (cleaned.get(name) or "").strip() if isinstance(cleaned.get(name), str) else cleaned.get(name)
-            for name in ("act_number", "act_date", "work_name", "organization_name", "sheets_count")
+            for name in ("document_name", "document_number", "document_date", "organization_name")
         )
         if not has_any_value:
             return cleaned
-        if not (cleaned.get("act_number") or "").strip():
-            raise ValidationError("Укажи номер ручного акта.")
-        if not cleaned.get("sheets_count"):
-            cleaned["sheets_count"] = 1
+        if not (cleaned.get("document_name") or "").strip():
+            cleaned["document_name"] = "Акт освидетельствования скрытых работ"
+        if not (cleaned.get("document_number") or "").strip():
+            raise ValidationError("Укажи номер документа.")
         return cleaned
 
 
@@ -257,15 +260,15 @@ class BaseAookManualSourceActFormSet(BaseInlineFormSet):
         for form in self.forms:
             if not hasattr(form, "cleaned_data") or form.cleaned_data.get("DELETE"):
                 continue
-            if not (form.cleaned_data.get("act_number") or "").strip():
+            if not (form.cleaned_data.get("document_number") or "").strip():
                 continue
 
             obj: AookManualSourceAct = form.save(commit=False)
             obj.aook = self.instance
             obj.position = pos
             pos += 1
-            if obj.sheets_count in (None, ""):
-                obj.sheets_count = 1
+            if not (obj.document_name or "").strip():
+                obj.document_name = "Акт освидетельствования скрытых работ"
             if commit:
                 obj.save()
             objs.append(obj)
