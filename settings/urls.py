@@ -17,6 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+handler400 = "settings.error_views.bad_request"
+handler403 = "settings.error_views.permission_denied"
+handler404 = "settings.error_views.page_not_found"
+handler500 = "settings.error_views.server_error"
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include(("authapp.urls", "authapp"), namespace="authapp")),
