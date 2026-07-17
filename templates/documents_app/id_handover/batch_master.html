@@ -466,12 +466,12 @@
 
                                                         {% if user.is_superuser or perms.documents_app.change_documentbatch %}
                                                             <form method="post"
-                                                                  action="{% url 'documents:id_handover_batch_refresh_composition' batch.id %}"
+                                                                  action="{% url 'documents:id_handover_batch_refresh_project_composition' batch.id project.project_id %}"
                                                                   class="d-inline js-summary-action">
                                                                 {% csrf_token %}
                                                                 <button type="submit"
                                                                         class="btn btn-outline-secondary btn-sm"
-                                                                        title="Пока обновляется весь состав комплекта, включая этот шифр.">
+                                                                        title="Обновить автоматический состав актов только этого шифра.">
                                                                     <i class="bi bi-arrow-repeat me-1"></i>
                                                                     Обновить шифр
                                                                 </button>

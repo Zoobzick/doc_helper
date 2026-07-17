@@ -1576,6 +1576,158 @@ class DocumentBatchRefreshCompositionView(LoginRequiredMixin, PermissionRequired
         }
 
 
+class DocumentBatchRefreshProjectCompositionView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Обновляет состав актов только одного шифра внутри комплекта."""
+
+    permission_required = "documents_app.change_documentbatch"
+    raise_exception = True
+
+    def post(self, request, *args, **kwargs):
+        batch = get_object_or_404(DocumentBatch, pk=kwargs["batch_id"])
+        batch_project = get_object_or_404(
+            DocumentBatchProject.objects.select_related("project"),
+            batch=batch,
+            project_id=kwargs["project_id"],
+        )
+
+        try:
+            result = self._refresh_project_composition(
+                batch=batch,
+                batch_project=batch_project,
+            )
+            _refresh_batch_generated_documents_actuality(batch=batch)
+        except DocumentBatchComposerValidationError as exc:
+            messages.error(request, f"Не удалось обновить шифр: {exc}")
+            return redirect(
+                f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2"
+            )
+        except Exception as exc:
+            messages.error(request, f"Ошибка обновления шифра: {exc}")
+            return redirect(
+                f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2"
+            )
+
+        messages.success(
+            request,
+            (
+                f"Шифр {batch_project.project.full_code or batch_project.project_id} обновлён: "
+                f"auto-актов — {result['auto_acts_count']}, "
+                f"сохранено manual-актов — {result['manual_acts_count']}."
+            ),
+        )
+        return redirect(
+            f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2"
+        )
+
+    @transaction.atomic
+    def _refresh_project_composition(
+        self,
+        *,
+        batch: DocumentBatch,
+        batch_project: DocumentBatchProject,
+    ) -> dict[str, int | bool]:
+        project_ids = list(
+            batch.batch_projects.order_by("order", "id").values_list("project_id", flat=True)
+        )
+        if batch.project_scope == DocumentBatchProjectScope.AUTO_BY_PERIOD:
+            project_ids = []
+
+        params = BatchCreateParams(
+            created_by=batch.created_by,
+            title=(batch.title or "").strip(),
+            comment=(batch.comment or "").strip(),
+            selection_mode=batch.selection_mode,
+            month_from=(batch.month_from or "").strip(),
+            month_to=(batch.month_to or "").strip(),
+            generation_mode=batch.generation_mode,
+            letter_type=batch.letter_type,
+            letter_number=(batch.letter_number or "").strip(),
+            letter_date=batch.letter_date,
+            documentation_type=batch.documentation_type,
+            project_scope=batch.project_scope,
+            project_ids=project_ids,
+        )
+        composer = DocumentBatchComposer(params=params)
+        composer._validate_input_params()
+
+        project = batch_project.project
+        fresh_auto_acts = composer._resolve_acts_by_project(projects=[project]).get(project.id, [])
+        existing_acts = list(
+            DocumentBatchAct.objects.filter(batch=batch, project=project)
+            .select_related("act", "added_by")
+            .order_by("order", "id")
+        )
+        existing_act_ids = [item.act_id for item in existing_acts]
+        manual_acts = [
+            item for item in existing_acts if item.source == DocumentBatchActSource.MANUAL
+        ]
+
+        fresh_auto_act_ids = {act.id for act in fresh_auto_acts}
+        preserved_manual_acts = [
+            item for item in manual_acts if item.act_id not in fresh_auto_act_ids
+        ]
+        fresh_act_ids = [act.id for act in fresh_auto_acts] + [
+            item.act_id for item in preserved_manual_acts
+        ]
+        composition_changed = existing_act_ids != fresh_act_ids
+
+        DocumentBatchAct.objects.filter(batch=batch, project=project).delete()
+
+        batch_acts_to_create = []
+        for order, act in enumerate(fresh_auto_acts, start=1):
+            batch_acts_to_create.append(
+                DocumentBatchAct(
+                    batch=batch,
+                    project=project,
+                    act=act,
+                    order=order,
+                    source=DocumentBatchActSource.AUTO,
+                    added_by=batch.created_by,
+                )
+            )
+
+        next_order = len(batch_acts_to_create) + 1
+        for manual_item in preserved_manual_acts:
+            batch_acts_to_create.append(
+                DocumentBatchAct(
+                    batch=batch,
+                    project=project,
+                    act=manual_item.act,
+                    order=next_order,
+                    source=DocumentBatchActSource.MANUAL,
+                    added_by=manual_item.added_by,
+                )
+            )
+            next_order += 1
+
+        if batch_acts_to_create:
+            DocumentBatchAct.objects.bulk_create(batch_acts_to_create)
+
+        if composition_changed:
+            batch_project.review_status = DocumentBatchProjectReviewStatus.PENDING
+            batch_project.review_started_at = None
+            batch_project.review_started_by = None
+            batch_project.reviewed_at = None
+            batch_project.reviewed_by = None
+            batch_project.save(
+                update_fields=[
+                    "review_status",
+                    "review_started_at",
+                    "review_started_by",
+                    "reviewed_at",
+                    "reviewed_by",
+                ]
+            )
+
+        DocumentBatchPreviewBuilder().build_and_save_snapshot(batch=batch)
+
+        return {
+            "auto_acts_count": len(fresh_auto_acts),
+            "manual_acts_count": len(preserved_manual_acts),
+            "composition_changed": composition_changed,
+        }
+
+
 def _parse_month_code(month_code: str) -> tuple[int, int]:
     """
     Преобразует 'MM.YYYY' -> (year, month)
