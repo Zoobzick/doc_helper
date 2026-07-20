@@ -822,69 +822,89 @@ class DocumentBatchDownloadRegistriesView(LoginRequiredMixin, PermissionRequired
             .order_by("order", "id")
         )
         registry_documents = {
-            document.project_id: document
+            (document.project_id, document.document_type): document
             for document in GeneratedDocument.objects.filter(
                 batch=batch,
-                document_type=GeneratedDocumentType.REGISTRY_XLSX,
+                document_type__in=(
+                    GeneratedDocumentType.REGISTRY_XLSX,
+                    GeneratedDocumentType.REGISTRY_PREVIEW_PDF,
+                ),
                 project__isnull=False,
             ).select_related("batch", "project")
         }
 
         signature_service = DocumentSignatureService()
         unavailable_projects: list[str] = []
-        archive_items: list[tuple[str, GeneratedDocument]] = []
+        archive_items: list[tuple[str, GeneratedDocument, GeneratedDocument]] = []
 
         for batch_project in batch_projects:
             project_code = (batch_project.project.full_code or "").strip() or str(batch_project.project_id)
-            document = registry_documents.get(batch_project.project_id)
-            if not document or not document.file:
+            xlsx_document = registry_documents.get(
+                (batch_project.project_id, GeneratedDocumentType.REGISTRY_XLSX)
+            )
+            pdf_document = registry_documents.get(
+                (batch_project.project_id, GeneratedDocumentType.REGISTRY_PREVIEW_PDF)
+            )
+            if (
+                not xlsx_document
+                or not xlsx_document.file
+                or not pdf_document
+                or not pdf_document.file
+            ):
                 unavailable_projects.append(project_code)
                 continue
 
             try:
-                is_actual = signature_service.check_document_actuality(
-                    generated_document=document,
-                ).is_actual
+                documents_are_actual = all(
+                    signature_service.check_document_actuality(
+                        generated_document=document,
+                    ).is_actual
+                    for document in (xlsx_document, pdf_document)
+                )
             except Exception:
-                is_actual = False
+                documents_are_actual = False
 
-            if not is_actual:
+            if not documents_are_actual:
                 unavailable_projects.append(project_code)
                 continue
 
-            archive_items.append((project_code, document))
+            archive_items.append((project_code, xlsx_document, pdf_document))
 
         if unavailable_projects:
             messages.error(
                 request,
                 (
-                    "Нельзя скачать комплект: отсутствуют или устарели XLSX-реестры для шифров: "
+                    "Нельзя скачать комплект: отсутствуют или устарели XLSX/PDF-реестры для шифров: "
                     f"{', '.join(unavailable_projects)}. Сначала сформируйте документы."
                 ),
             )
             return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
 
         if not archive_items:
-            messages.error(request, "В комплекте нет XLSX-реестров для скачивания.")
+            messages.error(request, "В комплекте нет XLSX/PDF-реестров для скачивания.")
             return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
 
         root_folder = self._build_root_folder_name(batch=batch)
         archive_buffer = io.BytesIO()
         with zipfile.ZipFile(archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for project_code, document in archive_items:
+            for project_code, xlsx_document, pdf_document in archive_items:
                 safe_project_code = (
                     _sanitize_download_filename_part(project_code)
-                    or f"project_{document.project_id}"
+                    or f"project_{xlsx_document.project_id}"
                 )
-                archive_path = (
-                    f"{root_folder}/{safe_project_code}/"
-                    f"Реестр {safe_project_code}.xlsx"
-                )
-                document.file.open("rb")
-                try:
-                    archive.writestr(archive_path, document.file.read())
-                finally:
-                    document.file.close()
+                for extension, document in (
+                    (".xlsx", xlsx_document),
+                    (".pdf", pdf_document),
+                ):
+                    archive_path = (
+                        f"{root_folder}/{safe_project_code}/"
+                        f"Реестр {safe_project_code}{extension}"
+                    )
+                    document.file.open("rb")
+                    try:
+                        archive.writestr(archive_path, document.file.read())
+                    finally:
+                        document.file.close()
 
         archive_buffer.seek(0)
         return FileResponse(

@@ -426,6 +426,14 @@ class DocumentBatchRefreshProjectCompositionTests(TestCase):
                     file=ContentFile(b"xlsx", name=f"registry-{project.id}.xlsx"),
                     created_by=self.user,
                 )
+                GeneratedDocument.objects.create(
+                    batch=self.batch,
+                    project=project,
+                    document_type=GeneratedDocumentType.REGISTRY_PREVIEW_PDF,
+                    source_kind=GeneratedDocumentSourceKind.GENERATED,
+                    file=ContentFile(b"pdf", name=f"registry-{project.id}.pdf"),
+                    created_by=self.user,
+                )
 
             response = self.client.get(
                 reverse(
@@ -441,6 +449,8 @@ class DocumentBatchRefreshProjectCompositionTests(TestCase):
                 archive.namelist(),
                 [
                     "Реестры (01.2026)/CODE-1/Реестр CODE-1.xlsx",
+                    "Реестры (01.2026)/CODE-1/Реестр CODE-1.pdf",
                     "Реестры (01.2026)/CODE-2/Реестр CODE-2.xlsx",
+                    "Реестры (01.2026)/CODE-2/Реестр CODE-2.pdf",
                 ],
             )
