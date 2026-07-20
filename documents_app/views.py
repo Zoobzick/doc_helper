@@ -139,13 +139,10 @@ def _get_batch_preview_project(*, batch: DocumentBatch, project_id: int) -> dict
     Возвращает preview одного шифра из общего preview комплекта.
     """
     builder = DocumentBatchPreviewBuilder()
-    preview_data = builder.build(batch=batch)
-
-    for project_payload in preview_data.get("projects", []):
-        if project_payload.get("project_id") == project_id:
-            return project_payload
-
-    raise Http404("Проект не входит в состав данного комплекта.")
+    try:
+        return builder.build_project(batch=batch, project_id=project_id)
+    except DocumentBatchPreviewBuilderError as exc:
+        raise Http404("Проект не входит в состав данного комплекта.") from exc
 
 
 def _build_project_review_context(*, batch: DocumentBatch, project_id: int, request_user=None) -> dict:
@@ -1047,7 +1044,6 @@ class DocumentBatchMasterView(LoginRequiredMixin, PermissionRequiredMixin, Templ
         context["form"] = form
         context["projects_count"] = Project.objects.count()
         context["preview_data"] = self._build_preview_safe(batch=batch) if batch else None
-        context["generated_documents"] = self._get_generated_documents(batch=batch) if batch else []
         context["is_edit_mode"] = batch is not None
         context["requested_step"] = kwargs.get("requested_step", self._get_requested_step())
 
@@ -1100,7 +1096,7 @@ class DocumentBatchMasterView(LoginRequiredMixin, PermissionRequiredMixin, Templ
     def _build_preview_safe(self, *, batch: DocumentBatch) -> dict | None:
         builder = DocumentBatchPreviewBuilder()
         try:
-            preview_data = builder.build(batch=batch)
+            preview_data = builder.build_compact(batch=batch)
             return _enrich_preview_with_review_state(batch=batch, preview_data=preview_data)
         except DocumentBatchPreviewBuilderError as exc:
             messages.warning(
@@ -1108,30 +1104,6 @@ class DocumentBatchMasterView(LoginRequiredMixin, PermissionRequiredMixin, Templ
                 f"Не удалось построить preview комплекта: {exc}",
             )
             return None
-
-    def _get_generated_documents(self, *, batch: DocumentBatch):
-        signature_service = DocumentSignatureService()
-        documents = list(
-            GeneratedDocument.objects.select_related("project", "batch")
-            .filter(batch=batch)
-            .order_by("project_id", "document_type", "id")
-        )
-
-        actuality_map: dict[int, bool] = {}
-        for document in documents:
-            try:
-                result = signature_service.check_document_actuality(
-                    generated_document=document,
-                )
-                actuality_map[document.id] = result.is_actual
-            except Exception:
-                actuality_map[document.id] = document.is_actual
-
-        for document in documents:
-            document.calculated_is_actual = actuality_map.get(document.id, document.is_actual)
-
-        return documents
-
 
 class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     permission_required = "documents_app.view_documentbatch"
@@ -2543,7 +2515,7 @@ class DocumentBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
     def _build_preview_safe(self, *, batch: DocumentBatch) -> dict | None:
         builder = DocumentBatchPreviewBuilder()
         try:
-            preview_data = builder.build(batch=batch)
+            preview_data = builder.build_compact(batch=batch)
             preview_data["projects"] = sorted(
                 preview_data.get("projects", []),
                 key=lambda project_payload: _natural_sort_key(project_payload.get("project_code") or ""),
@@ -2557,25 +2529,13 @@ class DocumentBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
             return None
 
     def _get_generated_documents(self, *, batch: DocumentBatch):
-        signature_service = DocumentSignatureService()
         documents = list(
             GeneratedDocument.objects.select_related("project", "batch")
             .filter(batch=batch)
             .order_by("project_id", "document_type", "id")
         )
-
-        actuality_map: dict[int, bool] = {}
         for document in documents:
-            try:
-                result = signature_service.check_document_actuality(
-                    generated_document=document,
-                )
-                actuality_map[document.id] = result.is_actual
-            except Exception:
-                actuality_map[document.id] = document.is_actual
-
-        for document in documents:
-            document.calculated_is_actual = actuality_map.get(document.id, document.is_actual)
+            document.calculated_is_actual = document.is_actual
 
         return documents
 

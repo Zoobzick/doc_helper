@@ -142,6 +142,97 @@ class DocumentBatchPreviewBuilder:
         }
         return preview_data
 
+    def build_compact(self, *, batch: DocumentBatch) -> dict[str, Any]:
+        """Строит сводку комплекта без тяжёлых текстов и строк каждого акта."""
+        batch_projects = self._get_batch_projects(batch=batch)
+        batch_acts_by_project = self._get_batch_acts_grouped(batch=batch)
+        projects_payload: list[dict[str, Any]] = []
+
+        total_acts_count = 0
+        total_rows_count = 0
+        total_sheets_count = 0
+
+        for batch_project in batch_projects:
+            batch_acts = batch_acts_by_project.get(batch_project.project_id, [])
+            acts_count = len(batch_acts)
+            rows_count = 0
+            sheets_count = 0
+
+            for batch_act in batch_acts:
+                appendix_lines = list(batch_act.act.appendix_lines.all())
+                rows_count += 1 + len(appendix_lines)
+                sheets_count += 1 + sum(
+                    self._normalize_sheets_count(get_batch_appendix_sheets_count(line))
+                    for line in appendix_lines
+                )
+
+            project = batch_project.project
+            project_name = getattr(project, "full_code", None) or str(project)
+            projects_payload.append(
+                {
+                    "project": {
+                        "id": project.id,
+                        "uuid": str(getattr(project, "uuid", "")) if getattr(project, "uuid", None) else "",
+                        "title": project_name,
+                        "full_code": getattr(project, "full_code", ""),
+                        "order": batch_project.order,
+                        "batch_project_id": batch_project.id,
+                    },
+                    "summary": {
+                        "acts_count": acts_count,
+                        "registry_rows_count": rows_count,
+                        "documents_count": rows_count,
+                        "total_sheets_count": sheets_count,
+                    },
+                    "project_id": project.id,
+                    "project_code": getattr(project, "full_code", ""),
+                    "project_name": project_name,
+                    "acts_count": acts_count,
+                    "registry_rows_count": rows_count,
+                    "documents_count": rows_count,
+                    "total_sheets_count": sheets_count,
+                    "acts": [],
+                    "registry_rows": [],
+                    "document_rows": [],
+                }
+            )
+            total_acts_count += acts_count
+            total_rows_count += rows_count
+            total_sheets_count += sheets_count
+
+        return {
+            "batch": self._build_batch_payload(batch=batch),
+            "summary": {
+                "projects_count": len(projects_payload),
+                "acts_count": total_acts_count,
+                "registry_rows_count": total_rows_count,
+                "total_sheets_count": total_sheets_count,
+            },
+            "projects": projects_payload,
+        }
+
+    def build_project(self, *, batch: DocumentBatch, project_id: int) -> dict[str, Any]:
+        """Строит полный preview только одного проекта комплекта."""
+        batch_project = (
+            DocumentBatchProject.objects
+            .filter(batch=batch, project_id=project_id)
+            .select_related("project")
+            .first()
+        )
+        if not batch_project:
+            raise DocumentBatchPreviewBuilderError(
+                "Проект не входит в состав данного комплекта."
+            )
+
+        batch_acts = self._get_batch_acts_grouped(
+            batch=batch,
+            project_id=project_id,
+        ).get(project_id, [])
+        return self._build_project_payload(
+            batch_project=batch_project,
+            batch_acts=batch_acts,
+        )
+
     @transaction.atomic
     def build_and_save_snapshot(self, *, batch: DocumentBatch) -> dict[str, Any]:
         """
@@ -163,7 +254,12 @@ class DocumentBatchPreviewBuilder:
             .order_by("order", "id")
         )
 
-    def _get_batch_acts_grouped(self, *, batch: DocumentBatch) -> dict[int, list[DocumentBatchAct]]:
+    def _get_batch_acts_grouped(
+        self,
+        *,
+        batch: DocumentBatch,
+        project_id: int | None = None,
+    ) -> dict[int, list[DocumentBatchAct]]:
         """
         Загружает все DocumentBatchAct и группирует их по project_id.
 
@@ -182,9 +278,12 @@ class DocumentBatchPreviewBuilder:
             ),
         )
 
+        batch_acts_queryset = DocumentBatchAct.objects.filter(batch=batch)
+        if project_id is not None:
+            batch_acts_queryset = batch_acts_queryset.filter(project_id=project_id)
+
         batch_acts = list(
-            DocumentBatchAct.objects
-            .filter(batch=batch)
+            batch_acts_queryset
             .select_related("project", "act")
             .prefetch_related(appendix_prefetch, materials_prefetch)
             .order_by("project_id", "order", "id")

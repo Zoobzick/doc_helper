@@ -12,7 +12,7 @@ from django.test import SimpleTestCase, TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 
-from acts_app.models import Act, AttachmentType
+from acts_app.models import Act, ActAppendixLine, AttachmentType
 from documents_app.models import (
     DocumentBatch,
     DocumentBatchAct,
@@ -31,7 +31,11 @@ from documents_app.services.id_handover.material_registry_projection import (
     build_material_registry_documents,
     get_batch_appendix_sheets_count,
 )
-from documents_app.views import DocumentBatchRefreshProjectCompositionView
+from documents_app.services.id_handover.preview_builder import DocumentBatchPreviewBuilder
+from documents_app.views import (
+    DocumentBatchRefreshProjectCompositionView,
+    _get_batch_preview_project,
+)
 from projects_app.models import Project
 
 
@@ -160,6 +164,102 @@ class DocumentBatchRefreshProjectCompositionTests(TestCase):
         )
         act.projects.add(project)
         return act
+
+    def _create_registry_document_rows(self):
+        for project in (self.project, self.other_project):
+            for document_type in (
+                GeneratedDocumentType.REGISTRY_XLSX,
+                GeneratedDocumentType.REGISTRY_PREVIEW_PDF,
+            ):
+                GeneratedDocument.objects.create(
+                    batch=self.batch,
+                    project=project,
+                    document_type=document_type,
+                    source_kind=GeneratedDocumentSourceKind.GENERATED,
+                    file=f"diagnostic-{project.id}-{document_type}",
+                    created_by=self.user,
+                )
+
+    @patch("documents_app.views.DocumentSignatureService.check_document_actuality")
+    def test_master_does_not_recheck_generated_document_signatures(self, check_actuality):
+        check_actuality.return_value = SimpleNamespace(is_actual=True)
+        self._create_registry_document_rows()
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "documents:id_handover_batch_master",
+                kwargs={"batch_id": self.batch.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        check_actuality.assert_not_called()
+
+    @patch("documents_app.views.DocumentSignatureService.check_document_actuality")
+    def test_detail_uses_persisted_document_actuality(self, check_actuality):
+        check_actuality.return_value = SimpleNamespace(is_actual=True)
+        self._create_registry_document_rows()
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse(
+                "documents:id_handover_batch_detail",
+                kwargs={"batch_id": self.batch.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        check_actuality.assert_not_called()
+
+    @patch("documents_app.views.DocumentBatchPreviewBuilder.build")
+    @patch("documents_app.views.DocumentBatchPreviewBuilder.build_project")
+    def test_project_preview_builds_only_requested_project(self, build_project, build_all):
+        build_project.return_value = {"project_id": self.project.id}
+
+        result = _get_batch_preview_project(
+            batch=self.batch,
+            project_id=self.project.id,
+        )
+
+        self.assertEqual(result["project_id"], self.project.id)
+        build_project.assert_called_once_with(batch=self.batch, project_id=self.project.id)
+        build_all.assert_not_called()
+
+    def test_compact_preview_preserves_full_preview_totals(self):
+        act = self._create_act(
+            number="20",
+            project=self.project,
+            act_date=date(2026, 1, 20),
+        )
+        ActAppendixLine.objects.create(
+            act=act,
+            position=1,
+            label="Приложение",
+            sheets_count=2,
+        )
+        DocumentBatchAct.objects.create(
+            batch=self.batch,
+            project=self.project,
+            act=act,
+            order=1,
+            source=DocumentBatchActSource.AUTO,
+            added_by=self.user,
+        )
+        builder = DocumentBatchPreviewBuilder()
+
+        full_preview = builder.build(batch=self.batch)
+        compact_preview = builder.build_compact(batch=self.batch)
+
+        self.assertEqual(compact_preview["summary"], full_preview["summary"])
+        self.assertEqual(
+            compact_preview["projects"][0]["summary"],
+            full_preview["projects"][0]["summary"],
+        )
 
     @patch("documents_app.views.DocumentBatchPreviewBuilder.build_and_save_snapshot")
     def test_refresh_updates_only_requested_project(self, build_snapshot):

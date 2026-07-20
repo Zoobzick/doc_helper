@@ -414,57 +414,14 @@
                                                 <div class="col-xl-8">
                                                     <div class="batch-project-section">
                                                         <div class="batch-section-title">Состав по актам</div>
-
-                                                        {% if project.acts %}
-                                                            <div class="batch-act-list">
-                                                                {% for act in project.acts %}
-                                                                    <div class="batch-act-card">
-                                                                        <div class="batch-act-head">
-                                                                            <div>
-                                                                                <div class="batch-act-title">Акт №{{ act.act_number }}</div>
-                                                                                <div class="batch-act-meta">
-                                                                                    {{ act.act_date|default:"—" }} • Листов: {{ act.total_sheets_count }} • Приложений: {{ act.appendix_lines_count }}
-                                                                                </div>
-                                                                            </div>
-                                                                            <span class="batch-order-badge">#{{ act.position }}</span>
-                                                                        </div>
-
-                                                                        <div class="batch-act-label">{{ act.label }}</div>
-
-                                                                        {% if act.registry_rows %}
-                                                                            <div class="batch-doc-table-wrap">
-                                                                                <table class="table table-sm align-middle batch-doc-table mb-0">
-                                                                                    <thead>
-                                                                                    <tr>
-                                                                                        <th style="width: 72px;">№</th>
-                                                                                        <th>Документ</th>
-                                                                                        <th style="width: 110px;">Листов</th>
-                                                                                    </tr>
-                                                                                    </thead>
-                                                                                    <tbody>
-                                                                                    {% for row in act.registry_rows %}
-                                                                                        <tr class="{% if row.is_act %}table-light{% endif %}">
-                                                                                            <td>{{ row.position }}</td>
-                                                                                            <td>
-                                                                                                {% if row.is_act %}
-                                                                                                    <strong>{{ row.label }}</strong>
-                                                                                                {% else %}
-                                                                                                    {{ row.label }}
-                                                                                                {% endif %}
-                                                                                            </td>
-                                                                                            <td>{{ row.sheets_count }}</td>
-                                                                                        </tr>
-                                                                                    {% endfor %}
-                                                                                    </tbody>
-                                                                                </table>
-                                                                            </div>
-                                                                        {% endif %}
-                                                                    </div>
-                                                                {% endfor %}
-                                                            </div>
-                                                        {% else %}
-                                                            <div class="text-muted">По проекту пока нет актов.</div>
-                                                        {% endif %}
+                                                        <div class="text-muted small mb-3">
+                                                            Подробный состав загружается на отдельной странице проверки шифра.
+                                                        </div>
+                                                        <a href="{% url 'documents:id_handover_batch_project_review' batch.id project.project_id %}"
+                                                           class="btn btn-sm btn-outline-primary">
+                                                            <i class="bi bi-search me-1"></i>
+                                                            Открыть состав шифра
+                                                        </a>
                                                     </div>
                                                 </div>
 
