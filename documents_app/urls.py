@@ -12,6 +12,7 @@ from documents_app.views import (
     DocumentBatchCreateDraftView,
     DocumentBatchDeleteView,
     DocumentBatchDetailView,
+    DocumentBatchDownloadRegistriesView,
     DocumentBatchGenerateView,
     DocumentBatchListView,
     DocumentBatchMasterView,
@@ -20,6 +21,7 @@ from documents_app.views import (
     DocumentBatchProjectMarkReviewedView,
     DocumentBatchProjectReviewView,
     DocumentBatchProjectActsLookupView,
+    DocumentBatchRemoveProjectView,
     DocumentBatchRefreshProjectCompositionView,
     DocumentBatchRefreshCompositionView,
     DocumentBatchRemoveActView,
@@ -112,6 +114,11 @@ urlpatterns = [
         DocumentBatchProjectMarkReviewedView.as_view(),
         name="id_handover_batch_project_mark_reviewed",
     ),
+    path(
+        "id-handover/batches/<int:batch_id>/projects/<int:project_id>/remove/",
+        DocumentBatchRemoveProjectView.as_view(),
+        name="id_handover_batch_remove_project",
+    ),
 
     # -----------------------------
     # Step 2 actions
@@ -159,6 +166,11 @@ urlpatterns = [
         "id-handover/batches/<int:batch_id>/generate/",
         DocumentBatchGenerateView.as_view(),
         name="id_handover_batch_generate",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/download-registries/",
+        DocumentBatchDownloadRegistriesView.as_view(),
+        name="id_handover_batch_download_registries",
     ),
     path(
         "id-handover/batches/<int:batch_id>/attachments/upload/",

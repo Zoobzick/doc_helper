@@ -355,6 +355,12 @@ class DocumentBatch(models.Model):
         verbose_name="Snapshot preview",
         help_text="Кэш последнего собранного web-preview комплекта.",
     )
+    excluded_project_ids = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Исключённые проекты",
+        help_text="ID проектов, вручную удалённых из автоматически собираемого комплекта.",
+    )
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

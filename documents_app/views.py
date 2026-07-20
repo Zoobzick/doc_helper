@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
+import io
 import mimetypes
 import re
+import zipfile
 from pathlib import Path
 
 from django.conf import settings
@@ -31,6 +33,7 @@ from documents_app.models import (
     DocumentBatchAct,
     DocumentBatchActReviewNote,
     DocumentBatchActSource,
+    DocumentBatchGenerationMode,
     DocumentBatchProject,
     DocumentBatchProjectReviewStatus,
     DocumentBatchProjectScope,
@@ -57,6 +60,10 @@ from documents_app.services.id_handover.batch_generation_service import (
 )
 from documents_app.services.id_handover.material_registry_projection import (
     build_act_material_registry_documents,
+)
+from documents_app.services.id_handover.letter_generation_service import LetterGenerationService
+from documents_app.services.id_handover.project_registry_generation_service import (
+    ProjectRegistryGenerationService,
 )
 from documents_app.services.id_handover.document_signatures import DocumentSignatureService
 from documents_app.services.id_handover.preview_builder import (
@@ -805,6 +812,106 @@ class GeneratedDocumentOpenView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         )
 
 
+class DocumentBatchDownloadRegistriesView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.view_documentbatch"
+    raise_exception = True
+
+    def get(self, request, *args, **kwargs):
+        batch = get_object_or_404(DocumentBatch, pk=kwargs["batch_id"])
+        batch_projects = list(
+            DocumentBatchProject.objects
+            .filter(batch=batch)
+            .select_related("project")
+            .order_by("order", "id")
+        )
+        registry_documents = {
+            document.project_id: document
+            for document in GeneratedDocument.objects.filter(
+                batch=batch,
+                document_type=GeneratedDocumentType.REGISTRY_XLSX,
+                project__isnull=False,
+            ).select_related("batch", "project")
+        }
+
+        signature_service = DocumentSignatureService()
+        unavailable_projects: list[str] = []
+        archive_items: list[tuple[str, GeneratedDocument]] = []
+
+        for batch_project in batch_projects:
+            project_code = (batch_project.project.full_code or "").strip() or str(batch_project.project_id)
+            document = registry_documents.get(batch_project.project_id)
+            if not document or not document.file:
+                unavailable_projects.append(project_code)
+                continue
+
+            try:
+                is_actual = signature_service.check_document_actuality(
+                    generated_document=document,
+                ).is_actual
+            except Exception:
+                is_actual = False
+
+            if not is_actual:
+                unavailable_projects.append(project_code)
+                continue
+
+            archive_items.append((project_code, document))
+
+        if unavailable_projects:
+            messages.error(
+                request,
+                (
+                    "Нельзя скачать комплект: отсутствуют или устарели XLSX-реестры для шифров: "
+                    f"{', '.join(unavailable_projects)}. Сначала сформируйте документы."
+                ),
+            )
+            return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
+
+        if not archive_items:
+            messages.error(request, "В комплекте нет XLSX-реестров для скачивания.")
+            return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
+
+        root_folder = self._build_root_folder_name(batch=batch)
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for project_code, document in archive_items:
+                safe_project_code = (
+                    _sanitize_download_filename_part(project_code)
+                    or f"project_{document.project_id}"
+                )
+                archive_path = (
+                    f"{root_folder}/{safe_project_code}/"
+                    f"Реестр {safe_project_code}.xlsx"
+                )
+                document.file.open("rb")
+                try:
+                    archive.writestr(archive_path, document.file.read())
+                finally:
+                    document.file.close()
+
+        archive_buffer.seek(0)
+        return FileResponse(
+            archive_buffer,
+            content_type="application/zip",
+            as_attachment=True,
+            filename=f"{root_folder}.zip",
+        )
+
+    def _build_root_folder_name(self, *, batch: DocumentBatch) -> str:
+        if (
+            batch.selection_mode == DocumentBatchSelectionMode.RANGE
+            and batch.month_from
+            and batch.month_to
+        ):
+            if batch.month_from == batch.month_to:
+                period = batch.month_from
+            else:
+                period = f"{batch.month_from} - {batch.month_to}"
+        else:
+            period = "за весь период"
+        return f"Реестры ({period})"
+
+
 class BatchAttachmentOpenView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "documents_app.view_documentbatch"
     raise_exception = True
@@ -1307,6 +1414,16 @@ class DocumentBatchUpdateDraftView(LoginRequiredMixin, PermissionRequiredMixin, 
                 composer._validate_input_params()
 
                 _assign_batch_fields_from_form(batch=batch, form=form)
+                selected_project_ids = {
+                    int(project_id)
+                    for project_id in (form.cleaned_data.get("selected_project_ids") or [])
+                }
+                if batch.project_scope != DocumentBatchProjectScope.AUTO_BY_PERIOD:
+                    batch.excluded_project_ids = [
+                        project_id
+                        for project_id in (batch.excluded_project_ids or [])
+                        if int(project_id) not in selected_project_ids
+                    ]
                 batch.save(
                     update_fields=[
                         "title",
@@ -1320,6 +1437,7 @@ class DocumentBatchUpdateDraftView(LoginRequiredMixin, PermissionRequiredMixin, 
                         "letter_date",
                         "documentation_type",
                         "project_scope",
+                        "excluded_project_ids",
                         "updated_at",
                     ]
                 )
@@ -1438,6 +1556,16 @@ class DocumentBatchRefreshCompositionView(LoginRequiredMixin, PermissionRequired
         composer._validate_input_params()
 
         fresh_projects = composer._resolve_projects()
+        excluded_project_ids = {
+            int(project_id)
+            for project_id in (batch.excluded_project_ids or [])
+            if str(project_id).isdigit()
+        }
+        if excluded_project_ids:
+            fresh_projects = [
+                project for project in fresh_projects
+                if project.id not in excluded_project_ids
+            ]
         fresh_acts_by_project = composer._resolve_acts_by_project(projects=fresh_projects)
 
         existing_manual_acts = list(
@@ -2353,6 +2481,34 @@ class DocumentBatchRemoveActView(DocumentBatchStep2BaseActionView):
         return self.redirect_to_master(batch=batch, step=2, fragment=fallback_fragment)
 
 
+class DocumentBatchRemoveProjectView(DocumentBatchStep2BaseActionView):
+    def post(self, request, *args, **kwargs):
+        batch = self.get_batch(batch_id=kwargs["batch_id"])
+        project_id = kwargs["project_id"]
+        service = DocumentBatchEditingService()
+
+        try:
+            result = service.remove_project(batch=batch, project_id=project_id)
+            self.rebuild_preview_snapshot(batch=batch)
+            self.refresh_generated_documents_actuality(batch=batch)
+        except DocumentBatchEditingValidationError as exc:
+            messages.error(request, f"Не удалось удалить шифр: {exc}")
+            return self.redirect_to_master(batch=batch, step=2)
+        except Exception as exc:
+            messages.error(request, f"Ошибка удаления шифра: {exc}")
+            return self.redirect_to_master(batch=batch, step=2)
+
+        messages.success(
+            request,
+            (
+                f"Шифр {result.project_code} удалён из комплекта. "
+                f"Удалено актов: {result.removed_acts_count}; "
+                f"ранее сформированных реестров: {result.removed_generated_documents_count}."
+            ),
+        )
+        return self.redirect_to_master(batch=batch, step=2)
+
+
 class DocumentBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     permission_required = "documents_app.view_documentbatch"
     raise_exception = True
@@ -2453,6 +2609,14 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
     def post(self, request, *args, **kwargs):
         batch = get_object_or_404(DocumentBatch, pk=kwargs["batch_id"])
 
+        generation_step = (request.POST.get("generation_step") or "").strip()
+        if self._is_ajax_request(request) and generation_step:
+            return self._generate_ajax_step(
+                request=request,
+                batch=batch,
+                generation_step=generation_step,
+            )
+
         service = BatchGenerationService()
 
         try:
@@ -2503,6 +2667,64 @@ class DocumentBatchGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Vie
             )
 
         return redirect("documents:id_handover_batch_detail", batch_id=batch.id)
+
+    def _generate_ajax_step(self, *, request, batch: DocumentBatch, generation_step: str):
+        try:
+            if generation_step == "registry":
+                project_id = int(request.POST.get("project_id") or 0)
+                if not DocumentBatchProject.objects.filter(
+                    batch=batch,
+                    project_id=project_id,
+                ).exists():
+                    raise BatchGenerationValidationError(
+                        "Проект не входит в текущий состав комплекта."
+                    )
+
+                ProjectRegistryGenerationService().generate_for_project(
+                    batch=batch,
+                    project_id=project_id,
+                    template_path=self._get_registry_template_path(),
+                )
+                return JsonResponse({"ok": True, "step": "registry", "project_id": project_id})
+
+            if generation_step == "letter":
+                if batch.generation_mode not in {
+                    DocumentBatchGenerationMode.LETTER_ONLY,
+                    DocumentBatchGenerationMode.FULL_SET,
+                }:
+                    raise BatchGenerationValidationError(
+                        "Для выбранного режима письмо не формируется."
+                    )
+
+                LetterGenerationService().generate_for_batch(
+                    batch=batch,
+                    regular_template_path=self._get_regular_letter_template_path(),
+                    archive_template_path=self._get_archive_letter_template_path(),
+                )
+                return JsonResponse({"ok": True, "step": "letter"})
+
+            if generation_step == "finalize":
+                DocumentSignatureService().refresh_batch_documents_actuality(batch=batch)
+                return JsonResponse(
+                    {
+                        "ok": True,
+                        "step": "finalize",
+                        "message": "Генерация комплекта завершена.",
+                        "redirect_url": reverse(
+                            "documents:id_handover_batch_detail",
+                            kwargs={"batch_id": batch.id},
+                        ),
+                    }
+                )
+
+            raise BatchGenerationValidationError("Неизвестный этап генерации комплекта.")
+        except (BatchGenerationValidationError, ValueError) as exc:
+            return JsonResponse({"ok": False, "message": str(exc)}, status=400)
+        except Exception as exc:
+            return JsonResponse(
+                {"ok": False, "message": f"Ошибка генерации комплекта: {exc}"},
+                status=500,
+            )
 
     def _redirect_after_error(self, *, batch: DocumentBatch):
         return redirect("documents:id_handover_batch_detail", batch_id=batch.id)

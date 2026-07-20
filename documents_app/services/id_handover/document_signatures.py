@@ -343,6 +343,7 @@ class DocumentSignatureService:
             "letter_date": batch.letter_date.isoformat() if batch.letter_date else None,
             "documentation_type": batch.documentation_type,
             "project_scope": batch.project_scope,
+            "excluded_project_ids": sorted(batch.excluded_project_ids or []),
             "title": batch.title,
             "comment": batch.comment,
         }

@@ -1,9 +1,16 @@
+import io
+import zipfile
 from datetime import date
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import override_settings
+from django.urls import reverse
 
 from acts_app.models import Act, AttachmentType
 from documents_app.models import (
@@ -15,7 +22,11 @@ from documents_app.models import (
     DocumentBatchProjectReviewStatus,
     DocumentBatchProjectScope,
     DocumentBatchSelectionMode,
+    GeneratedDocument,
+    GeneratedDocumentSourceKind,
+    GeneratedDocumentType,
 )
+from documents_app.services.id_handover.batch_editing import DocumentBatchEditingService
 from documents_app.services.id_handover.material_registry_projection import (
     build_material_registry_documents,
     get_batch_appendix_sheets_count,
@@ -231,3 +242,105 @@ class DocumentBatchRefreshProjectCompositionTests(TestCase):
         self.assertEqual(result["auto_acts_count"], 2)
         self.assertEqual(result["manual_acts_count"], 1)
         build_snapshot.assert_called_once_with(batch=self.batch)
+
+    def test_remove_project_deletes_its_acts_and_generated_registries(self):
+        act = self._create_act(
+            number="10",
+            project=self.project,
+            act_date=date(2026, 1, 10),
+        )
+        DocumentBatchAct.objects.create(
+            batch=self.batch,
+            project=self.project,
+            act=act,
+            order=1,
+            source=DocumentBatchActSource.AUTO,
+            added_by=self.user,
+        )
+        GeneratedDocument.objects.create(
+            batch=self.batch,
+            project=self.project,
+            document_type=GeneratedDocumentType.REGISTRY_XLSX,
+            source_kind=GeneratedDocumentSourceKind.GENERATED,
+            file="missing-test-registry.xlsx",
+            created_by=self.user,
+        )
+
+        result = DocumentBatchEditingService().remove_project(
+            batch=self.batch,
+            project_id=self.project.id,
+        )
+
+        self.batch.refresh_from_db()
+        self.other_batch_project.refresh_from_db()
+        self.assertEqual(result.removed_acts_count, 1)
+        self.assertEqual(result.removed_generated_documents_count, 1)
+        self.assertFalse(
+            DocumentBatchProject.objects.filter(batch=self.batch, project=self.project).exists()
+        )
+        self.assertFalse(
+            DocumentBatchAct.objects.filter(batch=self.batch, project=self.project).exists()
+        )
+        self.assertFalse(
+            GeneratedDocument.objects.filter(batch=self.batch, project=self.project).exists()
+        )
+        self.assertIn(self.project.id, self.batch.excluded_project_ids)
+        self.assertEqual(self.other_batch_project.order, 1)
+
+    @patch("documents_app.views.ProjectRegistryGenerationService.generate_for_project")
+    def test_ajax_generation_builds_one_project_per_request(self, generate_for_project):
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse(
+                "documents:id_handover_batch_generate",
+                kwargs={"batch_id": self.batch.id},
+            ),
+            {"generation_step": "registry", "project_id": self.project.id},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["project_id"], self.project.id)
+        generate_for_project.assert_called_once()
+
+    @patch("documents_app.views.DocumentSignatureService.check_document_actuality")
+    def test_download_registries_builds_requested_zip_structure(self, check_actuality):
+        check_actuality.return_value = SimpleNamespace(is_actual=True)
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+        self.client.force_login(self.user)
+
+        with TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root,
+            DOCUMENTS_DIR=Path(media_root) / "documents",
+        ):
+            for project in (self.project, self.other_project):
+                GeneratedDocument.objects.create(
+                    batch=self.batch,
+                    project=project,
+                    document_type=GeneratedDocumentType.REGISTRY_XLSX,
+                    source_kind=GeneratedDocumentSourceKind.GENERATED,
+                    file=ContentFile(b"xlsx", name=f"registry-{project.id}.xlsx"),
+                    created_by=self.user,
+                )
+
+            response = self.client.get(
+                reverse(
+                    "documents:id_handover_batch_download_registries",
+                    kwargs={"batch_id": self.batch.id},
+                )
+            )
+            archive_bytes = b"".join(response.streaming_content)
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            self.assertEqual(
+                archive.namelist(),
+                [
+                    "Реестры (01.2026)/CODE-1/Реестр CODE-1.xlsx",
+                    "Реестры (01.2026)/CODE-2/Реестр CODE-2.xlsx",
+                ],
+            )

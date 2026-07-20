@@ -12,6 +12,7 @@ from documents_app.models import (
     DocumentBatchAct,
     DocumentBatchActSource,
     DocumentBatchProject,
+    GeneratedDocument,
 )
 
 User = get_user_model()
@@ -51,6 +52,14 @@ class BatchActMoveParams:
     new_order: int
 
 
+@dataclass(slots=True)
+class BatchProjectRemovalResult:
+    project_id: int
+    project_code: str
+    removed_acts_count: int
+    removed_generated_documents_count: int
+
+
 class DocumentBatchEditingError(Exception):
     """Базовая ошибка редактирования состава комплекта."""
 
@@ -77,6 +86,75 @@ class DocumentBatchEditingService:
     """
 
     TEMP_ORDER_GAP = 10000
+
+    @transaction.atomic
+    def remove_project(
+        self,
+        *,
+        batch: DocumentBatch,
+        project_id: int,
+    ) -> BatchProjectRemovalResult:
+        """
+        Полностью исключает проект из batch, не удаляя сам Project и исходные Act.
+
+        Удаляются связи проекта с комплектом, его DocumentBatchAct и ранее
+        сформированные проектные документы. ID проекта сохраняется в исключениях,
+        чтобы автообновление состава не добавило его обратно.
+        """
+        batch_project = (
+            DocumentBatchProject.objects
+            .select_for_update()
+            .select_related("project")
+            .filter(batch=batch, project_id=project_id)
+            .first()
+        )
+        if not batch_project:
+            raise DocumentBatchEditingValidationError(
+                "Проект не найден в составе данного комплекта."
+            )
+
+        project_code = (batch_project.project.full_code or "").strip() or str(project_id)
+        project_acts = DocumentBatchAct.objects.filter(
+            batch=batch,
+            project_id=project_id,
+        )
+        removed_acts_count = project_acts.count()
+        project_acts.delete()
+
+        generated_documents = list(
+            GeneratedDocument.objects.filter(batch=batch, project_id=project_id)
+        )
+        generated_files = [document.file for document in generated_documents if document.file]
+        removed_generated_documents_count = len(generated_documents)
+        if generated_documents:
+            GeneratedDocument.objects.filter(
+                id__in=[document.id for document in generated_documents]
+            ).delete()
+
+        batch_project.delete()
+        self._normalize_batch_project_order(batch=batch)
+
+        excluded_project_ids = {
+            int(value)
+            for value in (batch.excluded_project_ids or [])
+            if str(value).isdigit()
+        }
+        excluded_project_ids.add(project_id)
+        batch.excluded_project_ids = sorted(excluded_project_ids)
+        batch.save(update_fields=["excluded_project_ids", "updated_at"])
+
+        def delete_generated_files() -> None:
+            for generated_file in generated_files:
+                generated_file.delete(save=False)
+
+        transaction.on_commit(delete_generated_files)
+
+        return BatchProjectRemovalResult(
+            project_id=project_id,
+            project_code=project_code,
+            removed_acts_count=removed_acts_count,
+            removed_generated_documents_count=removed_generated_documents_count,
+        )
 
     @transaction.atomic
     def add_manual_act(self, params: BatchManualActAddParams) -> DocumentBatchAct:
@@ -346,6 +424,23 @@ class DocumentBatchEditingService:
 
         if final_changed_items:
             DocumentBatchAct.objects.bulk_update(final_changed_items, ["order"])
+
+    def _normalize_batch_project_order(self, *, batch: DocumentBatch) -> None:
+        projects = list(
+            DocumentBatchProject.objects
+            .filter(batch=batch)
+            .order_by("order", "id")
+        )
+        if not projects:
+            return
+
+        for index, batch_project in enumerate(projects, start=1):
+            batch_project.order = self.TEMP_ORDER_GAP + index
+        DocumentBatchProject.objects.bulk_update(projects, ["order"])
+
+        for index, batch_project in enumerate(projects, start=1):
+            batch_project.order = index
+        DocumentBatchProject.objects.bulk_update(projects, ["order"])
 
     def _get_safe_temp_order(self, *, items_count: int) -> int:
         return self.TEMP_ORDER_GAP + items_count

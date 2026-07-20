@@ -486,6 +486,19 @@
                                                                 <i class="bi bi-plus-circle me-1"></i>
                                                                 Добавить акт
                                                             </button>
+
+                                                            <form method="post"
+                                                                  action="{% url 'documents:id_handover_batch_remove_project' batch.id project.project_id %}"
+                                                                  class="d-inline js-summary-action"
+                                                                  onsubmit="return confirm('Удалить шифр {{ project.project_code|escapejs }} и все его акты из комплекта? Ранее сформированные реестры этого шифра также будут удалены.');">
+                                                                {% csrf_token %}
+                                                                <button type="submit"
+                                                                        class="btn btn-outline-danger btn-sm"
+                                                                        title="Удалить шифр, все его акты и сформированные реестры из этого комплекта.">
+                                                                    <i class="bi bi-trash me-1"></i>
+                                                                    Удалить шифр
+                                                                </button>
+                                                            </form>
                                                         {% endif %}
 
                                                     </div>

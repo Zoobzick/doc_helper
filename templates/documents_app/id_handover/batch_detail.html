@@ -136,12 +136,21 @@
                                 <form method="post"
                                       action="{% url 'documents:id_handover_batch_generate' batch.id %}"
                                       class="js-batch-generate-form"
+                                      data-generation-mode="{{ batch.generation_mode }}"
                                       data-batch-title="{{ batch.title|default:'Комплект'|escape }}">
                                     {% csrf_token %}
+                                    {% for project in preview_data.projects %}
+                                        <input type="hidden" class="js-generation-project-id" value="{{ project.project_id }}">
+                                    {% endfor %}
                                     <button type="submit" class="btn btn-success w-100 js-batch-generate-button">
                                         Сформировать документы
                                     </button>
                                 </form>
+                                <a href="{% url 'documents:id_handover_batch_download_registries' batch.id %}"
+                                   class="btn btn-outline-success w-100">
+                                    <i class="bi bi-file-earmark-zip me-1"></i>
+                                    Скачать комплект
+                                </a>
                             {% endif %}
                         </div>
                     </div>
@@ -1174,6 +1183,38 @@
                 stageNode.textContent = message || "Генерация завершена.";
             }
 
+            async function postGenerationStep(form, step, projectId) {
+                const formData = new FormData(form);
+                formData.set("generation_step", step);
+                if (projectId) {
+                    formData.set("project_id", String(projectId));
+                }
+
+                const response = await fetch(form.action, {
+                    method: "POST",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Accept": "application/json"
+                    },
+                    body: formData,
+                    credentials: "same-origin"
+                });
+                const contentType = response.headers.get("content-type") || "";
+
+                if (!contentType.includes("application/json")) {
+                    const timeoutHint = [502, 503, 504].includes(response.status)
+                        ? " Операция превысила серверный таймаут."
+                        : "";
+                    throw new Error(`Сервер вернул ошибку HTTP ${response.status}.${timeoutHint}`);
+                }
+
+                const payload = await response.json();
+                if (!response.ok || payload.ok === false) {
+                    throw new Error(payload.message || "Генерация завершилась с ошибкой.");
+                }
+                return payload;
+            }
+
             forms.forEach(function (form) {
                 form.addEventListener("submit", async function (event) {
                     event.preventDefault();
@@ -1187,31 +1228,37 @@
                     startOverlay(form.dataset.batchTitle || "");
 
                     try {
-                        const response = await fetch(form.action, {
-                            method: "POST",
-                            headers: {
-                                "X-Requested-With": "XMLHttpRequest",
-                                "Accept": "application/json"
-                            },
-                            body: new FormData(form),
-                            credentials: "same-origin"
-                        });
+                        stopTimers();
+                        const projectIds = Array.from(
+                            form.querySelectorAll(".js-generation-project-id")
+                        ).map(function (input) {
+                            return input.value;
+                        }).filter(Boolean);
+                        const generationMode = form.dataset.generationMode || "";
+                        const needsLetter = ["letter_only", "full_set"].includes(generationMode);
+                        const totalSteps = projectIds.length + (needsLetter ? 1 : 0) + 1;
+                        let completedSteps = 0;
 
-                        const contentType = response.headers.get("content-type") || "";
-                        if (contentType.includes("application/json")) {
-                            const payload = await response.json();
-                            if (!response.ok || payload.ok === false) {
-                                throw new Error(payload.message || "Генерация завершилась с ошибкой.");
-                            }
-                            finishOverlay(payload.message || "Генерация завершена.");
-                            window.setTimeout(function () {
-                                window.location.href = payload.redirect_url || window.location.href;
-                            }, 300);
-                            return;
+                        for (let index = 0; index < projectIds.length; index += 1) {
+                            stageNode.textContent = `Формируем реестр ${index + 1} из ${projectIds.length}...`;
+                            await postGenerationStep(form, "registry", projectIds[index]);
+                            completedSteps += 1;
+                            setProgress(Math.round((completedSteps / totalSteps) * 100));
                         }
 
-                        finishOverlay("Генерация завершена.");
-                        window.location.href = response.url || window.location.href;
+                        if (needsLetter) {
+                            stageNode.textContent = "Формируем сопроводительное письмо...";
+                            await postGenerationStep(form, "letter");
+                            completedSteps += 1;
+                            setProgress(Math.round((completedSteps / totalSteps) * 100));
+                        }
+
+                        stageNode.textContent = "Проверяем актуальность документов...";
+                        const payload = await postGenerationStep(form, "finalize");
+                        finishOverlay(payload.message || "Генерация завершена.");
+                        window.setTimeout(function () {
+                            window.location.href = payload.redirect_url || window.location.href;
+                        }, 300);
                     } catch (error) {
                         stopTimers();
                         overlay.classList.remove("is-visible");
