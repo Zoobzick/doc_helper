@@ -55,6 +55,9 @@ from documents_app.services.id_handover.batch_generation_service import (
     BatchGenerationService,
     BatchGenerationValidationError,
 )
+from documents_app.services.id_handover.material_registry_projection import (
+    build_act_material_registry_documents,
+)
 from documents_app.services.id_handover.document_signatures import DocumentSignatureService
 from documents_app.services.id_handover.preview_builder import (
     DocumentBatchPreviewBuilder,
@@ -497,21 +500,15 @@ def _build_registry_children_for_review_row(
     children: list[dict] = []
 
     if registry_type == AttachmentType.MATERIALS_REGISTRY:
-        materials = list(act.materials.all().order_by("position", "id"))
-        for material in materials:
-            data = resolve_material_fields(material)
-            parts = [data["document_name"]]
-            if data["document_no"]:
-                parts.append(f"№{data['document_no']}")
-            if data["document_date_str"] and data["document_date_str"] != "—":
-                parts.append(f"от {data['document_date_str']}")
-
-            base = " ".join(parts).strip()
-            material_name = (data["material_name"] or "").strip()
-            label = f"{base}, {material_name}".strip().strip(",")
-            sheets = max(int(material.sheets_count or 0), 1)
-            children.append(_build_registry_child_payload(label=label, sheets=sheets, page_start=child_page))
-            child_page += sheets
+        for document in build_act_material_registry_documents(act):
+            children.append(
+                _build_registry_child_payload(
+                    label=document.label,
+                    sheets=document.sheets_count,
+                    page_start=child_page,
+                )
+            )
+            child_page += document.sheets_count
 
     elif registry_type == AttachmentType.DOCS_REGISTRY:
         excluded_types = {

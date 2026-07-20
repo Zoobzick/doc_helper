@@ -6,7 +6,7 @@ from typing import Any
 
 from django.db.models import Prefetch
 
-from acts_app.models import ActAppendixLine, ActParty
+from acts_app.models import ActAppendixLine, ActMaterialItem, ActParty
 from directive_app.models import ActRole
 
 from documents_app.models import (
@@ -14,6 +14,9 @@ from documents_app.models import (
     DocumentBatchAct,
     DocumentBatchDocumentationType,
     DocumentBatchProject,
+)
+from documents_app.services.id_handover.material_registry_projection import (
+    get_batch_appendix_sheets_count,
 )
 
 
@@ -150,7 +153,15 @@ class RegistryContextBuilder:
     def _get_project_batch_acts(self, *, batch: DocumentBatch, project_id: int) -> list[DocumentBatchAct]:
         appendix_prefetch = Prefetch(
             "act__appendix_lines",
-            queryset=ActAppendixLine.objects.order_by("position", "id"),
+            queryset=ActAppendixLine.objects.select_related("source_attachment").order_by("position", "id"),
+        )
+        materials_prefetch = Prefetch(
+            "act__materials",
+            queryset=(
+                ActMaterialItem.objects
+                .select_related("passport", "passport__material")
+                .order_by("position", "id")
+            ),
         )
         parties_prefetch = Prefetch(
             "act__parties",
@@ -161,7 +172,7 @@ class RegistryContextBuilder:
             DocumentBatchAct.objects
             .filter(batch=batch, project_id=project_id)
             .select_related("act", "project")
-            .prefetch_related(appendix_prefetch, parties_prefetch)
+            .prefetch_related(appendix_prefetch, materials_prefetch, parties_prefetch)
             .order_by("order", "id")
         )
 
@@ -194,7 +205,7 @@ class RegistryContextBuilder:
                             batch_act=batch_act,
                             appendix_line=appendix_line,
                         ),
-                        sheets_count=appendix_line.sheets_count,
+                        sheets_count=get_batch_appendix_sheets_count(appendix_line),
                         is_act_row=False,
                         act_id=act.id,
                         appendix_line_id=appendix_line.id,

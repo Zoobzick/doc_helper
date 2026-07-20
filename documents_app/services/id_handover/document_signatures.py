@@ -8,7 +8,7 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Prefetch
 
-from acts_app.models import ActAppendixLine, ActParty
+from acts_app.models import ActAppendixLine, ActMaterialItem, ActParty
 
 from documents_app.models import (
     DocumentBatch,
@@ -16,6 +16,9 @@ from documents_app.models import (
     DocumentBatchProject,
     GeneratedDocument,
     GeneratedDocumentType,
+)
+from documents_app.services.id_handover.material_registry_projection import (
+    build_act_material_registry_documents,
 )
 
 
@@ -106,7 +109,15 @@ class DocumentSignatureService:
 
         appendix_prefetch = Prefetch(
             "act__appendix_lines",
-            queryset=ActAppendixLine.objects.order_by("position", "id"),
+            queryset=ActAppendixLine.objects.select_related("source_attachment").order_by("position", "id"),
+        )
+        materials_prefetch = Prefetch(
+            "act__materials",
+            queryset=(
+                ActMaterialItem.objects
+                .select_related("passport", "passport__material")
+                .order_by("position", "id")
+            ),
         )
         parties_prefetch = Prefetch(
             "act__parties",
@@ -120,7 +131,7 @@ class DocumentSignatureService:
             DocumentBatchAct.objects
             .filter(batch=batch, project_id=project_id)
             .select_related("act", "project")
-            .prefetch_related(appendix_prefetch, parties_prefetch)
+            .prefetch_related(appendix_prefetch, materials_prefetch, parties_prefetch)
             .order_by("order", "id")
         )
 
@@ -369,8 +380,19 @@ class DocumentSignatureService:
                     "label": line.label,
                     "sheets_count": line.sheets_count,
                     "is_label_overridden": line.is_label_overridden,
+                    "source_attachment_id": line.source_attachment_id,
+                    "source_attachment_type": (
+                        line.source_attachment.type if line.source_attachment_id else None
+                    ),
+                    "source_attachment_sheets_count": (
+                        line.source_attachment.sheets_count if line.source_attachment_id else None
+                    ),
                 }
                 for line in appendix_lines
+            ],
+            "material_registry_documents": [
+                document.to_signature_dict()
+                for document in build_act_material_registry_documents(act)
             ],
             "parties": [
                 {

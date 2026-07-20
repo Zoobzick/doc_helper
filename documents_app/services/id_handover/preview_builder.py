@@ -7,12 +7,15 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Prefetch
 
-from acts_app.models import ActAppendixLine
+from acts_app.models import ActAppendixLine, ActMaterialItem
 
 from documents_app.models import (
     DocumentBatch,
     DocumentBatchAct,
     DocumentBatchProject,
+)
+from documents_app.services.id_handover.material_registry_projection import (
+    get_batch_appendix_sheets_count,
 )
 
 
@@ -168,14 +171,22 @@ class DocumentBatchPreviewBuilder:
         """
         appendix_prefetch = Prefetch(
             "act__appendix_lines",
-            queryset=ActAppendixLine.objects.order_by("position", "id"),
+            queryset=ActAppendixLine.objects.select_related("source_attachment").order_by("position", "id"),
+        )
+        materials_prefetch = Prefetch(
+            "act__materials",
+            queryset=(
+                ActMaterialItem.objects
+                .select_related("passport", "passport__material")
+                .order_by("position", "id")
+            ),
         )
 
         batch_acts = list(
             DocumentBatchAct.objects
             .filter(batch=batch)
             .select_related("project", "act")
-            .prefetch_related(appendix_prefetch)
+            .prefetch_related(appendix_prefetch, materials_prefetch)
             .order_by("project_id", "order", "id")
         )
 
@@ -322,7 +333,9 @@ class DocumentBatchPreviewBuilder:
                 act_number=act.number,
                 act_date=self._format_date(act.act_date),
                 document_name=appendix_document_name,
-                sheets_count=self._normalize_sheets_count(appendix_line.sheets_count),
+                sheets_count=self._normalize_sheets_count(
+                    get_batch_appendix_sheets_count(appendix_line)
+                ),
                 source_batch_act_id=batch_act.id,
                 source_appendix_line_id=appendix_line.id,
                 source_kind=batch_act.source,
