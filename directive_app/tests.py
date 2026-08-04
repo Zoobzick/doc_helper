@@ -30,6 +30,14 @@ class DirectiveListShareTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
 
+    def test_directive_urls_use_single_prefix_and_legacy_list_still_works(self):
+        self.assertEqual(reverse("directive_app:directive_list"), "/directives/")
+        self.assertEqual(
+            reverse("directive_app:directive_shared_open", kwargs={"token": "test-token"}),
+            "/directives/shared/test-token/",
+        )
+        self.assertEqual(self.client.get("/directives/directives/").status_code, 200)
+
     def test_share_button_copies_directive_data_when_file_is_missing(self):
         Directive.objects.create(
             doc_type="ORDER",
