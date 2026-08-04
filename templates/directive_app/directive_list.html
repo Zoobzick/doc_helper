@@ -106,6 +106,17 @@
                                                    title="Открыть приказ">
                                                     <i class="bi bi-box-arrow-up-right"></i>
                                                 </a>
+
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary ms-1"
+                                                        title="{% if d.pdf_file %}Поделиться файлом{% else %}Скопировать данные приказа{% endif %}"
+                                                        data-directive-share
+                                                        data-share-text="{{ d.get_doc_type_display }} №{{ d.number }} от {{ d.date|date:'d.m.Y' }}"
+                                                        {% if d.pdf_file %}
+                                                            data-share-url="{% url 'directive_app:directive_share_link' uuid=d.uuid %}"
+                                                        {% endif %}>
+                                                    <i class="bi bi-share"></i>
+                                                </button>
                                             {% endif %}
 
                                             {% if user.is_superuser or perms.directive_app.create_directive_page %}
@@ -176,6 +187,87 @@
             });
 
             window.setTimeout(adjustTable, 50);
+
+            async function copyText(text) {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(text);
+                    return;
+                }
+
+                const textarea = document.createElement("textarea");
+                textarea.value = text;
+                textarea.style.position = "fixed";
+                textarea.style.left = "-9999px";
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                document.execCommand("copy");
+                textarea.remove();
+            }
+
+            function getCookie(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(";").shift();
+                return "";
+            }
+
+            function getCsrfToken() {
+                return getCookie("csrftoken") || document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || "";
+            }
+
+            document.body.addEventListener("click", async function (event) {
+                const button = event.target.closest("[data-directive-share]");
+                if (!button) return;
+
+                const originalHtml = button.innerHTML;
+                const originalTitle = button.title;
+                button.disabled = true;
+
+                try {
+                    const shareText = button.dataset.shareText;
+
+                    if (button.dataset.shareUrl) {
+                        const response = await fetch(button.dataset.shareUrl, {
+                            method: "POST",
+                            headers: {
+                                "X-CSRFToken": getCsrfToken(),
+                                "X-Requested-With": "XMLHttpRequest",
+                            },
+                        });
+                        if (!response.ok) throw new Error("share_link_failed");
+
+                        const data = await response.json();
+                        await copyText(data.url);
+                    } else {
+                        await copyText(shareText);
+                    }
+
+                    button.innerHTML = '<i class="bi bi-check2"></i>';
+                    button.classList.remove("btn-outline-secondary");
+                    button.classList.add("btn-outline-success");
+                    button.title = button.dataset.shareUrl
+                        ? "Ссылка на файл скопирована"
+                        : "Данные приказа скопированы";
+                    window.setTimeout(function () {
+                        button.innerHTML = originalHtml;
+                        button.classList.remove("btn-outline-success");
+                        button.classList.add("btn-outline-secondary");
+                        button.title = originalTitle;
+                    }, 1600);
+                } catch (error) {
+                    button.innerHTML = '<i class="bi bi-exclamation-triangle"></i>';
+                    button.title = "Не удалось поделиться приказом";
+                    window.setTimeout(function () {
+                        button.innerHTML = originalHtml;
+                        button.title = originalTitle;
+                    }, 1800);
+                } finally {
+                    window.setTimeout(function () {
+                        button.disabled = false;
+                    }, 300);
+                }
+            });
         });
     </script>
 

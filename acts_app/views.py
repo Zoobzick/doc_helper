@@ -30,6 +30,7 @@ from acts_app.forms import (
     ActAttachmentFormSet,
     ActAttachmentCreateFormSet,
     ActForm,
+    ActNoteForm,
     AookForm,
     AookManualSourceActFormSet,
     AookProtocolFormSet,
@@ -1694,7 +1695,22 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
             "acts_app:act_registry_p3_pdf_preview",
             kwargs={"uuid": str(act.uuid)},
         )
+        ctx["note_form"] = ActNoteForm(instance=act)
         return ctx
+
+
+class ActNoteUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "acts_app.change_act"
+
+    def post(self, request: HttpRequest, uuid: str) -> HttpResponse:
+        act = get_object_or_404(Act, uuid=uuid)
+        form = ActNoteForm(request.POST, instance=act)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Примечание к акту сохранено.")
+        else:
+            messages.error(request, "Не удалось сохранить примечание.")
+        return redirect("acts_app:act_detail", uuid=str(act.uuid))
 
 
 class ProtocolListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):

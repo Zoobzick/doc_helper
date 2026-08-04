@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import uuid
 
 from django.conf import settings
@@ -156,6 +157,39 @@ class Directive(models.Model):
 
     def __str__(self) -> str:
         return f"{self.get_doc_type_display()} №{self.number} от {self.date:%d.%m.%Y}"
+
+
+def generate_directive_share_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+class DirectiveShareLink(models.Model):
+    directive = models.ForeignKey(
+        Directive,
+        on_delete=models.CASCADE,
+        related_name="share_links",
+    )
+    token = models.CharField(max_length=96, unique=True, db_index=True, default=generate_directive_share_token)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_directive_share_links",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    access_count = models.PositiveIntegerField(default=0)
+    last_accessed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["token", "expires_at"]),
+            models.Index(fields=["directive", "expires_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Directive share link #{self.pk}"
 
 
 class Authorization(models.Model):

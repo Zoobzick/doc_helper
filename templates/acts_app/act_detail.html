@@ -4,6 +4,14 @@
 {% block title %}Акт №{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}{% endblock %}
 
 {% block content %}
+    <style>
+        .modal-backdrop.show {
+            opacity: .35;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+    </style>
+
     <div class="pagetitle">
         <h1>Акт №{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}</h1>
         <nav>
@@ -30,6 +38,13 @@
                 <a class="btn btn-primary" href="{% url 'acts_app:act_update' act.uuid %}">
                     <i class="bi bi-pencil me-1"></i>Редактировать
                 </a>
+                {% if perms.acts_app.change_act %}
+                    <button class="btn btn-outline-primary" type="button"
+                            data-bs-toggle="modal" data-bs-target="#actNoteModal">
+                        <i class="bi bi-chat-left-text me-1"></i>
+                        Примечание
+                    </button>
+                {% endif %}
                 <button class="btn btn-outline-danger js-pdf-preview-btn" type="button"
                         data-preview-url="{{ pdf_preview_url }}"
                         data-preview-title="Акт №{{ act.number }} от {{ act.act_date|date:'d.m.Y' }}"
@@ -66,12 +81,6 @@
                     </button>
                 {% endif %}
 
-                <form method="post" action="{% url 'acts_app:act_rebuild_appendix' act.uuid %}">
-                    {% csrf_token %}
-                    <button class="btn btn-outline-primary" type="submit">
-                        <i class="bi bi-arrow-repeat me-1"></i>Пересобрать приложения
-                    </button>
-                </form>
             </div>
         </div>
 
@@ -172,6 +181,15 @@
                             <dd class="col-sm-9">
                                 {% if act.allow_next_works_text %}{{ act.allow_next_works_text|linebreaksbr }}{% else %}
                                     <span class="text-muted">—</span>{% endif %}
+                            </dd>
+
+                            <dt class="col-sm-3 text-muted">Примечание</dt>
+                            <dd class="col-sm-9">
+                                {% if act.note %}
+                                    {{ act.note|linebreaksbr }}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
                             </dd>
                         </dl>
                     </div>
@@ -402,14 +420,45 @@
                         {% else %}
                             <div class="text-muted mb-2">Приложения ещё не собраны.</div>
                             <div class="small text-muted">
-                                Это отдельная витрина (ActAppendixLine), она формируется сервисом пересборки.
-                                Нажми “Пересобрать приложения”.
+                                Они сформируются автоматически при сохранении акта.
                             </div>
                         {% endif %}
                     </div>
                 </div>
             </div>
         </div>
+
+        {% if perms.acts_app.change_act %}
+            <div class="modal fade" id="actNoteModal" tabindex="-1"
+                 aria-labelledby="actNoteModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form method="post" action="{% url 'acts_app:act_note_update' act.uuid %}">
+                            {% csrf_token %}
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="actNoteModalLabel">
+                                    {% if act.note %}Изменить замечание{% else %}Добавить замечание{% endif %}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                        aria-label="Закрыть"></button>
+                            </div>
+                            <div class="modal-body">
+                                <label class="visually-hidden" for="{{ note_form.note.id_for_label }}">Замечание</label>
+                                {{ note_form.note }}
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                    Отмена
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-check2 me-1"></i>Сохранить
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
     </section>
 
 

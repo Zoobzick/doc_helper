@@ -1349,7 +1349,7 @@
                     lengthMenu: [10, 25, 50],
                     language: {
                         url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json',
-                        emptyTable: "РџР°СЃРїРѕСЂС‚Р° РЅРµ РЅР°Р№РґРµРЅС‹"
+                        emptyTable: "Паспорта не найдены"
                     },
                     ajax: {
                         url: "{% url 'acts_app:passports_datatable' %}",
@@ -1373,7 +1373,7 @@
                             searchable: false,
                             render: function (data, type, row) {
                                 if (!data) return "";
-                                return `<a href="${data}" target="_blank" class="btn btn-sm btn-outline-secondary" title="РћС‚РєСЂС‹С‚СЊ PDF">PDF</a>`;
+                                return `<a href="${data}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Открыть PDF">PDF</a>`;
                             }
                         },
                     ],

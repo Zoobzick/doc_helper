@@ -12,6 +12,8 @@ urlpatterns = [
     # file actions
     path("directives/<uuid:uuid>/open/", views.DirectiveOpenView.as_view(), name="directive_open"),
     path("directives/<uuid:uuid>/download/", views.DirectiveDownloadView.as_view(), name="directive_download"),
+    path("directives/<uuid:uuid>/share-link/", views.DirectiveShareLinkCreateView.as_view(), name="directive_share_link"),
+    path("directives/shared/<str:token>/", views.DirectiveSharedOpenView.as_view(), name="directive_shared_open"),
 
     # delete (POST)
     path("directives/<uuid:uuid>/delete/", views.DirectiveDeleteView.as_view(), name="directive_delete"),

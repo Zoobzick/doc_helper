@@ -1,18 +1,26 @@
 # directive_app/views.py
 
 import re
+from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.http import FileResponse, Http404
+from django.db.models import F
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
 
 from .forms import DirectiveForm, AuthorizationForm
-from .models import Directive, Authorization
+from .models import Directive, Authorization, DirectiveShareLink
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class DirectiveListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = Directive
     template_name = "directive_app/directive_list.html"
@@ -173,6 +181,51 @@ class DirectiveDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
         resp = FileResponse(directive.pdf_file.open("rb"), content_type="application/pdf")
         resp["Content-Disposition"] = f'attachment; filename="{filename}"'
         return resp
+
+
+class DirectiveShareLinkCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "directive_app.view_directive"
+    raise_exception = True
+
+    def post(self, request, uuid):
+        directive = get_object_or_404(Directive, uuid=uuid)
+        if not directive.pdf_file:
+            return JsonResponse({"error": "file_missing"}, status=400)
+
+        ttl_hours = getattr(settings, "DIRECTIVE_SHARE_LINK_TTL_HOURS", 24)
+        link = DirectiveShareLink.objects.create(
+            directive=directive,
+            created_by=request.user,
+            expires_at=timezone.now() + timedelta(hours=float(ttl_hours)),
+        )
+        url = request.build_absolute_uri(
+            reverse("directive_app:directive_shared_open", kwargs={"token": link.token})
+        )
+        return JsonResponse({"url": url, "expires_at": link.expires_at.isoformat()})
+
+
+class DirectiveSharedOpenView(View):
+    def get(self, request, token):
+        link = get_object_or_404(
+            DirectiveShareLink.objects.select_related("directive"),
+            token=token,
+            revoked_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+        directive = link.directive
+        if not directive.pdf_file:
+            raise Http404("Файл не прикреплён.")
+
+        DirectiveShareLink.objects.filter(pk=link.pk).update(
+            access_count=F("access_count") + 1,
+            last_accessed_at=timezone.now(),
+        )
+        filename = f"{directive.get_doc_type_display()} №{directive.number} от {directive.date:%d.%m.%Y}.pdf"
+        return FileResponse(
+            directive.pdf_file.open("rb"),
+            content_type="application/pdf",
+            filename=filename,
+        )
 
 
 class DirectiveDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):

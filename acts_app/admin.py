@@ -35,6 +35,7 @@ class ActAdmin(admin.ModelAdmin):
         ("Работы", {
             "fields": (
                 "work_name",
+                "note",
                 "work_start_date",
                 "work_end_date",
                 "work_norms_text",

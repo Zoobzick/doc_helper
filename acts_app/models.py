@@ -53,6 +53,8 @@ class Act(models.Model):
 
     work_name = models.CharField("Наименование работ", max_length=512)
 
+    note = models.TextField("Примечание", blank=True, default="")
+
     work_start_date = models.DateField("Дата начала работ", null=True, blank=True)
     work_end_date = models.DateField("Дата окончания работ", null=True, blank=True)
 

@@ -133,6 +133,27 @@ class ActForm(forms.ModelForm):
         return cleaned
 
 
+class ActNoteForm(forms.ModelForm):
+    class Meta:
+        model = Act
+        fields = ("note",)
+        widgets = {
+            "note": forms.Textarea(
+                attrs={
+                    "rows": 3,
+                    "placeholder": "Введите замечание",
+                }
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _bootstrapify(self)
+
+    def clean_note(self):
+        return (self.cleaned_data.get("note") or "").strip()
+
+
 class AookForm(forms.ModelForm):
     class Meta:
         model = Aook

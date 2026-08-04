@@ -1,8 +1,12 @@
 import sys
 import types
+from datetime import date
 from types import SimpleNamespace
 
-from django.test import SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 
 try:
     import docx  # noqa: F401
@@ -30,6 +34,7 @@ except ImportError:
     sys.modules["acts_app.services.act_docx_generator"] = act_docx_generator
 
 from acts_app.services.registry_p3_docx_generator import _collect_material_rows_for_registry
+from acts_app.models import Act
 
 
 class _FakeMaterials:
@@ -89,3 +94,43 @@ class RegistryP3RowsTests(SimpleTestCase):
         )
         self.assertEqual(rows[0].doc_key, rows[1].doc_key)
         self.assertNotEqual(rows[1].doc_key, rows[2].doc_key)
+
+
+class ActNoteTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="act-note-user", password="test-password")
+        self.user.user_permissions.add(
+            Permission.objects.get(codename="view_act"),
+            Permission.objects.get(codename="change_act"),
+        )
+        self.client.force_login(self.user)
+        self.act = Act.objects.create(
+            number="1",
+            act_date=date(2026, 7, 22),
+            work_name="Тестовые работы",
+        )
+
+    def test_note_can_be_saved_from_act_detail(self):
+        response = self.client.post(
+            reverse("acts_app:act_note_update", kwargs={"uuid": self.act.uuid}),
+            {"note": "  Проверить подпись\nдо пятницы  "},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("acts_app:act_detail", kwargs={"uuid": self.act.uuid}),
+        )
+        self.act.refresh_from_db()
+        self.assertEqual(self.act.note, "Проверить подпись\nдо пятницы")
+
+    def test_note_update_requires_change_permission(self):
+        self.user.user_permissions.remove(Permission.objects.get(codename="change_act"))
+
+        response = self.client.post(
+            reverse("acts_app:act_note_update", kwargs={"uuid": self.act.uuid}),
+            {"note": "Скрытое изменение"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.act.refresh_from_db()
+        self.assertEqual(self.act.note, "")
