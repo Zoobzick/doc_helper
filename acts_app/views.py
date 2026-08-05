@@ -1463,16 +1463,14 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     # helpers (UI only)
     # -------------------------
 
-    def _looks_like_grouped_material_line(self, label: str) -> bool:
+    def _is_grouped_material_line(self, label: str, grouped_material_labels: set[str]) -> bool:
         """
-        AppendixBuilder при <5 материалов делает VIRTUAL-строку:
-        '... №123 от 01.01.2026, №456 от 02.02.2026, арматура 22 A500C'
-        Нам надо такую строку спрятать в UI, чтобы вместо неё показать паспорта поштучно.
+        Скрываем только строку, которую AppendixBuilder фактически
+        сформировал из материалов. По знакам препинания тип строки
+        определять нельзя: сгруппированные протоколы тоже содержат
+        '№', 'от' и запятые.
         """
-        s = (label or "").strip().lower()
-        if not s:
-            return False
-        return ("№" in s) and (" от " in s) and ("," in s)
+        return (label or "").strip() in grouped_material_labels
 
     def _looks_like_virtual_approval_line(self, label: str) -> bool:
         """
@@ -1485,11 +1483,37 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
     def _build_material_rows_flat(self, materials: list) -> list[dict]:
         """
-        Для UI: каждый паспорт отдельной строкой, с url на passport_open.
+        Для UI: один паспорт = одна строка.
+
+        Один паспорт, выбранный для нескольких материалов, выводится
+        один раз. Разные паспорта остаются разными строками, даже если
+        наименование материала совпадает.
         """
-        out: list[dict] = []
+        grouped: dict[tuple, dict] = {}
+
+        def norm(value: str) -> str:
+            return " ".join((value or "").split()).casefold()
+
         for mi in materials:
             data = resolve_material_fields(mi)
+
+            if mi.passport_id:
+                key = ("passport", mi.passport_id)
+            else:
+                key = (
+                    "manual",
+                    norm(data["document_name"]),
+                    norm(data["document_no"]),
+                    norm(data["document_date_str"]),
+                )
+
+            material_name = (data["material_name"] or "").strip()
+            if key in grouped:
+                row = grouped[key]
+                if material_name and material_name not in row["material_names"]:
+                    row["material_names"].append(material_name)
+                row["sheets"] = max(row["sheets"], int(mi.sheets_count or 0))
+                continue
 
             parts = [data["document_name"]]
             if data["document_no"]:
@@ -1498,15 +1522,23 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
                 parts.append(f"от {data['document_date_str']}")
 
             base = " ".join(parts).strip()
-            mat = (data["material_name"] or "").strip()
-            label = f"{base}, {mat}".strip().strip(",")
-
             url = None
             if mi.passport_id and getattr(mi, "passport", None) is not None:
                 url = reverse("acts_app:passport_open", kwargs={"pk": mi.passport_id})
 
+            grouped[key] = {
+                "base": base,
+                "material_names": [material_name] if material_name else [],
+                "sheets": int(mi.sheets_count or 0),
+                "url": url,
+            }
+
+        out: list[dict] = []
+        for row in grouped.values():
+            materials_text = ", ".join(row["material_names"])
+            label = f"{row['base']}, {materials_text}".strip().strip(",")
             out.append(
-                {"label": label or "—", "sheets": int(mi.sheets_count or 0), "url": url, "children": []}
+                {"label": label or "—", "sheets": row["sheets"], "url": row["url"], "children": []}
             )
         return out
 
@@ -1556,6 +1588,13 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
             and getattr(getattr(l, "source_attachment", None), "type", None) == approvals_reg_type
             for l in appendix_lines
         )
+
+        grouped_material_labels: set[str] = set()
+        if (not has_materials_registry_line) and (0 < materials_count < self.REGISTRY_THRESHOLD):
+            grouped_material_labels = {
+                (planned.label or "").strip()
+                for planned in AppendixBuilder(act)._build_grouped_material_lines(act)
+            }
 
         # кнопка "Реестр" (П-3)
         ctx["has_p3_registry"] = any(a.type == AttachmentType.MATERIALS_REGISTRY for a in attachments)
@@ -1655,7 +1694,7 @@ class ActDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
             # --- НЕТ реестра материалов и материалов < 5: скрываем склейку материалов ---
             if (not has_materials_registry_line) and (0 < materials_count < self.REGISTRY_THRESHOLD) and (src is None):
-                if self._looks_like_grouped_material_line(label):
+                if self._is_grouped_material_line(label, grouped_material_labels):
                     if insert_materials_at is None:
                         insert_materials_at = len(appendix_rows)
                     continue

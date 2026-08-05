@@ -35,6 +35,7 @@ except ImportError:
 
 from acts_app.services.registry_p3_docx_generator import _collect_material_rows_for_registry
 from acts_app.models import Act
+from acts_app.views import ActDetailView
 
 
 class _FakeMaterials:
@@ -94,6 +95,74 @@ class RegistryP3RowsTests(SimpleTestCase):
         )
         self.assertEqual(rows[0].doc_key, rows[1].doc_key)
         self.assertNotEqual(rows[1].doc_key, rows[2].doc_key)
+
+
+class ActDetailAppendixRowsTests(SimpleTestCase):
+    @staticmethod
+    def _material(*, passport_id, passport, material_name, sheets_count=1):
+        return SimpleNamespace(
+            passport_id=passport_id,
+            passport=passport,
+            manual_name=material_name,
+            manual_doc_name="",
+            manual_doc_no="",
+            manual_doc_date_text="",
+            manual_doc_date=None,
+            sheets_count=sheets_count,
+        )
+
+    @staticmethod
+    def _passport(*, number):
+        return SimpleNamespace(
+            document_name="Паспорт качества",
+            document_number=number,
+            document_date=date(2026, 6, 20),
+            material=None,
+        )
+
+    def test_same_passport_for_different_materials_is_one_detail_row(self):
+        passport = self._passport(number="123")
+        materials = [
+            self._material(passport_id=10, passport=passport, material_name="Материал А"),
+            self._material(passport_id=10, passport=passport, material_name="Материал Б"),
+        ]
+
+        rows = ActDetailView()._build_material_rows_flat(materials)
+
+        self.assertEqual(len(rows), 1)
+        self.assertIn("Материал А", rows[0]["label"])
+        self.assertIn("Материал Б", rows[0]["label"])
+
+    def test_different_passports_for_same_material_are_two_detail_rows(self):
+        materials = [
+            self._material(
+                passport_id=10,
+                passport=self._passport(number="123"),
+                material_name="Материал А",
+            ),
+            self._material(
+                passport_id=11,
+                passport=self._passport(number="456"),
+                material_name="Материал А",
+            ),
+        ]
+
+        rows = ActDetailView()._build_material_rows_flat(materials)
+
+        self.assertEqual(len(rows), 2)
+
+    def test_grouped_protocol_is_not_guessed_to_be_a_material_line(self):
+        protocol = (
+            "протокол по визуальному контролю №1 от 20.06.2026, "
+            "№2 от 21.06.2026"
+        )
+
+        is_material = ActDetailView()._is_grouped_material_line(
+            protocol,
+            {"Паспорт качества №123 от 20.06.2026, Материал А"},
+        )
+
+        self.assertFalse(is_material)
 
 
 class ActNoteTests(TestCase):
