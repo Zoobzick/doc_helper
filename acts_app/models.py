@@ -178,6 +178,8 @@ class ActParty(models.Model):
         help_text="Заполняется ТОЛЬКО когда на дату акта найдено несколько полномочий.",
     )
 
+    authorization_inherited = models.BooleanField("Выбор из предыдущего акта", default=False)
+
     created_at = models.DateTimeField("Создано", auto_now_add=True)
 
     class Meta:

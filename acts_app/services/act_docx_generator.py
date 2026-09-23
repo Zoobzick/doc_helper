@@ -12,6 +12,8 @@ from docx.shared import Pt
 from acts_app.models import Act
 from acts_app.services.appendix_builder import AppendixBuilder
 from acts_app.services.act_docx_context import build_act_docx_context
+from acts_app.services.signatories import validate_before_finalize
+from django.core.exceptions import ValidationError
 
 
 class DocxRenderError(RuntimeError):
@@ -397,6 +399,11 @@ def generate_act_docx(act: Act, *, template_path: Optional[Path] = None) -> list
     Генерирует docx и сохраняет его в вычисленные пути (перезаписывает если существует).
     Возвращает список путей.
     """
+    try:
+        validate_before_finalize(act)
+    except ValidationError as exc:
+        raise DocxRenderError("Проверьте подписантов: " + "; ".join(exc.messages)) from exc
+
     template_path = template_path or (Path(settings.DOCX_TEMPLATES_DIR) / "act_template.docx")
     if not template_path.exists():
         raise DocxRenderError(f"Не найден DOCX-шаблон: {template_path}")

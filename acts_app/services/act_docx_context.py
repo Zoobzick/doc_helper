@@ -6,7 +6,8 @@ from typing import Any, Iterable
 
 from django.db.models import Q
 
-from acts_app.models import Act, AttachmentType
+from acts_app.models import Act, ActParty, AttachmentType
+from acts_app.services.signatories import resolve_party
 from acts_app.services.date_format import fmt_date_g, fmt_date_range_g
 from acts_app.services.material_resolver import resolve_material_fields
 from directive_app.models import ActRole, Authorization
@@ -447,17 +448,8 @@ def _pick_nrs(person, act_date) -> tuple[str, str]:
 
 
 def _resolve_authorization(act: Act, role: str, org_id: int | None, chosen: Authorization | None):
-    if chosen:
-        return chosen
-    if not org_id or not act.act_date:
-        return None
-    return (
-        Authorization.objects.select_related("person", "directive")
-        .filter(organization_id=org_id, role=role, is_active=True, valid_from__lte=act.act_date)
-        .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=act.act_date))
-        .order_by("-valid_from", "-id")
-        .first()
-    )
+    party = ActParty(organization_id=org_id, role=role, chosen_authorization=chosen)
+    return resolve_party(party, act.act_date).effective_authorization
 
 
 def _party(act: Act, role: str):

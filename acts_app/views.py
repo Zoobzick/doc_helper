@@ -61,6 +61,7 @@ from acts_app.services.appendix_builder import AppendixBuilder, AppendixBuilderE
 from acts_app.services.date_format import fmt_date_range_g
 from acts_app.services.material_resolver import resolve_material_fields
 from acts_app.services.signatories import (
+    inherit_authorization,
     resolve_act_parties,
     resolve_party,
     get_candidates_for_party,
@@ -487,7 +488,7 @@ def ensure_default_parties_for_act(*, act: Act, user) -> None:
 
     prev_parties = []
     if prev:
-        prev_parties = list(prev.parties.select_related("organization").order_by("position", "id"))
+        prev_parties = list(prev.parties.select_related("organization", "chosen_authorization").order_by("position", "id"))
 
     prev_by_role: dict[str, ActParty] = {}
     prev_other: list[ActParty] = []
@@ -539,6 +540,11 @@ def ensure_default_parties_for_act(*, act: Act, user) -> None:
                 chosen_authorization=None,
             )
         )
+
+    other_sources = iter(prev_other)
+    for party in to_create:
+        previous = next(other_sources, None) if party.role == ActRole.OTHER_REP else prev_by_role.get(party.role)
+        inherit_authorization(party, previous, act.act_date)
 
     ActParty.objects.bulk_create(to_create)
 
@@ -1419,6 +1425,8 @@ class ActDuplicateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
             for item in source.parties.all()
         ]
+        for party, previous in zip(party_items, source.parties.select_related("chosen_authorization").all()):
+            inherit_authorization(party, previous, duplicate.act_date)
         if party_items:
             ActParty.objects.bulk_create(party_items)
 
@@ -2406,7 +2414,8 @@ class ActPartyToggleEnabledView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         party.is_enabled = is_enabled
         if not is_enabled:
             party.chosen_authorization = None
-        party.save(update_fields=["is_enabled", "chosen_authorization"])
+            party.authorization_inherited = False
+        party.save(update_fields=["is_enabled", "chosen_authorization", "authorization_inherited"])
 
         resolved = resolve_party(party, party.act.act_date)
         return render(
@@ -2434,7 +2443,8 @@ class ActPartySetOrganizationView(LoginRequiredMixin, PermissionRequiredMixin, V
             party.organization = get_object_or_404(Organization, id=org_id)
 
         party.chosen_authorization = None
-        party.save(update_fields=["organization", "chosen_authorization"])
+        party.authorization_inherited = False
+        party.save(update_fields=["organization", "chosen_authorization", "authorization_inherited"])
 
         resolved = resolve_party(party, party.act.act_date)
         return render(
@@ -2705,18 +2715,7 @@ class ActDocxDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         act = get_object_or_404(Act, uuid=uuid)
 
-        # 1) пробуем отдать уже сохранённый файл
-        paths = get_act_docx_paths(act)
-        for p in paths:
-            if p.exists():
-                return FileResponse(
-                    open(p, "rb"),
-                    as_attachment=True,
-                    filename=p.name,
-                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                )
-
-        # 2) если файла нет — генерим и отдаём
+        # Собираем по текущему выбору, не возвращаем устаревший файл.
         try:
             paths = generate_act_docx(act)
         except DocxRenderError as e:
@@ -2745,20 +2744,11 @@ class ActPdfPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def get(self, request: HttpRequest, uuid: str) -> HttpResponse:
         act = get_object_or_404(Act, uuid=uuid)
 
-        # 1) гарантируем docx
-        paths = get_act_docx_paths(act)
-        docx_path = None
-        for p in paths:
-            if p.exists():
-                docx_path = p
-                break
-
-        if docx_path is None:
-            try:
-                paths = generate_act_docx(act)
-                docx_path = paths[0] if paths else None
-            except DocxRenderError as e:
-                return HttpResponse(f"DOCX ERROR: {e}", status=500, content_type="text/plain; charset=utf-8")
+        try:
+            paths = generate_act_docx(act)
+            docx_path = paths[0] if paths else None
+        except DocxRenderError as e:
+            return HttpResponse(str(e), status=400, content_type="text/plain; charset=utf-8")
 
         if docx_path is None or not docx_path.exists():
             return HttpResponse("DOCX ERROR: файл не был создан.", status=500, content_type="text/plain; charset=utf-8")

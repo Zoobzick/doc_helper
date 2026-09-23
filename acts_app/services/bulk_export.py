@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from acts_app.models import Act, AttachmentType
-from acts_app.services.act_docx_generator import DocxRenderError, generate_act_docx, get_act_docx_paths
+from acts_app.services.act_docx_generator import DocxRenderError, generate_act_docx
 from acts_app.services.registry_p3_docx_generator import generate_and_save_registry_p3_docx, get_registry_p3_docx_paths
 
 
@@ -36,9 +36,6 @@ def _project_codes(act: Act) -> list[str]:
 
 
 def _existing_or_generated_act_paths(act: Act) -> list[Path]:
-    paths = get_act_docx_paths(act)
-    if paths and all(path.exists() for path in paths):
-        return paths
     return generate_act_docx(act)
 
 

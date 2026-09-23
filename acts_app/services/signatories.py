@@ -186,6 +186,16 @@ def _is_authorization_valid_for(party: ActParty, auth: Authorization, act_date) 
     return True
 
 
+def inherit_authorization(party: ActParty, previous: ActParty | None, act_date) -> None:
+    """Перенести только явно выбранное и всё ещё действующее полномочие."""
+    if not previous or not party.is_enabled or not previous.is_enabled:
+        return
+    auth = previous.chosen_authorization
+    if auth and _is_authorization_valid_for(party, auth, act_date):
+        party.chosen_authorization = auth
+        party.authorization_inherited = True
+
+
 # --- Резолв всего акта ------------------------------------------------------
 
 def resolve_act_parties(act: Act) -> list[ResolvedParty]:
@@ -210,7 +220,7 @@ def reset_choices_for_act_on_date_change(act: Act) -> int:
         ActParty.objects
         .filter(act=act, is_enabled=True)
         .exclude(chosen_authorization__isnull=True)
-        .update(chosen_authorization=None)
+        .update(chosen_authorization=None, authorization_inherited=False)
     )
 
 
@@ -221,7 +231,8 @@ def reset_choice_for_party_on_org_change(party: ActParty) -> None:
     """
     if party.chosen_authorization_id:
         party.chosen_authorization = None
-        party.save(update_fields=["chosen_authorization"])
+        party.authorization_inherited = False
+        party.save(update_fields=["chosen_authorization", "authorization_inherited"])
 
 
 # --- Ручной выбор (обязательный при конфликте) ------------------------------
@@ -248,7 +259,8 @@ def choose_authorization_for_party(*, party: ActParty, authorization_id: int) ->
         raise ValidationError("Выбранное полномочие не подходит для этой роли/организации/даты акта.")
 
     party.chosen_authorization = auth
-    party.save(update_fields=["chosen_authorization"])
+    party.authorization_inherited = False
+    party.save(update_fields=["chosen_authorization", "authorization_inherited"])
 
 
 # --- Валидация перед финализацией ------------------------------------------
