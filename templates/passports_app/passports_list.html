@@ -93,8 +93,8 @@
                                         <td>{{ p.document_number|default:"—" }}</td>
 
                                         <td {% if p.document_date %}data-order="{{ p.document_date|date:'Y-m-d' }}"{% endif %}>
-                                            {% if p.document_date %}
-                                                {{ p.document_date|date:"d.m.Y" }}
+                                            {% if p.document_date_display %}
+                                                {{ p.document_date_display }}
                                             {% else %}
                                                 <span class="text-muted">—</span>
                                             {% endif %}

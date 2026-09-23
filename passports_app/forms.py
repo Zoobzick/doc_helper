@@ -5,6 +5,7 @@ from django import forms
 
 from .models import Passport, Material
 from .services import get_physical_sheets_for_uploaded_file
+from .parsers import parse_document_date
 
 
 ALLOWED_FILE_EXTS = {"pdf", "psd", "xlsx", "docx"}
@@ -42,6 +43,12 @@ class PassportUploadForm(forms.Form):
         widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
 
+    document_date_text = forms.CharField(
+        label="Дата как в документе", required=False, max_length=32,
+        help_text="Если заполнено, используется вместо полной даты. Полную дату можно оставить пустой.",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Например: 07.2026г. или Июль 2026 года"}),
+    )
+
     # поведение кнопок (только для одиночного файла)
     action = forms.CharField(required=False, widget=forms.HiddenInput())
 
@@ -74,8 +81,9 @@ class PassportUpdateForm(forms.ModelForm):
 
     class Meta:
         model = Passport
-        fields = ("document_name", "document_number", "document_date", "sheets_count")
+        fields = ("document_name", "document_number", "document_date", "document_date_text", "sheets_count")
         widgets = {
+            "document_date_text": forms.TextInput(attrs={"class": "form-control", "placeholder": "Например: 07.2026г. или Июль 2026 года"}),
             "document_name": forms.TextInput(attrs={"class": "form-control"}),
             "document_number": forms.TextInput(attrs={"class": "form-control"}),
             "sheets_count": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
@@ -123,8 +131,11 @@ class PassportUpdateForm(forms.ModelForm):
 
         # (needs_review) можно простое правило: если не все ключевые поля заполнены — требует проверки
         passport.needs_review = not bool(
-            passport.material_id and passport.document_name and passport.document_number and passport.document_date
+            passport.material_id and passport.document_name and passport.document_number
+            and (passport.document_date_text or passport.document_date)
         )
+        if passport.document_date_text and parse_document_date(passport.document_date_text)[2]:
+            passport.needs_review = True
 
         replacement_file = self.cleaned_data.get("replacement_file")
         if replacement_file:

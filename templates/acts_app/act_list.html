@@ -68,6 +68,37 @@
                         cursor: text;
                     }
 
+                    .act-number-copy {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: .4rem;
+                        max-width: 100%;
+                        border: 0;
+                        padding: 0;
+                        background: transparent;
+                        color: inherit;
+                        font: inherit;
+                        text-align: left;
+                        cursor: pointer;
+                    }
+
+                    .act-number-copy > span { min-width: 0; }
+
+                    .act-number-copy-icon {
+                        flex-shrink: 0;
+                        color: var(--bs-primary);
+                        opacity: 0;
+                    }
+
+                    .act-number-copy:hover .act-number-copy-icon,
+                    .act-number-copy:focus-visible .act-number-copy-icon {
+                        opacity: 1;
+                    }
+
+                    @media (hover: none) {
+                        .act-number-copy-icon { opacity: 1; }
+                    }
+
                     .projects-stack {
                         display: flex;
                         flex-direction: column;
@@ -212,7 +243,12 @@
                         {% for aook in aooks %}
                             <tr>
                                 <td>
-                                    <span class="fw-semibold act-number-full">{{ aook.number }}</span>
+                                    <button type="button" class="act-number-copy fw-semibold act-number-full"
+                                            data-act-number="{{ aook.number }}" title="Скопировать номер акта"
+                                            aria-label="Скопировать номер акта {{ aook.number }}">
+                                        <span>{{ aook.number }}</span>
+                                        <i class="bi bi-clipboard act-number-copy-icon" aria-hidden="true"></i>
+                                    </button>
                                 </td>
                                 <td class="text-nowrap">{{ aook.act_date|date:"d.m.Y" }}</td>
                                 <td>
@@ -324,7 +360,12 @@
                     {% for act in acts %}
                         <tr>
                             <td>
-                                <span class="fw-semibold act-number-full">{{ act.number }}</span>
+                                <button type="button" class="act-number-copy fw-semibold act-number-full"
+                                        data-act-number="{{ act.number }}" title="Скопировать номер акта"
+                                        aria-label="Скопировать номер акта {{ act.number }}">
+                                    <span>{{ act.number }}</span>
+                                    <i class="bi bi-clipboard act-number-copy-icon" aria-hidden="true"></i>
+                                </button>
                             </td>
 
                             <td class="text-nowrap">
@@ -448,7 +489,58 @@
                 {% endif %}
                 {% endif %}
 
+                <div id="actCopyStatus" class="small text-muted" role="status" aria-live="polite"></div>
+
                 <script>
+                    (function () {
+                        const status = document.getElementById("actCopyStatus");
+                        let statusTimer;
+
+                        function copyFallback(text) {
+                            const input = document.createElement("textarea");
+                            input.value = text;
+                            input.readOnly = true;
+                            input.style.cssText = "position:fixed;top:0;left:-9999px;";
+                            const previousFocus = document.activeElement;
+                            // Не даём обработчику копирования работ подменить номер.
+                            const onCopy = function (event) {
+                                if (event.clipboardData) {
+                                    event.clipboardData.setData("text/plain", text);
+                                    event.preventDefault();
+                                    event.stopImmediatePropagation();
+                                }
+                            };
+                            document.body.appendChild(input);
+                            document.addEventListener("copy", onCopy, true);
+                            try {
+                                input.select();
+                                if (!document.execCommand("copy")) throw new Error("Copy failed");
+                            } finally {
+                                document.removeEventListener("copy", onCopy, true);
+                                input.remove();
+                                previousFocus?.focus({preventScroll: true});
+                            }
+                        }
+
+                        document.addEventListener("click", async function (event) {
+                            const button = event.target.closest(".act-number-copy");
+                            if (!button) return;
+                            const number = button.dataset.actNumber;
+                            clearTimeout(statusTimer);
+                            try {
+                                try {
+                                    await navigator.clipboard.writeText(number);
+                                } catch (error) {
+                                    copyFallback(number);
+                                }
+                                status.textContent = "Номер акта скопирован";
+                            } catch (error) {
+                                status.textContent = "Не удалось скопировать номер. Выделите его и нажмите Ctrl+C.";
+                            }
+                            statusTimer = setTimeout(() => { status.textContent = ""; }, 4000);
+                        });
+                    })();
+
                     // двойной клик — выделить "Работы"
                     document.addEventListener("dblclick", function (e) {
                         const el = e.target.closest(".js-work-name");

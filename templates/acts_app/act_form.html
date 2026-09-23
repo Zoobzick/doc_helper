@@ -1294,7 +1294,7 @@
 
                 let iso = payload.doc_date_iso || "";
                 const inpDocDateText = row.querySelector('input[name$="-manual_doc_date_text"]');
-                if (inpDocDateText) inpDocDateText.value = "";
+                if (inpDocDateText) inpDocDateText.value = payload.doc_date_text || "";
                 if (!iso && payload.doc_date) iso = ddmmyyyyToIso(payload.doc_date);
                 if (inpDocDate) inpDocDate.value = iso || "";
                 if (inpSheets) inpSheets.value = Math.max(parseInt(payload.sheets_count || "1", 10) || 1, 1);
@@ -1324,6 +1324,7 @@
                     doc_no: tr.dataset.docNo || "",
                     doc_date: tr.dataset.docDate || "",
                     doc_date_iso: tr.dataset.docDateIso || "",
+                    doc_date_text: tr.dataset.docDateText || "",
                     sheets_count: tr.dataset.sheetsCount || "1",
                 };
             }
@@ -1365,7 +1366,7 @@
                         {data: "material"},
                         {data: "doc_name"},
                         {data: "doc_no"},
-                        {data: "doc_date"},
+                        {data: "doc_date", render: $.fn.dataTable.render.text()},
                         {data: "sheets_count"},
                         {
                             data: "preview_url",
@@ -1384,6 +1385,7 @@
                         row.dataset.docNo = data.doc_no || "";
                         row.dataset.docDate = data.doc_date || "";
                         row.dataset.docDateIso = data.doc_date_iso || "";
+                        row.dataset.docDateText = data.doc_date_text || "";
                         row.dataset.sheetsCount = data.sheets_count || "1";
                     }
                 });
@@ -1731,6 +1733,58 @@
                 const hidden = row.querySelector(`input[type="hidden"][name="${hiddenName}"]`);
                 return !!(hidden && String(hidden.value || "").toLowerCase() === "on");
             }
+
+            // Делегирование работает и для строк, добавленных после загрузки страницы.
+            const materialsTable = document.getElementById("materials-table");
+            const actNavigationForm = document.getElementById("act-form");
+            const materialFieldSelector = 'input:not([type="hidden"]):not([type="checkbox"]):not([type="button"]):not([type="submit"]), textarea, select';
+
+            function availableMaterialFields(container) {
+                return Array.from(container.querySelectorAll(materialFieldSelector)).filter(field =>
+                    !field.matches(":disabled") && !field.readOnly && field.tabIndex >= 0 &&
+                    field.getClientRects().length > 0 && getComputedStyle(field).visibility === "visible" &&
+                    !field.closest('[inert]') && !field.classList.contains("select2-hidden-accessible") &&
+                    (!field.closest("tr.material-row") || !isDeletedRow(field.closest("tr.material-row"), "mat"))
+                );
+            }
+
+            actNavigationForm?.addEventListener("keydown", function (event) {
+                if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+                if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+
+                const field = event.target;
+                if (!field.matches(materialFieldSelector)) return;
+                const row = field.closest("tr.material-row");
+                const cell = field.closest("td");
+                if (row && isDeletedRow(row, "mat")) return;
+
+                // На границе таблицы остаёмся в поле, не запускаем переход браузера назад/вперёд.
+                event.preventDefault();
+                let target;
+                const direction = ["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1;
+                if (!row || !cell || !materialsTable?.contains(row)) {
+                    const fields = availableMaterialFields(actNavigationForm);
+                    const index = fields.indexOf(field);
+                    if (index >= 0) target = fields[index + direction];
+                } else if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
+                    const fields = availableMaterialFields(row);
+                    const index = fields.indexOf(field);
+                    if (index >= 0) target = fields[index + direction];
+                } else {
+                    const rows = Array.from(materialsTable.querySelectorAll("tbody tr.material-row"));
+                    for (let index = rows.indexOf(row) + direction; index >= 0 && index < rows.length; index += direction) {
+                        const nextRow = rows[index];
+                        if (isDeletedRow(nextRow, "mat")) continue;
+                        const nextCell = nextRow.cells[cell.cellIndex];
+                        target = nextCell && availableMaterialFields(nextCell)[0];
+                        if (target) break;
+                    }
+                }
+                if (target) {
+                    target.focus({preventScroll: true});
+                    target.scrollIntoView({block: "nearest", inline: "nearest"});
+                }
+            }, true);
 
             function applyRequiredState(input, required) {
                 if (!input) return;

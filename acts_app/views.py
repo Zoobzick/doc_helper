@@ -2072,7 +2072,7 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
             material = p.material.name if p.material_id and p.material else "—"
             doc_name = (p.document_name or "").strip() or "—"
             doc_no = (p.document_number or "").strip() or "—"
-            doc_date = p.document_date.strftime("%d.%m.%Y") if p.document_date else "—"
+            doc_date = p.document_date_display or "—"
             label = f"{material} — {doc_name} №{doc_no} от {doc_date}"
 
             data.append(
@@ -2083,6 +2083,7 @@ class PassportsDatatableView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "doc_no": doc_no,
                     "doc_date": doc_date,
                     "doc_date_iso": p.document_date.isoformat() if p.document_date else "",
+                    "doc_date_text": p.document_date_text,
                     "sheets_count": int(p.sheets_count or 1),
                     "label": label,
                     "preview_url": reverse("acts_app:passport_open", kwargs={"pk": p.id}),
@@ -2626,7 +2627,7 @@ class PassportsLabelsView(LoginRequiredMixin, PermissionRequiredMixin, View):
             material = p.material.name if p.material_id and p.material else "—"
             doc_name = (p.document_name or "").strip() or "—"
             doc_no = (p.document_number or "").strip() or "—"
-            doc_date = p.document_date.strftime("%d.%m.%Y") if p.document_date else "—"
+            doc_date = p.document_date_display or "—"
             labels[str(p.id)] = f"{material} — {doc_name} №{doc_no} от {doc_date}"
 
         return JsonResponse({"labels": labels})

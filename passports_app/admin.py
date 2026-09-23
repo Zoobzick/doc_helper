@@ -74,7 +74,7 @@ class PassportAdmin(admin.ModelAdmin):
     # --- Форма ---
     readonly_fields = ("created_at", "file_ext", "original_name", "file_info")
     fieldsets = (
-        ("Документ", {"fields": ("document_name", "document_number", "document_date", "material", "sheets_count")}),
+        ("Документ", {"fields": ("document_name", "document_number", "document_date", "document_date_text", "material", "sheets_count")}),
         ("Файл", {"fields": ("file", "file_info", "original_name", "file_ext")}),
         ("Статус", {"fields": ("needs_review",)}),
         ("Служебное", {"fields": ("uploaded_by", "created_at")}),

@@ -9,7 +9,7 @@ from django.db import transaction
 from PyPDF2 import PdfReader
 
 from .models import Material, Passport
-from .parsers import parse_passport_filename
+from .parsers import parse_document_date, parse_passport_filename
 
 
 ALLOWED_EXTS: set[str] = {"pdf", "psd", "xlsx", "docx"}
@@ -67,6 +67,7 @@ def import_single_passport_file(
     document_name: str | None = None,
     document_number: str | None = None,
     document_date=None,  # date | None
+    document_date_text: str = "",
 ) -> Passport:
     """
     Импорт одного файла (веб-вариант):
@@ -90,6 +91,7 @@ def import_single_passport_file(
     material_name = _clean(material_name)
     document_name = _clean(document_name)
     document_number = _clean(document_number)
+    document_date_text = (document_date_text or "").strip()
 
     if not material_name and parsed:
         material_name = parsed.material
@@ -97,16 +99,19 @@ def import_single_passport_file(
         document_name = parsed.document_name
     if not document_number and parsed:
         document_number = parsed.document_number
-    if not document_date and parsed:
+    if not document_date and not document_date_text and parsed:
         document_date = parsed.document_date
+        document_date_text = parsed.document_date_text
 
     # needs_review:
     # - если распарсили (или пользователь руками заполнил критичные поля) -> False
     # - иначе True
     has_minimum = bool(document_name)  # минимум: есть имя документа
-    fully_parsed_like = bool(material_name and document_name and document_date)
+    fully_parsed_like = bool(material_name and document_name and (document_date_text or document_date))
 
     needs_review = not (fully_parsed_like or (parsed is not None and has_minimum))
+    if document_date_text and parse_document_date(document_date_text)[2]:
+        needs_review = True
 
     # Материал создаём только если он есть
     material_obj = None
@@ -120,13 +125,14 @@ def import_single_passport_file(
         needs_review = True
 
     meta = {
-        "parser": "v1",
+        "parser": "v2",
         "status": "ok" if parsed else "failed",
         "from_form": True,
         "material": material_name or "",
         "document_name": document_name or "",
         "document_number": document_number or "",
         "document_date": document_date.isoformat() if document_date else "",
+        "document_date_text": document_date_text,
         "original_filename": original_filename,
     }
     if not parsed:
@@ -138,6 +144,7 @@ def import_single_passport_file(
         document_name=document_name,
         document_number=document_number,
         document_date=document_date,
+        document_date_text=document_date_text,
         sheets_count=sheets_count,
         needs_review=needs_review,
         parsed_meta=meta,

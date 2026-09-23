@@ -72,6 +72,14 @@ class Passport(models.Model):
     document_name = models.CharField("Наименование документа", max_length=255)
     document_number = models.CharField("Номер документа", max_length=128, blank=True, default="")
     document_date = models.DateField("Дата документа", null=True, blank=True)
+    document_date_text = models.CharField(
+        "Дата как в документе", max_length=32, blank=True, default="",
+        help_text="Например: 07.2026г. или Июль 2026 года. Имеет приоритет над полной датой.",
+    )
+
+    @property
+    def document_date_display(self):
+        return self.document_date_text.strip() or (self.document_date.strftime("%d.%m.%Y") if self.document_date else "")
 
     material = models.ForeignKey(
         Material,

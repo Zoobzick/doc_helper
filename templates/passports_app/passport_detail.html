@@ -79,6 +79,12 @@
                   <div class="text-danger small mt-1">{{ form.document_date.errors }}</div>
                 {% endif %}
               </div>
+              <div class="col-12">
+                  <label class="form-label" for="{{ form.document_date_text.id_for_label }}">{{ form.document_date_text.label }}</label>
+                  {{ form.document_date_text }}
+                  <div class="form-text">Если заполнено, используется вместо полной даты. Полную дату можно оставить пустой.</div>
+                  {% if form.document_date_text.errors %}<div class="text-danger small">{{ form.document_date_text.errors }}</div>{% endif %}
+              </div>
 
               <div class="col-12 col-md-6">
                 <label class="form-label">{{ form.sheets_count.label }}</label>

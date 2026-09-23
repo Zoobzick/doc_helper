@@ -42,7 +42,7 @@ def _passport_download_filename(passport: Passport, file_path: Path) -> str:
         "Материал",
     )
     document_name = _safe_download_name_part(passport.document_name or "", "Паспорт")
-    document_date = passport.document_date.strftime("%d.%m.%Y") if passport.document_date else "без даты"
+    document_date = passport.document_date_display or "без даты"
     ext = (passport.file_ext or file_path.suffix.lstrip(".") or _ext(file_path.name)).lower()
     suffix = f".{ext}" if ext else ""
     return f"{material_name} ({document_name} от {document_date}){suffix}"
@@ -108,6 +108,7 @@ class PassportsListView(PermissionRequiredMixin, View):
                 "document_name",
                 "document_number",
                 "document_date",
+                "document_date_text",
                 "needs_review",
                 "material__name",
             )
@@ -183,6 +184,7 @@ class PassportUploadView(PermissionRequiredMixin, View):
                 document_name=form.cleaned_data.get("document_name"),
                 document_number=form.cleaned_data.get("document_number"),
                 document_date=form.cleaned_data.get("document_date"),
+                document_date_text=form.cleaned_data.get("document_date_text", ""),
             )
         except ValueError as e:
             form.add_error("file", str(e))

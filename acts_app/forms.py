@@ -429,6 +429,12 @@ class ActMaterialItemForm(forms.ModelForm):
         date_text = (cleaned.get("manual_doc_date_text") or "").strip()
         cleaned["manual_doc_date_text"] = date_text
 
+        # Новая строка без локальной даты получает копию даты паспорта.
+        # Сохранённые строки не подтягивают последующие изменения справочника.
+        if passport and not self.instance.pk and not date_text and not cleaned.get("manual_doc_date"):
+            cleaned["manual_doc_date_text"] = passport.document_date_text
+            cleaned["manual_doc_date"] = passport.document_date
+
         # ✅ ШАГ 1: объём обязателен только для ручных "бетон/раствор"
         if not passport and _is_concrete_or_mortar(manual_name):
             v = cleaned.get("concrete_volume_m3")  # (v) объём, м3
