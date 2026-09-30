@@ -213,14 +213,22 @@ def resolve_act_parties(act: Act) -> list[ResolvedParty]:
 @transaction.atomic
 def reset_choices_for_act_on_date_change(act: Act) -> int:
     """
-    При смене даты акта: сбрасываем chosen_authorization у всех включённых строк.
+    При смене даты акта сбрасываем только выбор, не подходящий на новую дату.
+    Действующие ручные и унаследованные полномочия сохраняем.
     Возвращает (count) сколько строк сбросили.
     """
-    return (
+    parties = (
         ActParty.objects
         .filter(act=act, is_enabled=True)
         .exclude(chosen_authorization__isnull=True)
-        .update(chosen_authorization=None, authorization_inherited=False)
+        .select_related("chosen_authorization")
+    )
+    invalid_ids = [
+        party.pk for party in parties
+        if not _is_authorization_valid_for(party, party.chosen_authorization, act.act_date)
+    ]
+    return ActParty.objects.filter(pk__in=invalid_ids).update(
+        chosen_authorization=None, authorization_inherited=False,
     )
 
 
