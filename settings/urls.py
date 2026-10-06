@@ -23,6 +23,7 @@ handler404 = "settings.error_views.page_not_found"
 handler500 = "settings.error_views.server_error"
 
 urlpatterns = [
+    path('transport/', include('transport_app.urls')),
     path('admin/', admin.site.urls),
     path('', include(("authapp.urls", "authapp"), namespace="authapp")),
     path('passports/', include('passports_app.urls')),

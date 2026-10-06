@@ -130,6 +130,43 @@
                     </li>
                 {% endif %}
 
+                {% if user.is_superuser or perms.approvals_app.view_approvals_done_page or perms.approvals_app.view_approvals_pending_page %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if app == 'approvals' %}active{% else %}collapsed{% endif %}"
+                           data-bs-target="#approval-nav"
+                           data-bs-toggle="collapse"
+                           href="#">
+                            <i class="bi bi-briefcase-fill"></i>
+                            <span>Согласования</span>
+                            <i class="bi bi-chevron-down ms-auto"></i>
+                        </a>
+
+                        <ul id="approval-nav"
+                            class="nav-content collapse {% if app == 'approvals' %}show{% endif %}"
+                            data-bs-parent="#sidebar-nav">
+                            {% if user.is_superuser or perms.approvals_app.view_approvals_done_page %}
+                                <li>
+                                    <a href="{% url 'approvals:done' %}"
+                                       class="{% if rn == 'done' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>Все согласования</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                            {% if user.is_superuser or perms.approvals_app.view_approvals_pending_page %}
+                                <li>
+                                    <a href="{% url 'approvals:pending' %}"
+                                       class="{% if rn == 'pending' %}active{% endif %}">
+                                        <i class="bi bi-circle"></i>
+                                        <span>На согласовании</span>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </li>
+                {% endif %}
+
                 {% if user.is_superuser or perms.directive_app.view_directive %}
                     <li class="nav-item">
                         <a class="nav-link {% if app == 'directive_app' and rn == 'directive_list' %}active{% else %}collapsed{% endif %}"
@@ -187,39 +224,28 @@
                     </li>
                 {% endif %}
 
-                {% if user.is_superuser or perms.approvals_app.view_approvals_done_page or perms.approvals_app.view_approvals_pending_page %}
+                {% if perms.transport_app.view_transportrequest %}
                     <li class="nav-item">
-                        <a class="nav-link {% if app == 'approvals' %}active{% else %}collapsed{% endif %}"
-                           data-bs-target="#approval-nav"
+                        <a class="nav-link {% if app == 'transport' %}active{% else %}collapsed{% endif %}"
+                           data-bs-target="#auxiliary-nav"
                            data-bs-toggle="collapse"
+                           aria-controls="auxiliary-nav"
+                           aria-expanded="{% if app == 'transport' %}true{% else %}false{% endif %}"
                            href="#">
-                            <i class="bi bi-briefcase-fill"></i>
-                            <span>Согласования</span>
+                            <i class="bi bi-tools"></i>
+                            <span>Вспомогательное</span>
                             <i class="bi bi-chevron-down ms-auto"></i>
                         </a>
-
-                        <ul id="approval-nav"
-                            class="nav-content collapse {% if app == 'approvals' %}show{% endif %}"
+                        <ul id="auxiliary-nav"
+                            class="nav-content collapse {% if app == 'transport' %}show{% endif %}"
                             data-bs-parent="#sidebar-nav">
-                            {% if user.is_superuser or perms.approvals_app.view_approvals_done_page %}
-                                <li>
-                                    <a href="{% url 'approvals:done' %}"
-                                       class="{% if rn == 'done' %}active{% endif %}">
-                                        <i class="bi bi-circle"></i>
-                                        <span>Все согласования</span>
-                                    </a>
-                                </li>
-                            {% endif %}
-
-                            {% if user.is_superuser or perms.approvals_app.view_approvals_pending_page %}
-                                <li>
-                                    <a href="{% url 'approvals:pending' %}"
-                                       class="{% if rn == 'pending' %}active{% endif %}">
-                                        <i class="bi bi-circle"></i>
-                                        <span>На согласовании</span>
-                                    </a>
-                                </li>
-                            {% endif %}
+                            <li>
+                                <a href="{% url 'transport:list' %}"
+                                   class="{% if app == 'transport' %}active{% endif %}">
+                                    <i class="bi bi-circle"></i>
+                                    <span>Заявки на автотранспорт</span>
+                                </a>
+                            </li>
                         </ul>
                     </li>
                 {% endif %}
@@ -268,7 +294,7 @@
             <li class="nav-heading">Аккаунт</li>
 
             <li class="nav-item">
-                <a class="nav-link collapsed" href="#">
+                <a class="nav-link {% if request.resolver_match.url_name == 'profile' %}active{% else %}collapsed{% endif %}" href="{% url 'authapp:profile' %}">
                     <i class="bi bi-person"></i>
                     <span>Профиль</span>
                 </a>

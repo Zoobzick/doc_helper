@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="pagetitle"><h1>Заявка № {{ object.pk }} на автотранспорт</h1></div>
+<p>{{ object.period }}</p>
+<div class="d-flex gap-2 flex-wrap mb-3"><a class="btn btn-outline-secondary" href="{% url 'transport:list' %}">К списку</a>{% if perms.transport_app.change_transportrequest %}<a class="btn btn-outline-primary" href="{% url 'transport:edit' object.pk %}">Редактировать</a>{% endif %}{% if pdf %}<a class="btn btn-outline-danger" href="{% url 'transport:download' object.pk pdf.revision %}" title="Скачать PDF" aria-label="Скачать PDF заявки"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> PDF</a>{% endif %}</div>
+{% if not pdf %}<div class="alert alert-warning">PDF пока недоступен. Данные заявки сохранены.{% if perms.transport_app.change_transportrequest %}<form method="post" action="{% url 'transport:generate' object.pk %}" class="mt-2">{% csrf_token %}<input type="hidden" name="version" value="{{ object.revision }}"><button class="btn btn-outline-primary">Повторить формирование PDF</button></form>{% endif %}</div>{% endif %}
+<div class="card"><div class="card-body pt-4">
+<div class="row"><div class="col-md-6">{{ object.organization }}<br>{{ object.site }}<br>Контактный номер: {{ object.phone }}</div><div class="col-md-6 text-md-end">Утверждаю:<br>____________ {{ object.approver }}<br>Дата документа: "{{ object.date|date:'d' }}" {{ object.date|date:'m Y' }}г.</div></div>
+<h2 class="h4 text-center my-4">Заявка на автотранспорт</h2><p><strong>{{ object.place_display }}</strong></p>
+<div class="table-responsive"><table class="table table-bordered"><thead><tr><th>п/п</th><th>Наименование техники</th><th>Дата и смена</th><th>Кол-во</th><th>Виды работ</th><th>Примечание</th></tr></thead><tbody>{% for item in object.items.all %}<tr><td>{{ forloop.counter }}</td><td>{{ item.vehicle }}</td><td>{{ item.schedule|linebreaksbr }}</td><td>{{ item.quantity }}</td><td>{{ item.work }}</td><td>{{ item.note }}</td></tr>{% endfor %}</tbody></table></div>
+<div class="row mt-4"><div class="col-md-6">Составил:<br>{{ object.author }}<br>________________</div><div class="col-md-6">Согласовал:<br>{{ object.reviewer }}<br>________________</div></div>
+</div></div>
+<div class="row">
+<div class="col-lg-6"><div class="card"><div class="card-body pt-3"><h2 class="h5">История изменений</h2>
+{% for event in events %}<p class="mb-2">{{ event.text }}<br><small class="text-muted">{{ event.created_at|date:'d.m.Y H:i' }} · {{ event.user.get_full_name|default:event.user.username }}</small></p>{% endfor %}</div></div></div></div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="pagetitle"><h1>Заявки на автотранспорт</h1></div>
+<div class="d-flex justify-content-between flex-wrap gap-3 mb-3">
+<form class="d-flex gap-2 flex-grow-1" method="get" style="max-width: 800px; min-width: 0;">
+<input class="form-control flex-grow-1" style="min-width: 0;" type="search" name="q" value="{{ q }}" placeholder="Автотранспорт, организация, участок или площадка" aria-label="Поиск по автотранспорту, организации, участку или площадке">
+<button class="btn btn-outline-primary">Найти</button></form>
+{% if perms.transport_app.add_transportrequest %}<a class="btn btn-primary" href="{% url 'transport:create' %}">Создать заявку</a>{% endif %}</div>
+<div class="card"><div class="card-body pt-3 table-responsive"><table class="table align-middle"><thead><tr><th>Дата</th><th>Площадка</th><th>Период</th><th>Автотранспорт</th><th>Действия</th></tr></thead><tbody>
+{% for object in page %}<tr>
+<td><a href="{% url 'transport:detail' object.pk %}">{{ object.date|date:'d.m.Y' }}</a></td><td>{{ object.place }}</td><td>{{ object.period }}</td>
+<td>{% for item in object.items.all %}<div>{{ item.vehicle }} — {{ item.quantity }} ед.</div>{% endfor %}</td>
+<td><div class="d-flex gap-2">
+{% if object.has_current_pdf %}
+<a class="btn btn-outline-danger btn-sm" href="{% url 'transport:download' object.pk object.revision %}" title="Скачать PDF" aria-label="Скачать PDF заявки № {{ object.pk }}"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></a>
+{% elif perms.transport_app.change_transportrequest %}
+<form method="post" action="{% url 'transport:generate' object.pk %}">{% csrf_token %}<input type="hidden" name="version" value="{{ object.revision }}"><input type="hidden" name="action" value="download"><button class="btn btn-outline-danger btn-sm" title="Сформировать и скачать PDF" aria-label="Сформировать и скачать PDF заявки № {{ object.pk }}"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></button></form>
+{% else %}<button class="btn btn-outline-secondary btn-sm" disabled title="PDF ещё не сформирован" aria-label="PDF ещё не сформирован"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></button>{% endif %}
+{% if perms.transport_app.change_transportrequest %}<a class="btn btn-outline-primary btn-sm" href="{% url 'transport:edit' object.pk %}" title="Редактировать заявку" aria-label="Редактировать заявку № {{ object.pk }}"><i class="bi bi-pencil-square" aria-hidden="true"></i></a>{% endif %}
+{% if user.is_superuser or user.is_staff and perms.transport_app.delete_transportrequest %}<a class="btn btn-outline-danger btn-sm" href="{% url 'transport:delete' object.pk %}" title="Удалить заявку" aria-label="Удалить заявку № {{ object.pk }}"><i class="bi bi-trash" aria-hidden="true"></i></a>{% endif %}
+</div></td></tr>{% empty %}<tr><td colspan="5">{% if q %}По вашему запросу заявки не найдены.{% else %}Заявок пока нет.{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></div>
+<nav aria-label="Страницы">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}&q={{ q|urlencode }}">Назад</a>{% endif %} <span>{{ page.number }} / {{ page.paginator.num_pages }}</span> {% if page.has_next %}<a href="?page={{ page.next_page_number }}&q={{ q|urlencode }}">Далее</a>{% endif %}</nav>
+{% endblock %}

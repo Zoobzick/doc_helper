@@ -173,6 +173,7 @@ INSTALLED_APPS = [
     'acts_app',
     'statistics_app',
     'backup_app',
+    'transport_app',
 ]
 
 MIDDLEWARE = [

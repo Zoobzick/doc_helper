@@ -1,0 +1,32 @@
+{% extends 'base.html' %}{% load static %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'assets/css/transport_form.css' %}">
+<div class="pagetitle"><h1>{% if object.pk %}Заявка № {{ object.pk }} — редактирование{% else %}Новая заявка на автотранспорт{% endif %}</h1></div>
+<p class="text-muted">У каждой позиции — свой срок и смена. Общие данные запоминаются для следующих заявок.</p>
+<form method="post" id="transport-form" data-start-step="{{ start_step|default:1 }}" novalidate>{% csrf_token %}{{ form.version }}{{ items.management_form }}
+{% if form.errors or items.errors or items.non_form_errors %}<div class="alert alert-danger" role="alert">Проверьте поля заявки. {{ form.non_field_errors }}{{ items.non_form_errors }}</div>{% endif %}
+<div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-outline-primary step-button" data-step="1">1. Общие данные</button><button type="button" class="btn btn-outline-primary step-button" data-step="2">2. Транспорт</button></div>
+<p class="small text-muted"><span class="transport-required" aria-hidden="true">*</span> — обязательные поля</p>
+<section id="step-1">
+<fieldset class="transport-group"><legend><i class="bi bi-geo-alt" aria-hidden="true"></i>Место работ</legend><div class="row g-3">
+{% include 'transport_app/field.html' with field=form.organization %}
+{% include 'transport_app/field.html' with field=form.site %}
+{% include 'transport_app/field.html' with field=form.place %}
+</div></fieldset>
+<fieldset class="transport-group"><legend><i class="bi bi-telephone" aria-hidden="true"></i>Контактные данные и дата</legend><div class="row g-3">
+{% include 'transport_app/field.html' with field=form.phone %}
+{% include 'transport_app/field.html' with field=form.date %}
+</div></fieldset>
+<fieldset class="transport-group"><legend><i class="bi bi-people" aria-hidden="true"></i>Ответственные</legend><div class="row g-3">
+{% include 'transport_app/field.html' with field=form.author %}
+{% include 'transport_app/field.html' with field=form.reviewer %}
+{% include 'transport_app/field.html' with field=form.approver %}
+</div></fieldset>
+</section>
+<section id="step-2"><div id="transport-items">{% for item in items %}{% include 'transport_app/item_form.html' %}{% endfor %}</div><button type="button" id="add-item" class="btn btn-outline-primary mb-3">+ Добавить транспорт</button><p class="text-muted" id="period-summary" aria-live="polite"></p></section>
+<div id="transport-error" class="text-danger mb-3" role="alert"></div>
+<div class="d-flex gap-2 flex-wrap"><a class="btn btn-outline-secondary" href="{% url 'transport:list' %}">К списку</a><button type="button" id="next-step" class="btn btn-primary">Далее: транспорт</button><button class="btn btn-primary" id="save-request">Сформировать заявку</button></div>
+</form>
+<template id="empty-item">{% include 'transport_app/item_form.html' with item=items.empty_form %}</template>
+{% endblock %}
+{% block extra_js %}<script src="{% static 'assets/js/transport_form.js' %}"></script>{% endblock %}

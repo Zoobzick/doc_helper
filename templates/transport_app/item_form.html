@@ -1,0 +1,22 @@
+<div class="card transport-item"><div class="card-body pt-3">
+<div class="d-flex justify-content-between align-items-center gap-2 mb-3 transport-item-heading"><h2 class="h6 mb-0 transport-item-title">Транспорт</h2><div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-outline-primary copy-item">Дублировать</button><button type="button" class="btn btn-sm btn-outline-danger remove-item">Удалить</button></div></div>
+{{ item.non_field_errors }}{% for hidden in item.hidden_fields %}{{ hidden }}{% endfor %}
+<span hidden>{{ item.DELETE }}</span>
+<fieldset class="transport-group"><legend><i class="bi bi-truck" aria-hidden="true"></i>Что требуется</legend><div class="row g-3">
+{% include 'transport_app/field.html' with field=item.vehicle %}
+{% include 'transport_app/field.html' with field=item.quantity %}
+</div></fieldset>
+<fieldset class="transport-group transport-schedule"><legend><i class="bi bi-calendar3" aria-hidden="true"></i>Когда требуется</legend><div class="row g-3">
+{% include 'transport_app/field.html' with field=item.mode %}
+{% include 'transport_app/field.html' with field=item.shift %}
+{% include 'transport_app/field.html' with field=item.start %}
+{% include 'transport_app/field.html' with field=item.end %}
+{% include 'transport_app/field.html' with field=item.frequency %}
+</div>
+<div class="schedule-dates text-muted mt-3" aria-live="polite"></div>
+</fieldset>
+<fieldset class="transport-group"><legend><i class="bi bi-tools" aria-hidden="true"></i>Для каких работ</legend><div class="row g-3">
+{% include 'transport_app/field.html' with field=item.work %}
+{% include 'transport_app/field.html' with field=item.note %}
+</div></fieldset>
+</div></div>

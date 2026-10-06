@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="pagetitle"><h1>Удалить заявку № {{ object.pk }}?</h1></div>
+<div class="card"><div class="card-body pt-3">
+<p>{{ object.date|date:'d.m.Y' }} · {{ object.place }} · {{ object.period }}</p>
+<p>Заявка, её позиции, история изменений и все сохранённые PDF будут удалены без возможности восстановления в приложении.</p>
+<form method="post" class="d-flex gap-2">{% csrf_token %}<input type="hidden" name="version" value="{{ object.revision }}">
+<button class="btn btn-danger">Удалить заявку</button><a class="btn btn-outline-secondary" href="{% url 'transport:list' %}">Отмена</a>
+</form></div></div>
+{% endblock %}

@@ -1,0 +1,6 @@
+<div class="col-md-6 field-{{ field.name }}">
+    <label class="form-label" for="{{ field.id_for_label }}"><span class="transport-field-label">{{ field.label }}</span>{% if field.field.required or field.name == 'end' %} <span class="transport-required" aria-hidden="true">*</span>{% endif %}</label>
+    {{ field }}
+    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+    <div class="text-danger">{{ field.errors }}</div>
+</div>
