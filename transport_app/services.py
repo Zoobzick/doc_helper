@@ -68,7 +68,7 @@ def build_docx(request, destination):
     reviewer_position, reviewer_name = _signer(request.reviewer)
     approver_position, approver_name = _signer(request.approver)
     values = {
-        "{{org_full}}": request.organization, "{{uchastok}}": request.site,
+        "{{org_full}}": request.organization, "{{uchastok}}": request.site_display,
         "{{phone_number}}": request.phone, "{{utverzhd_fio}}": request.approver,
         "{{data_zayavki}}": request.date.strftime('"%d" %m %Yг.'),
         "{{sostavil_dolzh}}": author_position, "{{sostavil_fio}}": author_name,

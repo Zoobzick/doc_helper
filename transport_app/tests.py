@@ -241,6 +241,15 @@ class TransportTests(TestCase):
         response = self.client.post(reverse('transport:create'), data)
         self.assertIn('place', response.context['form'].errors)
 
+    def test_site_token_adds_label_without_duplication(self):
+        obj = self.create_request()
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'site.docx'
+            for value in ('№5', '5', 'Участок №5', 'Участок 5', ' участок № 5 '):
+                obj.site = value
+                build_docx(obj, path)
+                self.assertEqual(Document(path).tables[0].cell(5, 0).text, 'Участок №5')
+
     def test_template_grows_shrinks_and_preserves_formatting(self):
         obj = self.create_request()
         obj.author = 'Начальник участка, Иванов И.И.'

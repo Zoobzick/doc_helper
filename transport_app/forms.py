@@ -71,6 +71,8 @@ class RequestForm(StyledForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["version"].initial = self.instance.revision
+        self.fields["site"].widget.attrs["placeholder"] = "№5"
+        self.fields["site"].help_text = "Укажите номер участка. В бланке: Участок №5."
         self.fields["place"].label = "Номер площадки / номера площадок"
         self.fields["place"].widget.attrs["placeholder"] = "6 или 6, 1, 7"
         self.fields["place"].help_text = "Несколько номеров укажите через запятую. В бланке: Площадки №6, №1, №7."

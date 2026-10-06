@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from django.utils import timezone
-from .formatting import format_place
+from .formatting import format_place, format_site
 
 
 class TransportUserSettings(models.Model):
@@ -33,6 +33,10 @@ class TransportRequest(models.Model):
 
     def __str__(self):
         return f"Заявка №{self.pk} — {self.place}"
+
+    @property
+    def site_display(self):
+        return format_site(self.site)
 
     @property
     def place_display(self):

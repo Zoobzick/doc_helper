@@ -1,6 +1,13 @@
 import re
 
 
+def format_site(value):
+    value = value.strip()
+    value = re.sub(r"^участок\s*(?=№|\d|\s|$)", "", value, flags=re.IGNORECASE).strip()
+    value = value.lstrip("№").strip()
+    return "Участок №" + value if value else ""
+
+
 def place_numbers(value):
     """Keep the entered order and identifiers, accepting legacy place prefixes."""
     numbers = []
