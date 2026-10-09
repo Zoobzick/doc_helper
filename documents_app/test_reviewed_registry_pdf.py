@@ -76,6 +76,52 @@ class ReviewedRegistryPdfTests(TestCase):
         self.assertFalse(self.batch.generated_documents.exists())
         self.assertNotContains(self.client.get(self.master_url), self.pdf_url)
 
+    def test_one_reviewed_project_out_of_eighteen_keeps_batch_in_review(self):
+        for number in range(3, 19):
+            project = Project.objects.create(full_code=f"REVIEW-{number}")
+            DocumentBatchProject.objects.create(batch=self.batch, project=project, order=number)
+        self.mark_reviewed()
+        url = reverse("documents:id_handover_batch_list")
+        response = self.client.get(url)
+        batch = response.context["batches"][0]
+        self.assertEqual(batch.projects_count, 18)
+        self.assertEqual(batch.reviewed_projects_count, 1)
+        self.assertEqual(batch.list_state_key, "in_progress")
+        self.assertContains(response, "Продолжить проверку")
+        self.assertNotContains(response, "Открыть файлы")
+        self.assertEqual(response.context["summary"]["generated"], 0)
+        self.assertEqual(len(self.client.get(url, {"status": "in_progress"}).context["batches"]), 1)
+        self.assertEqual(len(self.client.get(url, {"status": "generated"}).context["batches"]), 0)
+        self.assertContains(self.client.get(self.master_url), self.pdf_url)
+
+    def test_all_reviewed_without_files_is_ready_to_generate(self):
+        self.batch.batch_projects.update(review_status=DocumentBatchProjectReviewStatus.REVIEWED)
+        response = self.client.get(reverse("documents:id_handover_batch_list"))
+        self.assertEqual(response.context["batches"][0].list_state_key, "ready_to_generate")
+        self.assertContains(response, "Открыть карточку")
+
+    def test_completed_batch_returns_to_review_after_reset(self):
+        self.mark_reviewed()
+        DocumentBatchAct.objects.create(batch=self.batch, project=self.other, act=self.act, order=1, added_by=self.user)
+        self.client.post(reverse("documents:id_handover_batch_project_mark_reviewed", args=[self.batch.pk, self.other.pk]))
+        url = reverse("documents:id_handover_batch_list")
+        response = self.client.get(url)
+        self.assertEqual(response.context["batches"][0].list_state_key, "generated")
+        self.assertContains(response, "Открыть файлы")
+        self.batch.batch_projects.filter(project=self.other).update(review_status=DocumentBatchProjectReviewStatus.PENDING)
+        response = self.client.get(url)
+        self.assertEqual(response.context["batches"][0].list_state_key, "in_progress")
+        self.assertContains(response, "Продолжить проверку")
+        self.assertNotContains(response, "Открыть файлы")
+
+    def test_unreviewed_batch_with_old_files_still_needs_review(self):
+        self.mark_reviewed()
+        self.batch.batch_projects.update(review_status=DocumentBatchProjectReviewStatus.PENDING)
+        response = self.client.get(reverse("documents:id_handover_batch_list"))
+        self.assertEqual(response.context["batches"][0].list_state_key, "needs_review")
+        self.assertContains(response, "Начать проверку")
+        self.assertNotContains(response, "Открыть файлы")
+
     def test_changed_act_cannot_open_old_pdf_even_without_invalidating_flag(self):
         self.mark_reviewed()
         Act.objects.filter(pk=self.act.pk).update(work_name="Изменённые работы")

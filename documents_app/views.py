@@ -1283,18 +1283,20 @@ class DocumentBatchListView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         }
 
     def _resolve_batch_list_state(self, *, batch: DocumentBatch) -> tuple[str, str, str, str]:
+        # Реестры отдельных шифров появляются уже в процессе проверки.
+        # Наличие таких файлов не означает готовность всего комплекта.
+        all_reviewed = batch.projects_count and batch.reviewed_projects_count == batch.projects_count
+        if not all_reviewed:
+            if batch.reviewed_projects_count or batch.in_progress_projects_count:
+                return "in_progress", "Проверяется", "warning", "bi-person-workspace"
+            return "needs_review", "Нужно проверить", "secondary", "bi-hourglass-split"
+
         if batch.generated_documents_count:
             if batch.stale_generated_documents_count:
                 return "generated", "Файлы требуют обновления", "warning", "bi-exclamation-triangle"
             return "generated", "Сформирован", "success", "bi-check2-circle"
 
-        if batch.projects_count and batch.reviewed_projects_count == batch.projects_count:
-            return "ready_to_generate", "Готов к генерации", "primary", "bi-gear"
-
-        if batch.in_progress_projects_count:
-            return "in_progress", "Проверяется", "warning", "bi-person-workspace"
-
-        return "needs_review", "Нужно проверить", "secondary", "bi-hourglass-split"
+        return "ready_to_generate", "Готов к генерации", "primary", "bi-gear"
 
     def _resolve_primary_step(self, *, batch: DocumentBatch) -> int:
         return 2
