@@ -19,6 +19,7 @@ from documents_app.views import (
     DocumentBatchMoveActDownView,
     DocumentBatchMoveActUpView,
     DocumentBatchProjectMarkReviewedView,
+    DocumentBatchProjectRegistryPdfView,
     DocumentBatchProjectReviewView,
     DocumentBatchProjectActsLookupView,
     DocumentBatchRemoveProjectView,
@@ -113,6 +114,11 @@ urlpatterns = [
         "id-handover/batches/<int:batch_id>/projects/<int:project_id>/mark-reviewed/",
         DocumentBatchProjectMarkReviewedView.as_view(),
         name="id_handover_batch_project_mark_reviewed",
+    ),
+    path(
+        "id-handover/batches/<int:batch_id>/projects/<int:project_id>/registry.pdf",
+        DocumentBatchProjectRegistryPdfView.as_view(),
+        name="id_handover_batch_project_registry_pdf",
     ),
     path(
         "id-handover/batches/<int:batch_id>/projects/<int:project_id>/remove/",

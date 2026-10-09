@@ -442,6 +442,14 @@
                                                     </div>
 
                                                     <div class="batch-project-actions">
+                                                        {% if project.has_reviewed_registry_pdf %}
+                                                            <a href="{% url 'documents:id_handover_batch_project_registry_pdf' batch.id project.project_id %}"
+                                                               target="_blank" rel="noopener"
+                                                               class="btn btn-outline-primary btn-sm js-summary-action">
+                                                                <i class="bi bi-file-earmark-pdf me-1"></i>
+                                                                Реестр PDF
+                                                            </a>
+                                                        {% endif %}
                                                         {% if project.review_status == "in_progress" and project.review_started_by.id != user.id and not user.is_superuser %}
                                                             <button type="button"
                                                                     class="btn btn-outline-secondary btn-sm js-summary-action"

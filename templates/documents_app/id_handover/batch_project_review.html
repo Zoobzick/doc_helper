@@ -474,6 +474,19 @@
                     return;
                 }
 
+                contentRoot.querySelectorAll(".js-mark-reviewed-form").forEach(function (form) {
+                    form.addEventListener("submit", function (event) {
+                        if (form.dataset.submitting) {
+                            event.preventDefault();
+                            return;
+                        }
+                        form.dataset.submitting = "true";
+                        const button = form.querySelector('button[type="submit"]');
+                        button.disabled = true;
+                        button.textContent = "Формируется PDF…";
+                    });
+                });
+
                 contentRoot.querySelectorAll(".js-project-review-action-form").forEach(function (form) {
                     form.addEventListener("submit", async function (event) {
                         event.preventDefault();

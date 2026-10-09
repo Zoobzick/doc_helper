@@ -402,6 +402,12 @@ def _mark_batch_project_review_touched(*, batch: DocumentBatch, project_id: int,
 
 
 def _enrich_preview_with_review_state(*, batch: DocumentBatch, preview_data: dict) -> dict:
+    pdf_project_ids = set(
+        batch.generated_documents.filter(
+            document_type=GeneratedDocumentType.REGISTRY_PREVIEW_PDF,
+            is_actual=True,
+        ).exclude(file="").values_list("project_id", flat=True)
+    )
     batch_projects = (
         DocumentBatchProject.objects
         .filter(batch=batch)
@@ -432,6 +438,9 @@ def _enrich_preview_with_review_state(*, batch: DocumentBatch, preview_data: dic
             reviewed_count += 1
 
         project_payload["is_reviewed"] = is_reviewed
+        project_payload["has_reviewed_registry_pdf"] = (
+            is_reviewed and project_payload.get("project_id") in pdf_project_ids
+        )
         project_payload["is_in_progress"] = bool(state.get("is_in_progress"))
         project_payload["review_status"] = state.get("review_status") or DocumentBatchProjectReviewStatus.PENDING
         project_payload["review_status_label"] = state.get("review_status_label") or "Ожидает проверки"
@@ -2089,6 +2098,20 @@ class DocumentBatchProjectMarkReviewedView(LoginRequiredMixin, PermissionRequire
         project_id = kwargs["project_id"]
         batch_project = _get_batch_project_or_404(batch=batch, project_id=project_id)
 
+        try:
+            ProjectRegistryGenerationService().generate_for_project(
+                batch=batch,
+                project_id=project_id,
+                template_path=Path(settings.XLSX_TEMPLATES_DIR) / "id_handover_registry.xlsx",
+            )
+        except Exception as exc:
+            messages.error(request, f"Не удалось сформировать PDF реестра: {exc}. Повторите проверку.")
+            return redirect(
+                "documents:id_handover_batch_project_review",
+                batch_id=batch.id,
+                project_id=project_id,
+            )
+
         batch_project.review_status = DocumentBatchProjectReviewStatus.REVIEWED
         batch_project.review_started_at = batch_project.review_started_at or timezone.now()
         batch_project.review_started_by = batch_project.review_started_by or request.user
@@ -2106,9 +2129,50 @@ class DocumentBatchProjectMarkReviewedView(LoginRequiredMixin, PermissionRequire
 
         messages.success(
             request,
-            f"Шифр {batch_project.project.full_code} отмечен как проверенный.",
+            f"Шифр {batch_project.project.full_code} отмечен как проверенный. PDF реестра сформирован.",
         )
         return redirect(f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2")
+
+
+class DocumentBatchProjectRegistryPdfView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = "documents_app.view_documentbatch"
+    raise_exception = True
+
+    def get(self, request, batch_id, project_id):
+        batch = get_object_or_404(DocumentBatch, pk=batch_id)
+        batch_project = _get_batch_project_or_404(batch=batch, project_id=project_id)
+        document = batch.generated_documents.filter(
+            project_id=project_id,
+            document_type=GeneratedDocumentType.REGISTRY_PREVIEW_PDF,
+        ).first()
+        if (
+            not batch_project.is_reviewed
+            or not document
+            or not document.is_actual
+            or not DocumentSignatureService().check_document_actuality(generated_document=document).is_actual
+        ):
+            return HttpResponse(
+                "PDF проверенного реестра недоступен или устарел. Откройте проверку шифра "
+                "и нажмите «Отметить проверенным», чтобы сформировать актуальный PDF.",
+                status=409,
+                content_type="text/plain; charset=utf-8",
+            )
+        if not document.file:
+            raise Http404("PDF реестра отсутствует. Повторите проверку шифра.")
+        try:
+            file = document.file.open("rb")
+        except FileNotFoundError as exc:
+            raise Http404("PDF реестра не найден. Повторите проверку шифра.") from exc
+        response = FileResponse(
+            file,
+            content_type="application/pdf",
+            as_attachment=False,
+            filename=_build_registry_download_name(
+                batch=batch, project=batch_project.project, extension=".pdf"
+            ),
+        )
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 class DocumentBatchActAddReviewNoteView(LoginRequiredMixin, PermissionRequiredMixin, View):

@@ -38,7 +38,7 @@
                         {% endif %}
                     </div>
                     <div class="text-muted small">
-                        Изменения состава сохраняются сразу. После сверки отметь шифр проверенным и вернись к списку шифров.
+                        Изменения состава сохраняются сразу. При отметке «Проверен» сформируется PDF реестра для печати.
                     </div>
                 </div>
             </div>
@@ -47,7 +47,7 @@
                     <i class="bi bi-arrow-clockwise me-1"></i>
                     Обновить данные шифра
                 </button>
-                <form method="post" action="{{ project_review_mark_done_url }}" class="d-inline">
+                <form method="post" action="{{ project_review_mark_done_url }}" class="d-inline js-mark-reviewed-form">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-success">
                         <i class="bi bi-check2-circle me-1"></i>
