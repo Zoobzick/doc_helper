@@ -1401,10 +1401,19 @@ class DocumentBatchUpdateDraftView(LoginRequiredMixin, PermissionRequiredMixin, 
 
     def post(self, request, *args, **kwargs):
         batch = get_object_or_404(DocumentBatch, pk=kwargs["batch_id"])
-        form = DocumentBatchMasterForm(request.POST)
+        initial = DocumentBatchMasterView().get_form(batch=batch).initial
+        form = DocumentBatchMasterForm(request.POST, initial=initial)
 
         if not form.is_valid():
             return self._render_invalid_form(batch=batch, form=form)
+
+        if set(form.changed_data) <= {"title", "comment"}:
+            with transaction.atomic():
+                self._save_metadata(batch=batch, form=form)
+            messages.success(request, "Название и комментарий сохранены. Состав и результаты проверки сохранены.")
+            return redirect(
+                f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2"
+            )
 
         params = _build_batch_create_params_from_form(
             form=form,
@@ -1472,6 +1481,38 @@ class DocumentBatchUpdateDraftView(LoginRequiredMixin, PermissionRequiredMixin, 
         return redirect(
             f"{reverse('documents:id_handover_batch_master', kwargs={'batch_id': batch.id})}?step=2"
         )
+
+    def _save_metadata(self, *, batch: DocumentBatch, form: DocumentBatchMasterForm) -> None:
+        if not form.changed_data:
+            return
+
+        # Existing signatures include title/comment. Rebase only documents whose
+        # dependencies still match, so unrelated stale files stay stale.
+        signatures = DocumentSignatureService()
+        documents = list(batch.generated_documents.all())
+        matching_documents = []
+        for document in documents:
+            document.batch = batch
+            try:
+                matches = signatures.check_document_actuality(generated_document=document).is_actual
+            except ValueError:
+                matches = False
+            if matches:
+                matching_documents.append(document)
+
+        batch.title = form.cleaned_data["title"]
+        batch.comment = form.cleaned_data["comment"]
+        if batch.preview_snapshot_json:
+            batch.preview_snapshot_json.setdefault("batch", {}).update(
+                title=batch.title, comment=batch.comment,
+            )
+        batch.save(update_fields=["title", "comment", "preview_snapshot_json", "updated_at"])
+
+        # Letter signatures depend on the stored registry signatures.
+        matching_documents.sort(key=lambda doc: doc.document_type in signatures.BATCH_LETTER_TYPES)
+        for document in matching_documents:
+            document.dependency_signature = signatures.build_signature_for_document(generated_document=document)
+            document.save(update_fields=["dependency_signature"])
 
     def _render_invalid_form(self, *, batch: DocumentBatch, form: DocumentBatchMasterForm):
         master_view = DocumentBatchMasterView()

@@ -1,0 +1,17 @@
+[Unit]
+Description=Nightly database and media backup to S3 for doc_helper
+Wants=network-online.target
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=webapp
+Group=webapp
+Environment=DOC_HELPER_PROJECT_DIR=/var/www/doc_helper
+EnvironmentFile=/etc/doc_helper/doc_helper.env
+ExecStart=/bin/bash -c 'cd "$${DOC_HELPER_PROJECT_DIR}" && exec ./venv/bin/python manage.py create_backup --trigger scheduled --no-db-record --reason "Nightly backup"'
+TimeoutStartSec=infinity
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

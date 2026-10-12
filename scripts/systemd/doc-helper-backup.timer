@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily doc_helper backup at midnight Moscow time
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 Europe/Moscow
+AccuracySec=1s
+Persistent=false
+Unit=doc-helper-backup.service
+
+[Install]
+WantedBy=timers.target

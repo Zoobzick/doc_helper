@@ -56,6 +56,7 @@ jobs:
           DJANGO_ALLOWED_HOSTS='$(escape "$DJANGO_ALLOWED_HOSTS")'
           DOC_HELPER_BASE_ID_DIR='$(escape "$DOC_HELPER_BASE_ID_DIR")'
           DOC_HELPER_BACKUP_DIR='/var/lib/doc_helper/backups'
+          DOC_HELPER_PROJECT_DIR='$(escape "$PROJECT_DIR")'
           S3_BACKUP_ENABLED='$(escape "$S3_BACKUP_ENABLED")'
           S3_BACKUP_ENDPOINT_URL='$(escape "$S3_BACKUP_ENDPOINT_URL")'
           S3_BACKUP_REGION='$(escape "$S3_BACKUP_REGION")'
@@ -136,4 +137,8 @@ jobs:
 
           sudo systemctl restart gunicorn-doc_helper
           sudo systemctl reload nginx
+          sudo install -m 644 "$PROJECT_DIR/scripts/systemd/doc-helper-backup.service" /etc/systemd/system/doc-helper-backup.service
+          sudo install -m 644 "$PROJECT_DIR/scripts/systemd/doc-helper-backup.timer" /etc/systemd/system/doc-helper-backup.timer
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now doc-helper-backup.timer
           REMOTE

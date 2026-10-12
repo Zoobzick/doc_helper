@@ -40,6 +40,45 @@ DOC_HELPER_BACKUP_DIR=C:\dc_web\doc_helper\backups
 
 ## Создать бэкап вручную
 
+### Ежедневная копия в 00:00 по Москве
+
+Deploy workflow устанавливает и включает `doc-helper-backup.timer`. Он запускает
+бэкап ежедневно в **00:00 Europe/Moscow**, независимо от часового пояса сервера.
+Пропущенный запуск при выключенном сервере не догоняется днём; следующий запуск —
+в ближайшую полночь. Уже работающий ночной сервис повторно не запускается.
+
+Хранится один архив `doc_helper_scheduled_latest.zip` в `DOC_HELPER_BACKUP_DIR`
+и один текущий объект с тем же именем в `S3_BACKUP_PREFIX` настроенного бакета.
+Сначала собирается и проверяется новый ZIP во временной папке, затем загружается
+на постоянный S3-ключ, после успешной загрузки заменяется локальная копия.
+При ошибке сборки или загрузки предыдущая локальная копия сохраняется.
+Ручные и pre-deploy копии не затрагиваются. Ночной запуск требует
+`S3_BACKUP_ENABLED=true` и действующих S3-реквизитов; ошибки видны в journal.
+На странице `/backups/` архив отображается как «По расписанию».
+История версий объекта, если она включена на стороне S3, управляется настройками бакета.
+
+При ручной установке на сервере:
+
+```bash
+cd /var/www/doc_helper
+sudo install -m 644 scripts/systemd/doc-helper-backup.service /etc/systemd/system/
+sudo install -m 644 scripts/systemd/doc-helper-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now doc-helper-backup.timer
+systemctl list-timers doc-helper-backup.timer
+sudo journalctl -u doc-helper-backup.service -n 50 --no-pager
+```
+
+Если проект расположен иначе, задайте `DOC_HELPER_PROJECT_DIR` в
+`/etc/doc_helper/doc_helper.env`. Workflow задаёт эту переменную автоматически.
+Для немедленного пробного запуска (заменяет текущую ночную копию):
+
+```bash
+sudo systemctl start doc-helper-backup.service
+```
+
+### Ручной запуск команды
+
 ```bash
 cd /path/to/doc_helper
 set -a

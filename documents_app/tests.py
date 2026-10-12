@@ -16,6 +16,7 @@ from acts_app.models import Act, ActAppendixLine, AttachmentType
 from documents_app.models import (
     DocumentBatch,
     DocumentBatchAct,
+    DocumentBatchActReviewNote,
     DocumentBatchActSource,
     DocumentBatchGenerationMode,
     DocumentBatchProject,
@@ -27,6 +28,7 @@ from documents_app.models import (
     GeneratedDocumentType,
 )
 from documents_app.services.id_handover.batch_editing import DocumentBatchEditingService
+from documents_app.services.id_handover.document_signatures import DocumentSignatureService
 from documents_app.services.id_handover.material_registry_projection import (
     build_material_registry_documents,
     get_batch_appendix_sheets_count,
@@ -34,6 +36,7 @@ from documents_app.services.id_handover.material_registry_projection import (
 from documents_app.services.id_handover.preview_builder import DocumentBatchPreviewBuilder
 from documents_app.views import (
     DocumentBatchRefreshProjectCompositionView,
+    DocumentBatchMasterView,
     _get_batch_preview_project,
 )
 from projects_app.models import Project
@@ -179,6 +182,80 @@ class DocumentBatchRefreshProjectCompositionTests(TestCase):
                     file=f"diagnostic-{project.id}-{document_type}",
                     created_by=self.user,
                 )
+
+    def _post_metadata(self, **changes):
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+        self.client.force_login(self.user)
+        data = DocumentBatchMasterView().get_form(batch=self.batch).initial
+        data = {key: value if value is not None else "" for key, value in data.items()}
+        data.update(changes)
+        return self.client.post(
+            reverse("documents:id_handover_batch_update_draft", kwargs={"batch_id": self.batch.id}),
+            data,
+        )
+
+    def test_metadata_preserves_composition_reviews_and_generated_files(self):
+        act = self._create_act(number="1", project=self.project, act_date=date(2026, 1, 20))
+        batch_act = DocumentBatchAct.objects.create(
+            batch=self.batch, project=self.project, act=act, order=3,
+            source=DocumentBatchActSource.MANUAL, added_by=self.user,
+        )
+        note = DocumentBatchActReviewNote.objects.create(batch_act=batch_act, text="Проверено", is_resolved=True)
+        self.batch.excluded_project_ids = [999]
+        self.batch.preview_snapshot_json = {"batch": {"title": ""}, "projects": [{"saved": True}]}
+        self.batch.save()
+        self._create_registry_document_rows()
+        signatures = DocumentSignatureService()
+        for document in self.batch.generated_documents.all():
+            document.pages_count = 2
+            document.dependency_signature = signatures.build_signature_for_document(generated_document=document)
+            document.save()
+        letter = GeneratedDocument.objects.create(
+            batch=self.batch, document_type=GeneratedDocumentType.LETTER_DOCX,
+            source_kind=GeneratedDocumentSourceKind.GENERATED, file="saved-letter.docx", created_by=self.user,
+        )
+        letter.dependency_signature = signatures.build_signature_for_document(generated_document=letter)
+        letter.save()
+        stale = self.batch.generated_documents.filter(document_type=GeneratedDocumentType.REGISTRY_PREVIEW_PDF).first()
+        stale.dependency_signature = "outdated"
+        stale.is_actual = False
+        stale.save()
+        before_projects = list(self.batch.batch_projects.values())
+        before_acts = list(DocumentBatchAct.objects.filter(batch=self.batch).values())
+        before_files = list(self.batch.generated_documents.values("id", "file", "is_actual", "pages_count", "generated_at"))
+
+        for changes in ({"title": "Новое название"}, {"comment": "Комментарий"}, {}):
+            with self.subTest(changes=changes), patch(
+                "documents_app.views.DocumentBatchRefreshCompositionView._refresh_batch_composition"
+            ) as refresh:
+                response = self._post_metadata(**changes)
+                self.assertEqual(response.status_code, 302)
+                refresh.assert_not_called()
+                self.batch.refresh_from_db()
+                self.assertEqual(list(self.batch.batch_projects.values()), before_projects)
+                self.assertEqual(list(DocumentBatchAct.objects.filter(batch=self.batch).values()), before_acts)
+                self.assertEqual(list(self.batch.generated_documents.values("id", "file", "is_actual", "pages_count", "generated_at")), before_files)
+                note.refresh_from_db()
+                self.assertTrue(note.is_resolved)
+                self.assertEqual(self.batch.excluded_project_ids, [999])
+                self.assertEqual(self.batch.preview_snapshot_json["projects"], [{"saved": True}])
+                for document in self.batch.generated_documents.exclude(pk=stale.pk):
+                    self.assertTrue(signatures.check_document_actuality(generated_document=document).is_actual)
+                stale.refresh_from_db()
+                self.assertEqual(stale.dependency_signature, "outdated")
+        self.assertEqual(self.batch.title, "Новое название")
+        self.assertEqual(self.batch.comment, "Комментарий")
+        self.assertEqual(self.batch.preview_snapshot_json["batch"]["title"], "Новое название")
+
+    @patch("documents_app.views._refresh_batch_generated_documents_actuality")
+    @patch("documents_app.views.DocumentBatchRefreshCompositionView._refresh_batch_composition")
+    def test_period_change_still_refreshes_composition(self, refresh, actuality):
+        refresh.return_value = {"projects_count": 2, "auto_acts_count": 0, "manual_acts_count": 0}
+        response = self._post_metadata(month_to="02.2026")
+        self.assertEqual(response.status_code, 302)
+        refresh.assert_called_once()
+        actuality.assert_called_once()
 
     @patch("documents_app.views.DocumentSignatureService.check_document_actuality")
     def test_master_does_not_recheck_generated_document_signatures(self, check_actuality):

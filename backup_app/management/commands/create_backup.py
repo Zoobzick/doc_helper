@@ -23,7 +23,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         trigger = options["trigger"].upper()
         try:
-            if options["no_db_record"]:
+            if options["no_db_record"] or trigger == BackupRun.Trigger.SCHEDULED:
                 result = create_filesystem_backup(
                     trigger=trigger,
                     reason=options["reason"],

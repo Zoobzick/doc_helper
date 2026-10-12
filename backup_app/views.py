@@ -87,6 +87,8 @@ def _backup_file_created_at(path: Path) -> datetime:
 def _backup_file_trigger_label(path: Path) -> str:
     if path.name == "doc_helper_deploy_latest.zip":
         return BackupRun.Trigger.DEPLOY.label
+    if path.name == "doc_helper_scheduled_latest.zip":
+        return BackupRun.Trigger.SCHEDULED.label
     return "Файл на диске"
 
 

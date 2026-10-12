@@ -83,7 +83,7 @@ def _get_s3_backup_client():
     )
 
 
-def upload_backup_to_s3(archive_path: Path) -> str:
+def upload_backup_to_s3(archive_path: Path, *, key: str | None = None) -> str:
     if not is_s3_backup_enabled():
         return ""
 
@@ -91,7 +91,7 @@ def upload_backup_to_s3(archive_path: Path) -> str:
     if not bucket:
         raise RuntimeError("S3_BACKUP_BUCKET is required when S3 backup is enabled.")
 
-    key = _build_s3_key(archive_path)
+    key = key or _build_s3_key(archive_path)
     client = _get_s3_backup_client()
     client.upload_file(str(archive_path), bucket, key)
     return key
@@ -267,6 +267,28 @@ def create_filesystem_backup(
     reason: str = "",
 ) -> BackupResult:
     trigger = trigger.upper()
+    if trigger == BackupRun.Trigger.SCHEDULED:
+        if not is_s3_backup_enabled():
+            raise RuntimeError("Для ночного бэкапа необходимо включить S3_BACKUP_ENABLED.")
+        backup_root = get_backup_root()
+        backup_root.mkdir(parents=True, exist_ok=True)
+        final_path = backup_root / "doc_helper_scheduled_latest.zip"
+        # Unique staging directory on the same filesystem for atomic replacement.
+        with tempfile.TemporaryDirectory(prefix="scheduled_", dir=backup_root) as tmp:
+            archive_path, size_bytes = _create_backup_archive(
+                trigger=trigger,
+                reason=reason,
+                archive_path=Path(tmp) / final_path.name,
+            )
+            with zipfile.ZipFile(archive_path) as archive:
+                bad_file = archive.testzip()
+                if bad_file:
+                    raise RuntimeError(f"Повреждён файл в архиве: {bad_file}")
+            s3_key = upload_backup_to_s3(archive_path, key=_build_s3_key(final_path))
+            archive_path.replace(final_path)
+            write_s3_marker(final_path, s3_key)
+            return BackupResult(run=None, path=final_path, size_bytes=size_bytes, s3_key=s3_key)
+
     if trigger == BackupRun.Trigger.DEPLOY:
         backup_root = get_backup_root()
         backup_root.mkdir(parents=True, exist_ok=True)
