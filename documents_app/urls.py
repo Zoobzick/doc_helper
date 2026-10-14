@@ -1,4 +1,5 @@
 from django.urls import path
+from documents_app.scan_views import ScanUploadView, ScanDownloadView
 
 from documents_app.views import (
     BatchAttachmentDeleteView,
@@ -35,6 +36,9 @@ from documents_app.views import (
 app_name = "documents"
 
 urlpatterns = [
+    path("id-handover/batches/<int:batch_id>/scans/start/", ScanUploadView.as_view(), name="batch_scan_start"),
+    path("id-handover/batches/<int:batch_id>/scans/<uuid:scan_id>/download/", ScanDownloadView.as_view(), name="batch_scan_download"),
+    path("id-handover/batches/<int:batch_id>/scans/<uuid:scan_id>/<str:action>/", ScanUploadView.as_view(), name="batch_scan_action"),
     path(
         "box-label/",
         BoxLabelPageView.as_view(),

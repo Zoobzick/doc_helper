@@ -91,6 +91,10 @@ S3_BACKUP_ACCESS_KEY_ID = os.environ.get("S3_BACKUP_ACCESS_KEY_ID", "").strip()
 S3_BACKUP_SECRET_ACCESS_KEY = os.environ.get("S3_BACKUP_SECRET_ACCESS_KEY", "").strip()
 S3_BACKUP_PREFIX = os.environ.get("S3_BACKUP_PREFIX", "backups").strip().strip("/")
 
+# Scan storage defaults to the existing private S3 bucket, under id-scans/.
+for _scan_option in ("ENDPOINT_URL", "REGION", "BUCKET", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY"):
+    globals()["S3_SCAN_" + _scan_option] = os.environ.get("S3_SCAN_" + _scan_option, "").strip()
+
 # Templates Документов
 DOCUMENT_TEMPLATES_DIR = BASE_DIR / "document_templates"
 DOCX_TEMPLATES_DIR = DOCUMENT_TEMPLATES_DIR / "docx"

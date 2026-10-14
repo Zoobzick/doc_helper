@@ -1328,6 +1328,10 @@ class DocumentBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View)
         batch_label = batch.title or f"#{batch.id}"
 
         with transaction.atomic():
+            batch = DocumentBatch.objects.select_for_update().get(pk=batch.pk)
+            if batch.scans.exists():
+                messages.error(request, "Сначала удалите сканы ИД и незавершённые загрузки в карточке комплекта.")
+                return redirect("documents:id_handover_batch_detail", batch_id=batch.pk)
             generated_documents = list(batch.generated_documents.all())
             attachments = list(batch.attachments.all())
 

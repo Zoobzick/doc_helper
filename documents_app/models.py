@@ -261,6 +261,24 @@ class BatchAttachmentType(models.TextChoices):
     MARKSURVEY_PDF = "marksurvey_pdf", "Маркзамер PDF"
 
 
+class BatchScan(models.Model):
+    """Private S3 object; multipart uploads are tracked before completion."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey("DocumentBatch", on_delete=models.PROTECT, related_name="scans")
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    name = models.CharField(max_length=255)
+    size = models.PositiveBigIntegerField()
+    bucket = models.CharField(max_length=255)
+    key = models.CharField(max_length=1024, unique=True)
+    upload_id = models.TextField(blank=True)
+    ready = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class DocumentBatch(models.Model):
     """
     Контейнер комплекта сдачи ИД.
