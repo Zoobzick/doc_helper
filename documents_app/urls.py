@@ -1,5 +1,6 @@
 from django.urls import path
 from documents_app.scan_views import ScanUploadView, ScanDownloadView
+from documents_app.share_views import CreateScanShareView, PublicShareView
 
 from documents_app.views import (
     BatchAttachmentDeleteView,
@@ -36,6 +37,9 @@ from documents_app.views import (
 app_name = "documents"
 
 urlpatterns = [
+    path("cloud/<uuid:token>/", PublicShareView.as_view(), name="scan_share"),
+    path("cloud/<uuid:token>/download/<uuid:scan_id>/", PublicShareView.as_view(), name="scan_share_download"),
+    path("id-handover/batches/<int:batch_id>/share/", CreateScanShareView.as_view(), name="batch_scan_share_create"),
     path("id-handover/batches/<int:batch_id>/scans/start/", ScanUploadView.as_view(), name="batch_scan_start"),
     path("id-handover/batches/<int:batch_id>/scans/<uuid:scan_id>/download/", ScanDownloadView.as_view(), name="batch_scan_download"),
     path("id-handover/batches/<int:batch_id>/scans/<uuid:scan_id>/<str:action>/", ScanUploadView.as_view(), name="batch_scan_action"),

@@ -5,8 +5,14 @@
     {% if perms.documents_app.change_documentbatch %}
         <form id="scan-upload-form">
             {% csrf_token %}
-            <label for="scan-file" class="form-label">Файл со сканами</label>
-            <input id="scan-file" type="file" class="form-control mb-2" accept=".pdf,.zip,.7z,.rar,.tar,.gz" required>
+            <label id="scan-dropzone" for="scan-file" class="batch-attachment-dropzone">
+                <span class="batch-attachment-dropzone-icon" aria-hidden="true"><i class="bi bi-cloud-arrow-up"></i></span>
+                <span>
+                    <span class="batch-attachment-dropzone-title d-block">Перетащите скан сюда</span>
+                    <span id="scan-file-name" class="batch-attachment-dropzone-hint d-block" aria-live="polite">или нажмите, чтобы выбрать файл</span>
+                </span>
+                <input id="scan-file" type="file" accept=".pdf,.zip,.7z,.rar,.tar,.gz" aria-label="Файл со сканами ИД" required>
+            </label>
             <button type="submit" class="btn btn-outline-primary">Загрузить скан ИД</button>
             <button type="button" id="scan-cancel" class="btn btn-outline-secondary" hidden>Отменить</button>
             <div id="scan-progress-wrap" class="mt-3" hidden>

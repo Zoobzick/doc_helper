@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ page_title }}{% endblock %}
 
@@ -114,6 +115,17 @@
                                 </div>
 
                                 <div class="batch-list-actions">
+                                    {% if perms.documents_app.change_documentbatch %}
+                                        <form method="post" class="js-scan-share-form"
+                                              action="{% url 'documents:batch_scan_share_create' batch.id %}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-outline-primary btn-sm" title="Поделиться сканами ИД на одну неделю">
+                                                <i class="bi bi-share me-1"></i> Share
+                                            </button>
+                                            <span class="js-share-status small d-block mt-1" role="status" aria-live="polite"></span>
+                                            <input class="js-share-url form-control form-control-sm mt-1" readonly hidden aria-label="Ссылка на сканы ИД">
+                                        </form>
+                                    {% endif %}
                                     {% if batch.list_state_key == "generated" or batch.list_state_key == "ready_to_generate" %}
                                         <a href="{% url 'documents:id_handover_batch_detail' batch.id %}"
                                            class="btn btn-primary btn-sm">
@@ -516,4 +528,9 @@
         }
     </style>
 
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script src="{% static 'assets/js/batch-share.js' %}" defer></script>
 {% endblock %}

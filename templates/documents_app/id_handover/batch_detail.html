@@ -14,7 +14,7 @@
                         <li class="breadcrumb-item"><a href="/">Главная</a></li>
                         <li class="breadcrumb-item">Документы</li>
                         <li class="breadcrumb-item">
-                            <a href="{% url 'documents:id_handover_master' %}">Комплекты</a>
+                            <a href="{% url 'documents:id_handover_batch_list' %}">Комплекты</a>
                         </li>
                         <li class="breadcrumb-item active">Карточка комплекта</li>
                     </ol>
@@ -557,18 +557,21 @@
 
         .batch-detail-action-row {
             display: grid;
-            grid-template-columns: minmax(220px, 0.7fr) minmax(320px, 1.25fr) minmax(520px, 1.75fr);
+            grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1.35fr);
             gap: 1rem;
             align-items: stretch;
         }
 
         .batch-detail-action-row > .card {
+            min-width: 0;
             height: 100%;
             margin-bottom: 0;
         }
 
         .batch-detail-action-row .card-body {
             padding: 1rem 1.25rem;
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
 
         .batch-detail-action-row .card-title {
@@ -629,7 +632,7 @@
 
         .batch-handover-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: minmax(0, 1fr);
             gap: 0.9rem;
         }
 
@@ -820,6 +823,7 @@
         }
 
         .batch-attachment-dropzone:hover,
+        .batch-attachment-dropzone:focus-within,
         .batch-attachment-dropzone.is-drag-over {
             border-color: #0d6efd;
             background: #eef6ff;
@@ -858,6 +862,20 @@
             color: #667085;
             font-size: 0.88rem;
             overflow-wrap: anywhere;
+        }
+
+        #scan-dropzone {
+            width: 100%;
+            margin-bottom: 0.75rem;
+        }
+
+        #scan-dropzone > span {
+            min-width: 0;
+        }
+
+        #scan-dropzone.is-disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .batch-generation-overlay {

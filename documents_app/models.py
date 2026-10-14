@@ -279,6 +279,18 @@ class BatchScan(models.Model):
         ordering = ["-created_at"]
 
 
+class BatchScanShare(models.Model):
+    """A seven-day capability link containing only explicitly shared scans."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey("DocumentBatch", on_delete=models.CASCADE, related_name="scan_shares")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+    scans = models.ManyToManyField(BatchScan, related_name="shares")
+    summary = models.JSONField(default=dict)
+
+
 class DocumentBatch(models.Model):
     """
     Контейнер комплекта сдачи ИД.

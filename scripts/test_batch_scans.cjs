@@ -9,8 +9,9 @@ const source = fs.readFileSync(path.join(__dirname, '../static/assets/js/batch-s
 function setup({failFirst = false, cancel = false} = {}) {
     const nodes = {};
     for (const id of ['batch-scans', 'scan-upload-form', 'scan-status', 'scan-progress',
-                       'scan-cancel', 'scan-file', 'scan-progress-wrap']) {
+                       'scan-cancel', 'scan-file', 'scan-progress-wrap', 'scan-dropzone', 'scan-file-name']) {
         nodes[id] = {events: {}, addEventListener(name, callback) { this.events[name] = callback; },
+                     classList: {add() {}, remove() {}, toggle() {}},
                      querySelectorAll() { return []; }};
     }
     nodes['batch-scans'].dataset = {startUrl: '/batches/1/scans/start/'};
@@ -35,6 +36,7 @@ function setup({failFirst = false, cancel = false} = {}) {
         }
     }
     vm.runInNewContext(source, {
+        DataTransfer: class { constructor() { this.files = []; this.items = {add: file => this.files.push(file)}; } },
         document: {getElementById: id => nodes[id]}, XMLHttpRequest: XHR,
         window: {addEventListener() {}, location: {reload() { reloads++; }}},
         setTimeout: callback => callback(),
@@ -75,4 +77,39 @@ test('cancel aborts the request and cleans the multipart upload', async () => {
     assert.equal(run.calls.filter(url => url.endsWith('/complete/')).length, 0);
     assert.equal(run.reloads, 0);
     assert.equal(run.nodes['scan-status'].textContent, 'Загрузка отменена.');
+});
+
+test('drop selects a file without automatically starting the upload', async () => {
+    const run = setup();
+    const file = {name: 'Сканы.RAR', size: 1024, slice: () => ({size: 1024})};
+    run.nodes['scan-dropzone'].events.drop({preventDefault() {}, dataTransfer: {files: [file]}});
+    assert.equal(run.nodes['scan-file'].files[0], file);
+    assert.equal(run.nodes['scan-file-name'].textContent, 'Сканы.RAR');
+    assert.equal(run.calls.length, 0);
+    await run.submit();
+    assert.equal(run.reloads, 1);
+});
+
+test('drop rejects unsupported, oversized and multiple files', () => {
+    const run = setup();
+    const original = run.nodes['scan-file'].files[0];
+    for (const files of [[{name: 'x.exe', size: 1}], [{name: 'x.zip', size: 6 * 1024 ** 3}],
+                         [{name: 'a.zip', size: 1}, {name: 'b.zip', size: 1}]]) {
+        run.nodes['scan-dropzone'].events.drop({preventDefault() {}, dataTransfer: {files}});
+        assert.equal(run.nodes['scan-file'].files[0], original);
+        assert.ok(run.nodes['scan-status'].textContent);
+    }
+    assert.equal(run.calls.length, 0);
+});
+
+test('drop cannot replace a file during an upload', async () => {
+    const run = setup();
+    const original = run.nodes['scan-file'].files[0];
+    const pending = run.submit();
+    run.nodes['scan-dropzone'].events.drop({preventDefault() {}, dataTransfer: {
+        files: [{name: 'other.zip', size: 10}],
+    }});
+    assert.equal(run.nodes['scan-file'].files[0], original);
+    await pending;
+    assert.equal(run.reloads, 1);
 });

@@ -6,6 +6,53 @@
     const status = document.getElementById("scan-status");
     const csrf = root.querySelector("[name=csrfmiddlewaretoken]")?.value;
     let active = false, cancelled = false, xhr = null, scanId = null;
+    const fileInput = document.getElementById("scan-file");
+    const dropzone = document.getElementById("scan-dropzone");
+    const fileName = document.getElementById("scan-file-name");
+    function validateFile(file) {
+        if (!file || !/\.(pdf|zip|7z|rar|tar|gz)$/i.test(file.name)) {
+            return "Выберите PDF или архив ZIP, 7Z, RAR, TAR, GZ.";
+        }
+        if (!file.size || file.size > 5 * 1024 ** 3) {
+            return "Выберите непустой файл размером до 5 ГБ.";
+        }
+        return "";
+    }
+    function showSelection() {
+        const file = fileInput.files[0];
+        const error = file ? validateFile(file) : "";
+        if (error) fileInput.value = "";
+        fileName.textContent = file && !error ? file.name : "или нажмите, чтобы выбрать файл";
+        status.textContent = error;
+    }
+    fileInput?.addEventListener("change", showSelection);
+    for (const name of ["dragenter", "dragover"]) {
+        dropzone?.addEventListener(name, event => {
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = active ? "none" : "copy";
+            if (!active) dropzone.classList.add("is-drag-over");
+        });
+    }
+    dropzone?.addEventListener("dragleave", event => {
+        if (!dropzone.contains(event.relatedTarget)) dropzone.classList.remove("is-drag-over");
+    });
+    dropzone?.addEventListener("drop", event => {
+        event.preventDefault();
+        dropzone.classList.remove("is-drag-over");
+        if (active) return;
+        const files = event.dataTransfer?.files;
+        if (!files?.length) return;
+        if (files.length !== 1) {
+            status.textContent = "Перетащите один файл. Остальные можно загрузить по очереди.";
+            return;
+        }
+        const error = validateFile(files[0]);
+        if (error) { status.textContent = error; return; }
+        const transfer = new DataTransfer();
+        transfer.items.add(files[0]);
+        fileInput.files = transfer.files;
+        showSelection();
+    });
     const startUrl = root.dataset.startUrl;
     const actionUrl = action => startUrl.replace(/start\/$/, `${scanId}/${action}/`);
 
@@ -39,6 +86,8 @@
     }
     function busy(value) {
         active = value;
+        dropzone?.classList.toggle("is-disabled", value);
+        dropzone?.classList.remove("is-drag-over");
         root.querySelectorAll("button[type=submit], input[type=file], .js-scan-delete").forEach(el => el.disabled = value);
         document.getElementById("scan-cancel").hidden = !value;
     }
@@ -53,11 +102,10 @@
     form?.addEventListener("submit", async event => {
         event.preventDefault();
         if (active) return;
-        const file = document.getElementById("scan-file").files[0];
+        const file = fileInput.files[0];
         if (!file) return;
-        if (!file.size || file.size > 5 * 1024 ** 3) {
-            status.textContent = "Выберите непустой файл размером до 5 ГБ."; return;
-        }
+        const error = validateFile(file);
+        if (error) { status.textContent = error; return; }
         busy(true); cancelled = false; scanId = null;
         document.getElementById("scan-progress-wrap").hidden = false;
         progress.value = 0;
