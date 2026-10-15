@@ -1,4 +1,4 @@
-{% if messages %}
+{% load static %}
 <div class="doc-toast-zone" aria-live="polite" aria-atomic="true">
   {% for message in messages %}
     {% if forloop.counter <= 3 %}
@@ -138,4 +138,4 @@
     });
   });
 </script>
-{% endif %}
+<script src="{% static 'assets/js/doc-toasts.js' %}"></script>

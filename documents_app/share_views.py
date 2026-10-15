@@ -1,4 +1,5 @@
 import logging
+from pathlib import PurePosixPath
 from datetime import timedelta
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -76,14 +77,25 @@ class PublicShareView(View):
             return render(request, "documents_app/share.html", {"unavailable": "Срок доступа истёк", "explanation": "Эта ссылка действовала одну неделю. Попросите отправителя создать новую."}, status=410)
         scans = share.scans.filter(ready=True, batch_id=share.batch_id)
         if scan_id is None:
-            return render(request, "documents_app/share.html", {"share": share, "summary": share.summary, "scans": scans})
+            files = list(scans)
+            return render(request, "documents_app/share.html", {
+                "share": share, "summary": share.summary, "scans": files,
+                "total_size": sum(scan.size for scan in files),
+                "formats": ", ".join(sorted({
+                    ".tar.gz" if scan.name.lower().endswith(".tar.gz") else PurePosixPath(scan.name).suffix.lower()
+                    for scan in files
+                })),
+                "remaining_projects": max(0, len(share.summary.get("projects", [])) - 24),
+            })
         scan = scans.filter(pk=scan_id).first()
         if not scan:
             return render(request, "documents_app/share.html", {"unavailable": "Файл недоступен", "explanation": "Возможно, отправитель удалил этот скан."}, status=404)
         try:
             url = scan_storage.client().generate_presigned_url("get_object", Params={
                 "Bucket": scan.bucket, "Key": scan.key,
-                "ResponseContentDisposition": content_disposition_header(True, scan.name),
+                "ResponseContentDisposition": content_disposition_header(
+                    True, scan_storage.download_name(scan, title=share.summary.get("title")),
+                ),
                 "ResponseContentType": "application/octet-stream",
             }, ExpiresIn=min(3600, remaining))
         except (BotoCoreError, ClientError, ImproperlyConfigured):

@@ -1,5 +1,6 @@
 """Direct browser-to-S3 multipart uploads, separate from backup objects."""
 from pathlib import PurePosixPath
+import re
 
 import boto3
 from botocore.config import Config
@@ -9,6 +10,16 @@ from django.core.exceptions import ImproperlyConfigured
 PART_SIZE = 16 * 1024 * 1024
 MAX_SIZE = 5 * 1024**3
 EXTENSIONS = {".zip", ".7z", ".rar", ".pdf", ".tar", ".gz"}
+
+
+def download_name(scan, *, title=None):
+    title = scan.batch.title if title is None else title
+    title = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", title or "")
+    title = " ".join(title.split()).strip(" .") or f"Комплект {scan.batch_id}"
+    # Leave room for the prefix and extension within common filesystem limits.
+    title = title.encode("utf-8")[:210].decode("utf-8", errors="ignore").rstrip(" .")
+    suffix = ".tar.gz" if scan.name.lower().endswith(".tar.gz") else PurePosixPath(scan.name).suffix
+    return f"Скан ИД {title}{suffix}"
 
 
 def option(name):

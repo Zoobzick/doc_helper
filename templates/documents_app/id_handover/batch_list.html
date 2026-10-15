@@ -120,10 +120,8 @@
                                               action="{% url 'documents:batch_scan_share_create' batch.id %}">
                                             {% csrf_token %}
                                             <button type="submit" class="btn btn-outline-primary btn-sm" title="Поделиться сканами ИД на одну неделю">
-                                                <i class="bi bi-share me-1"></i> Share
+                                                <i class="bi bi-share me-1"></i> Поделиться
                                             </button>
-                                            <span class="js-share-status small d-block mt-1" role="status" aria-live="polite"></span>
-                                            <input class="js-share-url form-control form-control-sm mt-1" readonly hidden aria-label="Ссылка на сканы ИД">
                                         </form>
                                     {% endif %}
                                     {% if batch.list_state_key == "generated" or batch.list_state_key == "ready_to_generate" %}

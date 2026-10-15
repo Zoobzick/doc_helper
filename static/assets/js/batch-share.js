@@ -7,33 +7,30 @@
             if (busy) return;
             busy = true;
             const button = form.querySelector("button");
-            const status = form.querySelector(".js-share-status");
-            const link = form.querySelector(".js-share-url");
             button.disabled = true;
-            link.hidden = true;
-            status.textContent = "Создаём ссылку…";
+            button.setAttribute("aria-busy", "true");
             try {
                 const response = await fetch(form.action, {
                     method: "POST", credentials: "same-origin",
                     headers: {"X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value},
                 });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok || !data.url) throw new Error(data.error || "Не удалось создать ссылку. Проверьте подключение и вход в приложение.");
-                link.value = data.url;
+                if (!response.ok || !data.url) {
+                    window.showDocToast(data.error || "Не удалось создать ссылку. Проверьте подключение и вход в приложение.", response.status === 400 ? "warning" : "error");
+                    return;
+                }
                 try {
                     await navigator.clipboard.writeText(data.url);
-                    status.textContent = "Ссылка скопирована · доступ 7 дней";
+                    window.showDocToast("Ссылка на сканы ИД скопирована. Доступ открыт на 7 дней.", "success");
                 } catch (_) {
-                    link.hidden = false;
-                    link.focus();
-                    link.select();
-                    status.textContent = "Ссылка готова на 7 дней. Скопируйте её из поля ниже.";
+                    window.showDocToast("Браузер не разрешил копирование. Скопируйте ссылку из поля в этом уведомлении. Доступ — 7 дней.", "warning", {copyValue: data.url});
                 }
             } catch (error) {
-                status.textContent = error.message;
+                window.showDocToast(error.message, "error");
             } finally {
                 busy = false;
                 button.disabled = false;
+                button.removeAttribute("aria-busy");
             }
         });
     });

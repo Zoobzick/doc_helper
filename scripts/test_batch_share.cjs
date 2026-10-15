@@ -8,16 +8,16 @@ const source = fs.readFileSync(path.join(__dirname, '../static/assets/js/batch-s
 
 function setup({clipboardFails = false, serverError = false} = {}) {
     const nodes = {
-        button: {}, '.js-share-status': {},
-        '.js-share-url': {focus() { this.focused = true; }, select() { this.selected = true; }},
+        button: {setAttribute() {}, removeAttribute() {}},
         '[name=csrfmiddlewaretoken]': {value: 'csrf'},
     };
     let handler;
     const form = {action: '/batches/7/share/', querySelector: key => nodes[key],
                   addEventListener: (_, callback) => { handler = callback; }};
-    const copied = [], requests = [];
+    const copied = [], requests = [], notifications = [];
     vm.runInNewContext(source, {
         document: {querySelectorAll: () => [form]},
+        window: {showDocToast: (...args) => notifications.push(args)},
         navigator: {clipboard: {writeText: async text => {
             if (clipboardFails) throw new Error('Denied');
             copied.push(text);
@@ -26,34 +26,34 @@ function setup({clipboardFails = false, serverError = false} = {}) {
             requests.push(url);
             assert.equal(options.method, 'POST');
             assert.equal(options.headers['X-CSRFToken'], 'csrf');
-            return {ok: !serverError, json: async () => serverError ? {error: 'Нет сканов'} : {url: 'https://example.test/cloud/random/'}};
+            return {ok: !serverError, status: serverError ? 400 : 200, json: async () => serverError ? {error: 'Нет сканов'} : {url: 'https://example.test/cloud/random/'}};
         },
     });
-    return {nodes, copied, requests, submit: () => handler({preventDefault() {}})};
+    return {nodes, copied, requests, notifications, submit: () => handler({preventDefault() {}})};
 }
 
 test('Share copies the public page URL', async () => {
     const run = setup();
     await run.submit();
     assert.deepEqual(run.copied, ['https://example.test/cloud/random/']);
-    assert.match(run.nodes['.js-share-status'].textContent, /скопирована/);
+    assert.match(run.notifications[0][0], /скопирована/);
+    assert.equal(run.notifications[0][1], 'success');
     assert.equal(run.nodes.button.disabled, false);
 });
 
-test('clipboard denial reveals and selects the URL', async () => {
+test('clipboard denial puts the manual copy URL in a notification', async () => {
     const run = setup({clipboardFails: true});
     await run.submit();
-    const field = run.nodes['.js-share-url'];
-    assert.equal(field.hidden, false);
-    assert.equal(field.selected, true);
-    assert.equal(field.value, 'https://example.test/cloud/random/');
+    assert.equal(run.notifications[0][1], 'warning');
+    assert.equal(run.notifications[0][2].copyValue, 'https://example.test/cloud/random/');
 });
 
 test('server errors do not copy a link', async () => {
     const run = setup({serverError: true});
     await run.submit();
     assert.equal(run.copied.length, 0);
-    assert.equal(run.nodes['.js-share-status'].textContent, 'Нет сканов');
+    assert.equal(run.notifications[0][0], 'Нет сканов');
+    assert.equal(run.notifications[0][1], 'warning');
 });
 
 test('double click does not create concurrent shares', async () => {

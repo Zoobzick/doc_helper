@@ -1,72 +1,45 @@
+{% load static %}
 <!doctype html>
 <html lang="ru">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex,nofollow,noarchive">
-    <meta name="referrer" content="no-referrer">
-    <title>Doc-helper облако — Сканы ИД</title>
-    <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; background: #f3f6fc; color: #182a46; font: 16px/1.6 system-ui, sans-serif; }
-        .shell { max-width: 860px; margin: 0 auto; padding: 40px 24px 64px; }
-        header { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; font-size: 20px; font-weight: 700; }
-        .logo { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: #265be8; color: #fff; }
-        .card { background: #fff; border: 1px solid #e1e8f2; border-radius: 22px; padding: 36px; box-shadow: 0 12px 40px #18396908; }
-        .eyebrow { color: #315fd0; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-        h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.2; margin: 12px 0 16px; overflow-wrap: anywhere; }
-        h2 { font-size: 18px; margin-top: 28px; }
-        .muted, footer { color: #65738b; }
-        .expiry { display: inline-block; background: #edf3ff; padding: 8px 14px; border-radius: 10px; font-size: 14px; }
-        .stats { display: flex; gap: 32px; flex-wrap: wrap; border-top: 1px solid #e6ecf5; border-bottom: 1px solid #e6ecf5; margin: 28px 0; padding: 20px 0; }
-        .stats strong { display: block; font-size: 24px; }
-        .projects { display: flex; gap: 8px; flex-wrap: wrap; padding: 0; list-style: none; }
-        .projects li { background: #f3f6fb; border-radius: 7px; padding: 4px 10px; font-size: 13px; overflow-wrap: anywhere; max-width: 100%; }
-        .file { display: flex; align-items: center; justify-content: space-between; gap: 20px; border: 1px solid #e1e8f2; border-radius: 14px; padding: 20px; margin-top: 12px; }
-        .name { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
-        .download { flex-shrink: 0; color: white; background: #265be8; text-decoration: none; padding: 11px 18px; border-radius: 10px; font-weight: 600; }
-        .download:hover { background: #1646c4; }
-        .download:focus-visible { outline: 3px solid #88aaff; outline-offset: 3px; }
-        footer { margin-top: 24px; text-align: center; font-size: 13px; }
-        @media (max-width: 600px) { .shell { padding: 24px 16px; } .card { padding: 24px 20px; } .file { align-items: stretch; flex-direction: column; } .download { text-align: center; } }
-    </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
+<title>Doc-helper облако — Сканы ИД</title>
+<link rel="stylesheet" href="{% static 'assets/vendor/bootstrap-icons/bootstrap-icons.css' %}">
+<link rel="stylesheet" href="{% static 'assets/css/scan-share.css' %}">
 </head>
 <body>
-<main class="shell">
-    <header><span class="logo" aria-hidden="true">D</span> Doc-helper облако</header>
-    <section class="card">
-        {% if unavailable %}
-            <div class="eyebrow">Общий доступ</div>
-            <h1>{{ unavailable }}</h1>
-            <p class="muted">{{ explanation }}</p>
-        {% else %}
-            <div class="eyebrow">С вами поделились документами</div>
-            <h1>Сканы ИД · {{ summary.period }}</h1>
-            <p class="muted">{{ summary.title }}</p>
-            <div class="expiry">Доступ до {{ share.expires_at|date:"d.m.Y H:i" }} (МСК)</div>
-            <div class="stats">
-                <div><strong>{{ summary.project_count }}</strong><span class="muted">Проектов в комплекте</span></div>
-                <div><strong>{{ summary.act_count }}</strong><span class="muted">Актов в комплекте</span></div>
-                <div><strong>{{ scans|length }}</strong><span class="muted">Файлов для скачивания</span></div>
-            </div>
-            <h2>О документах</h2>
-            <p>Сканы исполнительной документации к комплекту «{{ summary.title }}» за период: {{ summary.period }}.</p>
-            {% if summary.projects %}
-                <p class="muted">Шифры проектов в комплекте:</p>
-                <ul class="projects">{% for code in summary.projects %}<li>{{ code }}</li>{% endfor %}</ul>
-            {% endif %}
-            <h2>Скачать сканы ИД</h2>
-            {% for scan in scans %}
-                <div class="file">
-                    <div class="name">{{ scan.name }}<div class="muted">{{ scan.size|filesizeformat }}</div></div>
-                    <a class="download" href="{% url 'documents:scan_share_download' share.id scan.id %}">Скачать скан ИД</a>
-                </div>
-            {% empty %}
-                <p class="muted">Отправитель удалил файлы. Попросите его поделиться сканами ещё раз.</p>
-            {% endfor %}
-        {% endif %}
-    </section>
-    <footer>Doc-helper · Обмен исполнительной документацией</footer>
-</main>
-</body>
-</html>
+<header class="cloud-header"><div class="header-inner"><div class="brand"><img src="{% static 'assets/img/logo.png' %}" alt="" width="32" height="32">Doc Helper <small>облако</small></div><span class="muted">Обмен документацией</span></div></header>
+<main class="cloud-layout{% if unavailable %} unavailable{% endif %}">
+{% if unavailable %}
+<section class="panel hero"><div class="eyebrow">Общий доступ</div><h1>{{ unavailable }}</h1><p class="muted">{{ explanation }}</p></section>
+{% else %}
+<div class="main-column">
+<section class="panel hero">
+<div class="eyebrow">С вами поделились документами</div>
+<h1>Сканы ИД · {{ summary.period }}</h1><p class="subtitle">{{ summary.title }}</p>
+<div class="badges">{% if scans %}<span class="badge access"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> Доступ открыт</span>{% endif %}<span class="badge expiry"><i class="bi bi-calendar3" aria-hidden="true"></i> До {{ share.expires_at|date:"d.m.Y H:i" }} (МСК)</span></div>
+<p class="description">На этой странице собраны сканы исполнительной документации к комплекту «{{ summary.title }}» за указанный период.</p>
+</section>
+<section class="panel stats" aria-label="Информация о комплекте">
+<div class="stat"><span class="icon-circle"><i class="bi bi-folder" aria-hidden="true"></i></span><div><strong>{{ summary.project_count }}</strong><span>Проектов в комплекте</span></div></div>
+<div class="stat"><span class="icon-circle"><i class="bi bi-file-earmark-text" aria-hidden="true"></i></span><div><strong>{{ summary.act_count }}</strong><span>Актов в комплекте</span></div></div>
+<div class="stat"><span class="icon-circle"><i class="bi bi-download" aria-hidden="true"></i></span><div><strong>{{ scans|length }}</strong><span>Файлов для скачивания</span></div></div>
+</section>
+{% if summary.projects %}
+<section class="panel projects-panel"><h2>Проекты в комплекте</h2><p class="muted">Шифры проектов в комплекте{% if remaining_projects %} (24 из {{ summary.projects|length }}){% endif %}:</p>
+<ul class="projects">{% for code in summary.projects|slice:":24" %}<li>{{ code }}</li>{% endfor %}</ul>
+{% if remaining_projects %}<details class="more-projects"><summary>Ещё проектов: {{ remaining_projects }}</summary><ul class="projects">{% for code in summary.projects|slice:"24:" %}<li>{{ code }}</li>{% endfor %}</ul></details>{% endif %}
+</section>{% endif %}
+</div>
+<aside class="sidebar" aria-label="Сведения и скачивание">
+<section class="panel metadata"><h2>О сканах ИД</h2><dl><div><dt>Тип</dt><dd>Сканы ИД</dd></div><div><dt>Период</dt><dd>{{ summary.period }}</dd></div><div><dt>Формат</dt><dd>{{ formats|default:"—" }}</dd></div><div><dt>Общий размер</dt><dd>{{ total_size|filesizeformat }}</dd></div></dl></section>
+<section class="panel downloads"><h2>Скачать</h2>
+{% for scan in scans %}<div class="file-entry"><div class="file-info"><span class="icon-circle"><i class="bi bi-file-earmark" aria-hidden="true"></i></span><div class="file-name">{{ scan.name }}<span class="muted">{{ scan.size|filesizeformat }}</span></div></div><a class="download" href="{% url 'documents:scan_share_download' share.id scan.id %}"><i class="bi bi-download" aria-hidden="true"></i> Скачать скан ИД</a></div>
+{% empty %}<p class="muted">Отправитель удалил файлы. Попросите его поделиться сканами ещё раз.</p>{% endfor %}
+</section>
+<section class="panel help"><i class="bi bi-info-circle" aria-hidden="true"></i><div><h2>Возникли вопросы?</h2><p>Если ссылка недоступна или возникает ошибка при скачивании, обратитесь к отправителю.</p></div></section>
+</aside>
+{% endif %}
+</main><footer>Doc-helper облако · Обмен исполнительной документацией</footer>
+</body></html>

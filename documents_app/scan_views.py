@@ -102,11 +102,11 @@ class ScanDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
     raise_exception = True
 
     def get(self, request, batch_id, scan_id):
-        scan = get_object_or_404(BatchScan, pk=scan_id, batch_id=batch_id, ready=True)
+        scan = get_object_or_404(BatchScan.objects.select_related("batch"), pk=scan_id, batch_id=batch_id, ready=True)
         try:
             url = storage.client().generate_presigned_url("get_object", Params={
                 "Bucket": scan.bucket, "Key": scan.key,
-                "ResponseContentDisposition": content_disposition_header(True, scan.name),
+                "ResponseContentDisposition": content_disposition_header(True, storage.download_name(scan)),
                 "ResponseContentType": "application/octet-stream",
             }, ExpiresIn=300)
         except (BotoCoreError, ClientError, ImproperlyConfigured):
