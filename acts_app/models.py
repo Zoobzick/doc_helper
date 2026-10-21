@@ -16,6 +16,7 @@ from directive_app.models import Authorization  # FK для ручного вы�
 
 class ActStatus(models.TextChoices):
     DRAFT = "DRAFT", "Черновик"
+    READY = "READY", "Создан"
     FINAL = "FINAL", "Финальный"
 
 
@@ -84,7 +85,7 @@ class Act(models.Model):
         "Статус",
         max_length=16,
         choices=ActStatus.choices,
-        default=ActStatus.DRAFT,
+        default=ActStatus.READY,
         db_index=True,
     )
 

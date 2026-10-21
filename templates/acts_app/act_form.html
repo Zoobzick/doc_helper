@@ -39,8 +39,19 @@
 
     <section class="section">
         <form method="post" enctype="multipart/form-data" id="act-form" novalidate
+              data-recovery-key="act-create-v1:{{ request.user.pk }}" data-mode="{{ mode }}"
+              data-bound="{% if form.is_bound %}1{% else %}0{% endif %}"
               {% if duplicate_highlight %}data-duplicate-highlight="1"{% endif %}>
             {% csrf_token %}
+            {% if mode == "create" %}
+                <input type="hidden" name="recovery_token" value="{{ request.POST.recovery_token|default:'' }}">
+                <div id="act-recovery-offer" class="alert alert-info" hidden>
+                    Есть незавершённое заполнение акта в этом браузере.
+                    <button type="button" class="btn btn-sm btn-primary" id="act-recovery-restore">Восстановить</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="act-recovery-discard">Удалить копию</button>
+                </div>
+                <div id="act-recovery-status" class="small text-muted mb-2" role="status"></div>
+            {% endif %}
 
             {% if projects_form.non_field_errors %}
                 <div class="alert alert-danger">{{ projects_form.non_field_errors }}</div>
@@ -597,6 +608,11 @@
                     {% endif %}
                 </div>
 
+                <div class="form-check form-switch mb-3">
+                    {{ form.is_draft }}
+                    <label class="form-check-label" for="{{ form.is_draft.id_for_label }}">Черновик</label>
+                </div>
+                <div id="act-submit-errors" class="alert alert-danger" role="alert" hidden></div>
                 <div class="d-flex flex-wrap gap-2 align-items-center">
                     <button class="btn btn-success" type="submit">
                         {% if mode == "create" %}Создать{% else %}Сохранить{% endif %}
@@ -941,6 +957,13 @@
             });
 
             btnContinue.addEventListener("click", openRestIfPossible);
+            window.__actsRestoreProjects = function (projects) {
+                projects.forEach(p => selectedLabels.set(String(p.id), p.label));
+                setSelectedIds(new Set(projects.map(p => String(p.id))));
+                renderChips();
+                openRestIfPossible();
+                loadProjects("");
+            };
             searchInput.addEventListener("input", debounceLoad);
 
             // --- init: читаем label выбранных из HTML (если ты их рендеришь в шаблоне на edit) ---
@@ -1124,6 +1147,15 @@
 
 // init all
             document.querySelectorAll("#attachments-table tbody tr.attachment-row").forEach(initOriginalControls);
+            window.__actsRefreshOriginalControls = function () {
+                document.querySelectorAll("#attachments-table tbody tr.attachment-row").forEach(row => {
+                    const hidden = row.querySelector("input.js-att-original-state");
+                    if (hidden) {
+                        applyOriginalStateUI(row, parseIntSafe(hidden.value, IGNORE));
+                        setMarkerVisible(row, isProtocolTitle(row.querySelector('input[name$="-title"]')?.value));
+                    }
+                });
+            };
 
             // ---------- REMOVE ROWS CORRECTLY (formsets) ----------
             function _isRowMarkedDeleted(row, prefix) {
@@ -1167,6 +1199,9 @@
             }
 
             function markFormDeleted(row, prefix) {
+                row.querySelectorAll(".input-error, .is-invalid").forEach(input => {
+                    input.classList.remove("input-error", "is-invalid");
+                });
                 // ✅ важно: для материалов очищаем hidden passport и поля,
                 // чтобы удалённые строки НЕ считались "уже добавленными" (и не давали пустые строки)
                 if (prefix === "mat") _clearMaterialRowValues(row);
@@ -1671,6 +1706,7 @@
                 btn.setAttribute("disabled", "disabled");
             });
 
+            window.__actsAddApprovalRow = addApprovalRow;
             ensureEmptyRow();
         })();
     </script>
@@ -1977,21 +2013,34 @@
                 document.querySelectorAll('#materials-table tbody tr.material-row').forEach(updateMaterialRow);
                 document.querySelectorAll('#attachments-table tbody tr.attachment-row').forEach(updateAttachmentRow);
 
-                markServerInvalids();
+            }
+
+            function activeClientErrors() {
+                return Array.from(document.querySelectorAll("#act-form .input-error")).filter(input => {
+                    const row = input.closest("tr.material-row, tr.attachment-row");
+                    return !input.disabled && (!row || !isDeletedRow(row, row.classList.contains("material-row") ? "mat" : "att"));
+                });
             }
 
             function hasClientErrors() {
-                return !!document.querySelector(
-                    "#act-form .input-error"
-                );
+                return activeClientErrors().length > 0;
             }
 
             refreshAllStates();
+            markServerInvalids();
+            window.__actsRefreshStates = refreshAllStates;
+
+            function clearServerError(el) {
+                el.classList?.remove("is-invalid");
+                const wrap = el.closest?.("td, .col-12, .col-6, .col-lg-3, .col-lg-6, .mb-2, .mb-3");
+                wrap?.querySelectorAll(".invalid-feedback.d-block").forEach(error => error.remove());
+            }
 
             document.addEventListener("input", function (e) {
                 const el = e.target;
                 if (!el) return;
                 duplicateTouched.add(el);
+                clearServerError(el);
 
                 updateMainFields();
 
@@ -2009,6 +2058,7 @@
                 const el = e.target;
                 if (!el) return;
                 duplicateTouched.add(el);
+                clearServerError(el);
 
                 updateMainFields();
 
@@ -2035,12 +2085,15 @@
             form?.addEventListener("submit", function (e) {
                 formWasSubmitted = true;
                 refreshAllStates();
+                const summary = document.getElementById("act-submit-errors");
+                summary.hidden = !hasClientErrors();
 
                 if (hasClientErrors()) {
                     e.preventDefault();
-
-                    const firstError = form.querySelector(".input-error");
-                    firstError?.focus();
+                    summary.textContent = "Акт не сохранён: проверьте выделенные поля.";
+                    const firstError = activeClientErrors().find(input => input.getClientRects().length > 0);
+                    firstError?.focus({preventScroll: true});
+                    (firstError || summary).scrollIntoView({behavior: "smooth", block: "center"});
                 }
             });
             document.addEventListener("click", function (e) {
@@ -2080,6 +2133,7 @@
             });
         })();
     </script>
+    {% if mode == "create" %}<script src="{% static 'assets/js/act-recovery.js' %}"></script>{% endif %}
 
 {% endblock %}
 

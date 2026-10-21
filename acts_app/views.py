@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import io
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -864,10 +865,10 @@ class ActListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
         qs = _apply_month_period_filter(qs, d_from, d_to)
 
-        # 4) статус (как было)
+        # 4) переключатель: все акты или только черновики
         status = (self.request.GET.get("status") or "").strip()
-        if status in {ActStatus.DRAFT, ActStatus.FINAL}:
-            qs = qs.filter(status=status)
+        if status == ActStatus.DRAFT:
+            qs = qs.filter(status=ActStatus.DRAFT)
 
         # 5) общий поиск по всем колонкам (ПОСЛЕДНИМ)
         q = (self.request.GET.get("q") or "").strip()
@@ -2198,6 +2199,9 @@ class ActCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             messages.warning(request, f"Акт сохранён, но DOCX не собран: {e}")
 
         url = reverse("acts_app:act_detail", kwargs={"uuid": str(act.uuid)})
+        recovery_token = request.POST.get("recovery_token", "")
+        if re.fullmatch(r"[a-zA-Z0-9-]{1,80}", recovery_token):
+            url += "?saved_form=" + recovery_token
         return redirect(url)
 
 

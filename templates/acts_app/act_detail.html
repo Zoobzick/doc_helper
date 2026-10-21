@@ -14,6 +14,7 @@
 
     <div class="pagetitle">
         <h1>Акт №{{ act.number }} от {{ act.act_date|date:"d.m.Y" }}</h1>
+        <span class="badge {% if act.status == 'DRAFT' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ act.get_status_display }}</span>
         <nav>
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="/">Главная</a></li>
@@ -463,5 +464,14 @@
 
 
 
+    <script>
+        // Clear recovery only after the server has saved the matching submission.
+        try {
+            const key = "act-create-v1:{{ request.user.pk }}";
+            const token = new URLSearchParams(location.search).get("saved_form");
+            const saved = JSON.parse(localStorage.getItem(key) || "null");
+            if (token && saved?.token === token) localStorage.removeItem(key);
+        } catch (_) { /* Storage may be unavailable. */ }
+    </script>
 {% endblock %}
 

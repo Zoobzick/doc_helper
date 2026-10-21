@@ -38,6 +38,15 @@
 
                     /* --- table --- */
                     .acts-table { table-layout: fixed; width: 100%; }
+                    .acts-table > tbody > tr.act-draft-row > td {
+                        background-color: #fff3cd;
+                        --bs-table-accent-bg: transparent;
+                        --bs-table-striped-bg: transparent;
+                        --bs-table-bg-type: transparent;
+                    }
+                    .acts-table > tbody > tr.act-draft-row > td:first-child {
+                        border-left: 3px solid #d39e00;
+                    }
                     .acts-col-num { width: 18%; }
                     .acts-col-date { width: 10%; }
                     .acts-col-works { width: 32%; }
@@ -198,8 +207,16 @@
                                        title="По">
                             </div>
 
-                            {% if request.GET.status %}
-                                <input type="hidden" name="status" value="{{ request.GET.status }}">
+                            {% if active_tab == 'aosr' %}
+                                <div class="col-12">
+                                    <div class="form-check form-switch">
+                                        <input type="checkbox" class="form-check-input" role="switch"
+                                               id="act-drafts-filter" name="status" value="DRAFT"
+                                               {% if request.GET.status == 'DRAFT' %}checked{% endif %}
+                                               onchange="this.form.requestSubmit()">
+                                        <label for="act-drafts-filter" class="form-check-label">Черновики</label>
+                                    </div>
+                                </div>
                             {% endif %}
 
                             <!-- buttons -->
@@ -358,7 +375,7 @@
 
                     <tbody>
                     {% for act in acts %}
-                        <tr>
+                        <tr{% if act.status == 'DRAFT' %} class="act-draft-row" title="Черновик" aria-label="Черновик"{% endif %}>
                             <td>
                                 <button type="button" class="act-number-copy fw-semibold act-number-full"
                                         data-act-number="{{ act.number }}" title="Скопировать номер акта"

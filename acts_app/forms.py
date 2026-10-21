@@ -7,7 +7,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
-from acts_app.models import Act, ActAttachment, ActMaterialItem, Aook, AookManualSourceAct, AookProtocolItem, AttachmentType
+from acts_app.models import Act, ActStatus, ActAttachment, ActMaterialItem, Aook, AookManualSourceAct, AookProtocolItem, AttachmentType
 
 ISO_DATE_FORMAT = "%Y-%m-%d"
 
@@ -75,6 +75,8 @@ class ActProjectsForm(forms.Form):
 
 
 class ActForm(forms.ModelForm):
+    is_draft = forms.BooleanField(required=False, label="Черновик")
+
     class Meta:
         model = Act
         fields = (
@@ -103,6 +105,8 @@ class ActForm(forms.ModelForm):
             if name in self.fields:
                 force_iso_date_field(self.fields[name])
 
+        self.fields["is_draft"].initial = self.instance.pk is not None and self.instance.status == ActStatus.DRAFT
+
         if "copies_count" in self.fields:
             w = self.fields["copies_count"].widget
             if not isinstance(w, forms.NumberInput):
@@ -123,6 +127,17 @@ class ActForm(forms.ModelForm):
             )
 
         _bootstrapify(self)
+
+    def save(self, commit=True):
+        act = super().save(commit=False)
+        if self.cleaned_data["is_draft"]:
+            act.status = ActStatus.DRAFT
+        elif act.status != ActStatus.FINAL:
+            act.status = ActStatus.READY
+        if commit:
+            act.save()
+            self.save_m2m()
+        return act
 
     def clean(self):
         cleaned = super().clean()
