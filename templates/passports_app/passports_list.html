@@ -3,6 +3,12 @@
 
 {% block content %}
 
+    <style>
+        #passportsTable tbody tr[data-passport-row] { cursor: copy; }
+        #passportsTable [data-copy-field]:hover,
+        #passportsTable [data-copy-field]:focus-visible { text-decoration: underline; }
+    </style>
+
     {% block breadcrumbs %}
         <div class="pagetitle">
             <h1>Паспорта</h1>
@@ -66,6 +72,9 @@
                             </div>
                         </div>
 
+                        <p id="passportCopyStatus" class="text-muted mb-2" role="status" aria-live="polite">
+                            Нажмите на текст, чтобы скопировать поле, или на свободное место строки, чтобы скопировать всю строку.
+                        </p>
                         <div class="table-responsive">
                             <table id="passportsTable"
                                    class="table table-striped table-bordered align-middle w-100">
@@ -82,22 +91,18 @@
 
                                 <tbody>
                                 {% for p in passports %}
-                                    <tr {% if p.needs_review %}class="table-warning"{% endif %}>
+                                    <tr data-passport-row {% if p.needs_review %}class="table-warning"{% endif %}>
 
-                                        <td>{{ p.material.name|default:"—" }}</td>
+                                        <td><span data-copy-field="material" role="button" tabindex="0" title="Скопировать материал">{{ p.material.name|default:"—" }}</span></td>
 
                                         <td style="word-break: break-word;">
-                                            {{ p.document_name }}
+                                            <span data-copy-field="document" role="button" tabindex="0" title="Скопировать наименование документа">{{ p.document_name }}</span>
                                         </td>
 
-                                        <td>{{ p.document_number|default:"—" }}</td>
+                                        <td><span data-copy-field="number" role="button" tabindex="0" title="Скопировать номер">{{ p.document_number|default:"—" }}</span></td>
 
                                         <td {% if p.document_date %}data-order="{{ p.document_date|date:'Y-m-d' }}"{% endif %}>
-                                            {% if p.document_date_display %}
-                                                {{ p.document_date_display }}
-                                            {% else %}
-                                                <span class="text-muted">—</span>
-                                            {% endif %}
+                                            <span data-copy-field="date" role="button" tabindex="0" title="Скопировать дату">{% if p.document_date_display %}{{ p.document_date_display }}{% else %}<span class="text-muted">—</span>{% endif %}</span>
                                         </td>
 
                                         <td class="text-center text-nowrap">
@@ -220,15 +225,51 @@
                 }
 
                 const textarea = document.createElement("textarea");
+                const previousFocus = document.activeElement;
                 textarea.value = text;
                 textarea.style.position = "fixed";
                 textarea.style.left = "-9999px";
                 document.body.appendChild(textarea);
-                textarea.focus();
-                textarea.select();
-                document.execCommand("copy");
-                textarea.remove();
+                try {
+                    textarea.focus();
+                    textarea.select();
+                    if (!document.execCommand("copy")) throw new Error("copy_failed");
+                } finally {
+                    textarea.remove();
+                    previousFocus?.focus({preventScroll: true});
+                }
             }
+
+            const passportsTable = document.getElementById("passportsTable");
+            const copyStatus = document.getElementById("passportCopyStatus");
+
+            async function copyPassportText(event) {
+                const row = event.target.closest("tr[data-passport-row]");
+                if (!row || !passportsTable.contains(row)) return;
+
+                const field = event.target.closest("[data-copy-field]");
+                // Action links, buttons and forms retain their own behavior.
+                if (!field && event.target.closest("a, button, form, input, select, textarea")) return;
+                const value = name => row.querySelector(`[data-copy-field="${name}"]`).textContent.trim();
+                const text = field
+                    ? field.textContent.trim()
+                    : `${value("material")}, ${value("document")} №${value("number")} от ${value("date")}`;
+
+                try {
+                    await copyText(text);
+                    copyStatus.textContent = field ? `Скопировано: ${text}` : `Строка скопирована: ${text}`;
+                } catch (error) {
+                    copyStatus.textContent = "Не удалось скопировать текст. Попробуйте ещё раз.";
+                }
+            }
+
+            passportsTable.addEventListener("click", copyPassportText);
+            passportsTable.addEventListener("keydown", function (event) {
+                if (event.target.closest("[data-copy-field]") && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    copyPassportText(event);
+                }
+            });
 
             document.body.addEventListener("click", async function (event) {
                 const button = event.target.closest("[data-passport-share-url]");
